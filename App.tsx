@@ -2721,21 +2721,21 @@ ${header}
                     )}
                 </div>
             </div>
-             <div className="flex-1 px-2 md:px-8 flex items-center justify-center gap-4">
+             <div className="flex-1 px-2 md:px-8 flex flex-col items-center justify-center gap-2">
                 <button
                     onClick={() => setIsGoalModalOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 rounded-md font-semibold transition-colors"
+                    className="flex items-center gap-2 px-2 py-1 text-[10px] bg-purple-600 hover:bg-purple-700 rounded-md font-semibold transition-colors"
                     title="Generate pipeline from a goal"
                 >
-                    <SparklesIcon className="h-4 w-4" />
+                    <SparklesIcon className="h-3 w-3" />
                     AI로 파이프라인 생성하기
                 </button>
                  <button
                     onClick={() => setIsDataModalOpen(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold transition-colors"
+                    className="flex items-center gap-2 px-2 py-1 text-[10px] bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold transition-colors"
                     title="Generate pipeline from data"
                 >
-                    <SparklesIcon className="h-4 w-4" />
+                    <SparklesIcon className="h-3 w-3" />
                     AI로 데이터 분석 실행하기
                 </button>
             </div>
