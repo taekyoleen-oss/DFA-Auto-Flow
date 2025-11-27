@@ -2687,8 +2687,8 @@ ${header}
         )}
 
         <header className="flex flex-col px-4 py-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0 z-20">
-            {/* 첫 번째 줄: 제목 및 모델 이름, Run All, 설정 버튼 */}
-            <div className="flex items-center justify-between w-full">
+            {/* 첫 번째 줄: 제목 및 모델 이름 */}
+            <div className="flex items-center w-full">
                 <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
                     <button onClick={() => setIsLeftPanelVisible(v => !v)} className="p-1 flex-shrink-0" aria-label="Toggle modules panel">
                         <Bars3Icon className="h-5 w-5 md:h-6 md:w-6"/>
@@ -2720,15 +2720,6 @@ ${header}
                             </h2>
                         )}
                     </div>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                    <button onClick={handleRunAll} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[9.33px] md:text-sm bg-green-600 hover:bg-green-500 rounded-md font-bold text-white transition-colors">
-                        <PlayIcon className="h-3 w-3 md:h-4 md:w-4" />
-                        <span className="hidden sm:inline">Run All</span>
-                    </button>
-                    <button onClick={handleToggleRightPanel} className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors" title="Toggle Properties Panel">
-                        <CogIcon className="h-4 w-4 md:h-5 md:w-5" />
-                    </button>
                 </div>
             </div>
             
@@ -2792,7 +2783,7 @@ ${header}
                 </button>
             </div>
             
-            {/* 세 번째 줄: AI 버튼 2개 (가로로, 작은 크기) */}
+            {/* 세 번째 줄: AI 버튼 2개 및 Run All, 설정 버튼 (가로로, 작은 크기) */}
             <div className="flex items-center justify-end gap-1 md:gap-2 w-full mt-1 overflow-x-auto scrollbar-hide">
                 <button
                     onClick={() => setIsGoalModalOpen(true)}
@@ -2809,6 +2800,13 @@ ${header}
                 >
                     <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
                     <span className="whitespace-nowrap">AI로 데이터 분석 실행하기</span>
+                </button>
+                <button onClick={handleRunAll} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[9.33px] md:text-sm bg-green-600 hover:bg-green-500 rounded-md font-bold text-white transition-colors flex-shrink-0">
+                    <PlayIcon className="h-3 w-3 md:h-4 md:w-4" />
+                    <span className="hidden sm:inline">Run All</span>
+                </button>
+                <button onClick={handleToggleRightPanel} className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors flex-shrink-0" title="Toggle Properties Panel">
+                    <CogIcon className="h-4 w-4 md:h-5 md:w-5" />
                 </button>
             </div>
         </header>
