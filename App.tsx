@@ -2686,124 +2686,129 @@ ${header}
             </div>
         )}
 
-        <header className="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-700 flex-shrink-0 z-20">
-            <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                    <button onClick={() => setIsLeftPanelVisible(v => !v)} className="p-1" aria-label="Toggle modules panel">
-                        <Bars3Icon className="h-6 w-6"/>
+        <header className="flex flex-col px-4 py-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0 z-20">
+            {/* 첫 번째 줄: 제목 및 모델 이름, Run All, 설정 버튼 */}
+            <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
+                    <button onClick={() => setIsLeftPanelVisible(v => !v)} className="p-1 flex-shrink-0" aria-label="Toggle modules panel">
+                        <Bars3Icon className="h-5 w-5 md:h-6 md:w-6"/>
                     </button>
-                    <LogoIcon className="h-6 w-6 text-blue-400 hidden md:inline-block" />
-                    <h1 className="text-xl font-bold text-blue-300 tracking-wide hidden md:inline-block">Insure Auto Flow</h1>
-                </div>
-                <div className="hidden md:flex items-center gap-2">
-                    <span className="text-gray-600">|</span>
-                    {isEditingProjectName ? (
-                        <input
-                            value={projectName}
-                            onChange={e => setProjectName(e.target.value)}
-                            onBlur={() => setIsEditingProjectName(false)}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter' || e.key === 'Escape') {
-                                    setIsEditingProjectName(false);
-                                }
-                            }}
-                            className="bg-gray-800 text-lg font-semibold text-white px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            autoFocus
-                        />
-                    ) : (
-                        <h2
-                            onClick={() => setIsEditingProjectName(true)}
-                            className="text-lg font-semibold text-gray-300 hover:bg-gray-700 px-2 py-1 rounded-md cursor-pointer"
-                            title="Click to edit project name"
-                        >
-                            {projectName}
-                        </h2>
-                    )}
-                </div>
-            </div>
-             <div className="flex-1 px-2 md:px-8 flex flex-col items-center justify-center gap-2">
-                <button
-                    onClick={() => setIsGoalModalOpen(true)}
-                    className="flex items-center gap-2 px-2 py-1 text-[6.67px] md:text-[10px] bg-purple-600 hover:bg-purple-700 rounded-md font-semibold transition-colors"
-                    title="Generate pipeline from a goal"
-                >
-                    <SparklesIcon className="h-2 w-2 md:h-3 md:w-3" />
-                    AI로 파이프라인 생성하기
-                </button>
-                 <button
-                    onClick={() => setIsDataModalOpen(true)}
-                    className="flex items-center gap-2 px-2 py-1 text-[6.67px] md:text-[10px] bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold transition-colors"
-                    title="Generate pipeline from data"
-                >
-                    <SparklesIcon className="h-2 w-2 md:h-3 md:w-3" />
-                    AI로 데이터 분석 실행하기
-                </button>
-            </div>
-            <div className="flex items-center gap-2">
-                 <div className="flex items-center gap-1 md:gap-2 overflow-x-auto scrollbar-hide">
-                     <button
-                        onClick={undo}
-                        disabled={!canUndo}
-                        className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                        title="Undo (Ctrl+Z)"
-                    >
-                        <ArrowUturnLeftIcon className="h-[10.67px] w-[10.67px] md:h-5 md:w-5" />
-                    </button>
-                    <button
-                        onClick={redo}
-                        disabled={!canRedo}
-                        className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-                        title="Redo (Ctrl+Y)"
-                    >
-                        <ArrowUturnRightIcon className="h-[10.67px] w-[10.67px] md:h-5 md:w-5" />
-                    </button>
-                    <button onClick={handleSetFolder} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0" title="Set Save Folder">
-                        <FolderOpenIcon className="h-2 w-2 md:h-4 md:w-4" />
-                        <span className="hidden sm:inline">Set Folder</span>
-                    </button>
-                    <button onClick={handleLoadPipeline} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0" title="Load Pipeline">
-                        <FolderOpenIcon className="h-2 w-2 md:h-4 md:w-4" />
-                        <span className="hidden sm:inline">Load</span>
-                    </button>
-                    <div className="relative flex-shrink-0" ref={sampleMenuRef}>
-                        <button 
-                            onClick={() => setIsSampleMenuOpen(!isSampleMenuOpen)} 
-                            className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-blue-600 hover:bg-blue-700 rounded-md font-semibold transition-colors" 
-                            title="Load Sample Model"
-                        >
-                            <SparklesIcon className="h-2 w-2 md:h-4 md:w-4" />
-                            <span className="hidden sm:inline">Samples</span>
-                        </button>
-                        {isSampleMenuOpen && (
-                            <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 min-w-[200px]">
-                                {SAMPLE_MODELS.map((sample: any) => (
-                                    <button
-                                        key={sample.name}
-                                        onClick={() => handleLoadSample(sample.name)}
-                                        className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 first:rounded-t-md last:rounded-b-md transition-colors"
-                                    >
-                                        {sample.name}
-                                    </button>
-                                ))}
-                            </div>
+                    <LogoIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-400 flex-shrink-0" />
+                    <h1 className="text-base md:text-xl font-bold text-blue-300 tracking-wide flex-shrink-0">Insure Auto Flow</h1>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-gray-600 hidden md:inline">|</span>
+                        {isEditingProjectName ? (
+                            <input
+                                value={projectName}
+                                onChange={e => setProjectName(e.target.value)}
+                                onBlur={() => setIsEditingProjectName(false)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' || e.key === 'Escape') {
+                                        setIsEditingProjectName(false);
+                                    }
+                                }}
+                                className="bg-gray-800 text-sm md:text-lg font-semibold text-white px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                                autoFocus
+                            />
+                        ) : (
+                            <h2
+                                onClick={() => setIsEditingProjectName(true)}
+                                className="text-sm md:text-lg font-semibold text-gray-300 hover:bg-gray-700 px-2 py-1 rounded-md cursor-pointer truncate"
+                                title="Click to edit project name"
+                            >
+                                {projectName}
+                            </h2>
                         )}
                     </div>
-                     <button 
-                        onClick={handleSavePipeline} 
-                        disabled={!isDirty}
-                        className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs rounded-md font-semibold transition-colors flex-shrink-0 ${!isDirty ? 'bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-700 hover:bg-gray-600'}`} 
-                        title="Save Pipeline"
-                    >
-                        {saveButtonText === 'Save' ? <CodeBracketIcon className="h-2 w-2 md:h-4 md:w-4" /> : <CheckIcon className="h-2 w-2 md:h-4 md:w-4" />}
-                        <span className="hidden sm:inline">{saveButtonText}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={handleRunAll} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[9.33px] md:text-sm bg-green-600 hover:bg-green-500 rounded-md font-bold text-white transition-colors">
+                        <PlayIcon className="h-3 w-3 md:h-4 md:w-4" />
+                        <span className="hidden sm:inline">Run All</span>
+                    </button>
+                    <button onClick={handleToggleRightPanel} className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors" title="Toggle Properties Panel">
+                        <CogIcon className="h-4 w-4 md:h-5 md:w-5" />
                     </button>
                 </div>
-                 <button onClick={handleRunAll} className="flex items-center gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[9.33px] md:text-sm bg-green-600 hover:bg-green-500 rounded-md font-bold text-white transition-colors">
-                    <PlayIcon className="h-3 w-3 md:h-4 md:w-4" />
-                    Run All
+            </div>
+            
+            {/* 두 번째 줄: Load, Save 등 버튼들 */}
+            <div className="flex items-center gap-1 md:gap-2 w-full overflow-x-auto scrollbar-hide mt-1">
+                <button
+                    onClick={undo}
+                    disabled={!canUndo}
+                    className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    title="Undo (Ctrl+Z)"
+                >
+                    <ArrowUturnLeftIcon className="h-[10.67px] w-[10.67px] md:h-5 md:w-5" />
                 </button>
-                <button onClick={handleToggleRightPanel} className="p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors" title="Toggle Properties Panel">
-                    <CogIcon className="h-5 w-5" />
+                <button
+                    onClick={redo}
+                    disabled={!canRedo}
+                    className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                    title="Redo (Ctrl+Y)"
+                >
+                    <ArrowUturnRightIcon className="h-[10.67px] w-[10.67px] md:h-5 md:w-5" />
+                </button>
+                <button onClick={handleSetFolder} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0" title="Set Save Folder">
+                    <FolderOpenIcon className="h-2 w-2 md:h-4 md:w-4" />
+                    <span className="hidden sm:inline">Set Folder</span>
+                </button>
+                <button onClick={handleLoadPipeline} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0" title="Load Pipeline">
+                    <FolderOpenIcon className="h-2 w-2 md:h-4 md:w-4" />
+                    <span className="hidden sm:inline">Load</span>
+                </button>
+                <div className="relative flex-shrink-0" ref={sampleMenuRef}>
+                    <button 
+                        onClick={() => setIsSampleMenuOpen(!isSampleMenuOpen)} 
+                        className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-blue-600 hover:bg-blue-700 rounded-md font-semibold transition-colors" 
+                        title="Load Sample Model"
+                    >
+                        <SparklesIcon className="h-2 w-2 md:h-4 md:w-4" />
+                        <span className="hidden sm:inline">Samples</span>
+                    </button>
+                    {isSampleMenuOpen && (
+                        <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 min-w-[200px]">
+                            {SAMPLE_MODELS.map((sample: any) => (
+                                <button
+                                    key={sample.name}
+                                    onClick={() => handleLoadSample(sample.name)}
+                                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 first:rounded-t-md last:rounded-b-md transition-colors"
+                                >
+                                    {sample.name}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                <button 
+                    onClick={handleSavePipeline} 
+                    disabled={!isDirty}
+                    className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs rounded-md font-semibold transition-colors flex-shrink-0 ${!isDirty ? 'bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-700 hover:bg-gray-600'}`} 
+                    title="Save Pipeline"
+                >
+                    {saveButtonText === 'Save' ? <CodeBracketIcon className="h-2 w-2 md:h-4 md:w-4" /> : <CheckIcon className="h-2 w-2 md:h-4 md:w-4" />}
+                    <span className="hidden sm:inline">{saveButtonText}</span>
+                </button>
+            </div>
+            
+            {/* 세 번째 줄: AI 버튼 2개 (가로로, 작은 크기) */}
+            <div className="flex items-center gap-1 md:gap-2 w-full mt-1 overflow-x-auto scrollbar-hide">
+                <button
+                    onClick={() => setIsGoalModalOpen(true)}
+                    className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-purple-600 hover:bg-purple-700 rounded-md font-semibold transition-colors flex-shrink-0"
+                    title="Generate pipeline from a goal"
+                >
+                    <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
+                    <span className="whitespace-nowrap">AI로 파이프라인 생성하기</span>
+                </button>
+                <button
+                    onClick={() => setIsDataModalOpen(true)}
+                    className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold transition-colors flex-shrink-0"
+                    title="Generate pipeline from data"
+                >
+                    <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
+                    <span className="whitespace-nowrap">AI로 데이터 분석 실행하기</span>
                 </button>
             </div>
         </header>
