@@ -2686,7 +2686,7 @@ ${header}
             </div>
         )}
 
-        <header className="flex flex-col px-4 py-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0 z-20">
+        <header className="flex flex-col px-4 py-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0 z-50 relative">
             {/* 첫 번째 줄: 제목 및 모델 이름 */}
             <div className="flex items-center w-full">
                 <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
@@ -2776,7 +2776,7 @@ ${header}
                             <span className="whitespace-nowrap">Samples</span>
                         </button>
                         {isSampleMenuOpen && (
-                            <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-[100] min-w-[200px] max-h-[300px] overflow-y-auto">
+                            <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-[9999] min-w-[200px] max-h-[300px] overflow-y-auto" style={{ position: 'absolute' }}>
                                 {SAMPLE_MODELS.length > 0 ? (
                                     SAMPLE_MODELS.map((sample: any) => (
                                         <button
