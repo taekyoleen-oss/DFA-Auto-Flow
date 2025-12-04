@@ -47,7 +47,7 @@ interface ModuleNodeProps {
 const statusStyles = {
     [ModuleStatus.Pending]: 'border-gray-500',
     [ModuleStatus.Running]: 'border-blue-500 animate-pulse',
-    [ModuleStatus.Success]: 'border-green-500',
+    [ModuleStatus.Success]: 'border-blue-500',
     [ModuleStatus.Error]: 'border-red-500',
 };
 
@@ -266,8 +266,17 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
   };
 
   const { position, status } = module;
+  const isRunnable = !noRunButtonTypes.includes(module.type) && areUpstreamModulesReady(module.id, allModules, allConnections);
+  const getBackgroundColor = () => {
+    if (status === ModuleStatus.Success) {
+      return 'bg-blue-900/50';
+    } else if (status === ModuleStatus.Pending && isRunnable) {
+      return 'bg-green-900/30';
+    }
+    return 'bg-gray-800';
+  };
   const suggestionClasses = isSuggestion ? 'opacity-70 border-dashed border-purple-500 animate-pulse' : '';
-  const wrapperClasses = `absolute w-48 bg-gray-800 border-2 rounded-lg shadow-lg flex flex-col ${isSuggestion ? 'cursor-pointer' : 'cursor-move'} ${statusStyles[status]} ${isSelected ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-blue-500' : ''} ${suggestionClasses}`;
+  const wrapperClasses = `absolute w-48 ${getBackgroundColor()} border-2 rounded-lg shadow-lg flex flex-col ${isSuggestion ? 'cursor-pointer' : 'cursor-move'} ${statusStyles[status]} ${isSelected ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-blue-500' : ''} ${suggestionClasses}`;
   
   const componentStyle: React.CSSProperties = {
     transform: `translate(${position.x}px, ${position.y}px)`,
@@ -356,7 +365,7 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
                               disabled={!canRun}
                               className={`absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors z-10 ${
                                   canRun 
-                                      ? 'bg-gray-700 hover:bg-green-600 text-gray-300 hover:text-white' 
+                                      ? 'bg-gray-700 hover:bg-green-600 text-green-500 hover:text-white' 
                                       : 'bg-gray-800 text-gray-600 cursor-not-allowed opacity-50'
                               }`}
                               title={canRun ? "Run this module" : "Upstream modules must be executed first"}
