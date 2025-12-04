@@ -151,7 +151,18 @@ export const DEFAULT_MODULES: Omit<CanvasModule, 'id' | 'position' | 'name'>[] =
     type: ModuleType.LinearRegression,
     status: ModuleStatus.Pending,
     // Updated parameters for Linear Regression, Lasso, Ridge, ElasticNet
-    parameters: { model_type: 'LinearRegression', alpha: 1.0, l1_ratio: 0.5, fit_intercept: 'True' },
+    parameters: { 
+      model_type: 'LinearRegression', 
+      alpha: 1.0, 
+      l1_ratio: 0.5, 
+      fit_intercept: 'True',
+      tuning_enabled: 'False',
+      tuning_strategy: 'GridSearch',
+      alpha_candidates: '0.01,0.1,1,10',
+      l1_ratio_candidates: '0.2,0.5,0.8',
+      cv_folds: 5,
+      scoring_metric: 'neg_mean_squared_error'
+    },
     inputs: [],
     outputs: [{ name: 'model_out', type: 'model' }],
   },

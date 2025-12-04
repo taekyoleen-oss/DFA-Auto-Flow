@@ -266,6 +266,7 @@ except Exception as e:
         // 정리
         py.globals.delete('js_data');
         py.globals.delete('js_result');
+        py.globals.delete('js_tuning_options');
         
         return {
             trainIndices: result.train_indices,
@@ -278,12 +279,31 @@ except Exception as e:
             if (py) {
                 py.globals.delete('js_data');
                 py.globals.delete('js_result');
+                py.globals.delete('js_tuning_options');
             }
         } catch {}
         
         const errorMessage = error.message || String(error);
         throw new Error(`Python split_data error: ${errorMessage}`);
     }
+}
+
+export interface LinearRegressionTuningOptions {
+    enabled: boolean;
+    strategy?: 'GridSearch';
+    alphaCandidates?: number[];
+    l1RatioCandidates?: number[];
+    cvFolds?: number;
+    scoringMetric?: string;
+}
+
+interface LinearRegressionTuningPayload {
+    enabled: boolean;
+    strategy?: 'grid';
+    bestParams?: Record<string, number>;
+    bestScore?: number;
+    scoringMetric?: string;
+    candidates?: { params: Record<string, number>; score: number }[];
 }
 
 /**
@@ -298,8 +318,9 @@ export async function fitLinearRegressionPython(
     alpha: number = 1.0,
     l1Ratio: number = 0.5,
     featureColumns?: string[],
-    timeoutMs: number = 60000
-): Promise<{ coefficients: number[], intercept: number, metrics: Record<string, number> }> {
+    timeoutMs: number = 60000,
+    tuningOptions?: LinearRegressionTuningOptions
+): Promise<{ coefficients: number[], intercept: number, metrics: Record<string, number>, tuning?: LinearRegressionTuningPayload }> {
     try {
         // Pyodide 로드 (타임아웃: 30초)
         const py = await withTimeout(
@@ -330,6 +351,7 @@ export async function fitLinearRegressionPython(
         py.globals.set('js_data', dataRows);
         py.globals.set('js_feature_columns', featureColumns || X[0].map((_, idx) => `x${idx}`));
         py.globals.set('js_label_column', 'y');
+        py.globals.set('js_tuning_options', tuningOptions ? tuningOptions : null);
         
         // Python 코드 실행 (에러 처리 포함)
         // 실제 Python 코드와 동일하게 pandas DataFrame 사용
@@ -341,6 +363,7 @@ import traceback
 import sys
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.model_selection import GridSearchCV
 
 try:
     # 앱에서 보여지는 코드와 정확히 일치하도록 작성
@@ -393,8 +416,61 @@ try:
     else:
         model = LinearRegression(fit_intercept=p_fit_intercept)
     
-    # 앱 코드와 정확히 일치: trained_model = model.fit(X_train, y_train)
-    trained_model = model.fit(X_train, y_train)
+    # 튜닝 옵션 처리
+    tuning_options = None
+    tuning_enabled = False
+    if 'js_tuning_options' in globals() and js_tuning_options is not None:
+        try:
+            tuning_options = js_tuning_options.to_py()
+            tuning_enabled = bool(tuning_options.get('enabled'))
+        except Exception:
+            tuning_options = None
+            tuning_enabled = False
+
+    best_params = {}
+    best_score = None
+    cv_candidates = []
+    scoring_metric_value = 'neg_mean_squared_error'
+    if tuning_options and tuning_options.get('scoringMetric'):
+        scoring_metric_value = tuning_options.get('scoringMetric')
+
+    should_tune = tuning_enabled and tuning_options is not None and model_type in ('Lasso', 'Ridge', 'ElasticNet')
+
+    if should_tune:
+        alpha_candidates = tuning_options.get('alphaCandidates') or [p_alpha]
+        alpha_candidates = [float(a) for a in alpha_candidates if a is not None]
+        param_grid = {}
+        if alpha_candidates:
+            param_grid['alpha'] = alpha_candidates
+        if model_type == 'ElasticNet':
+            l1_candidates = tuning_options.get('l1RatioCandidates') or [p_l1_ratio]
+            l1_candidates = [float(a) for a in l1_candidates if a is not None]
+            if l1_candidates:
+                param_grid['l1_ratio'] = l1_candidates
+        if not param_grid:
+            param_grid = {'alpha': [float(p_alpha)]}
+        cv_folds = int(tuning_options.get('cvFolds', 5))
+        grid_search = GridSearchCV(
+            model,
+            param_grid,
+            cv=cv_folds,
+            scoring=scoring_metric_value,
+            n_jobs=None
+        )
+        grid_search.fit(X_train, y_train)
+        trained_model = grid_search.best_estimator_
+        best_params = {k: float(v) for k, v in grid_search.best_params_.items()}
+        best_score = float(grid_search.best_score_)
+        cv_candidates = [
+            {'params': params, 'score': float(score)}
+            for params, score in zip(grid_search.cv_results_['params'], grid_search.cv_results_['mean_test_score'])
+        ][:10]
+    else:
+        trained_model = model.fit(X_train, y_train)
+        if model_type in ('Lasso', 'Ridge', 'ElasticNet'):
+            best_params = {'alpha': float(p_alpha)}
+            if model_type == 'ElasticNet':
+                best_params['l1_ratio'] = float(p_l1_ratio)
     
     # 예측 및 평가 - trained_model 사용 (앱 코드와 일치)
     y_pred = trained_model.predict(X_train)
@@ -425,6 +501,14 @@ try:
             'R-squared': float(r2),
             'Mean Squared Error': float(mse),
             'Root Mean Squared Error': float(rmse)
+        },
+        'tuning': {
+            'enabled': bool(should_tune),
+            'strategy': 'grid' if should_tune else None,
+            'bestParams': best_params,
+            'bestScore': float(best_score) if best_score is not None else None,
+            'scoringMetric': scoring_metric_value if should_tune else None,
+            'candidates': cv_candidates
         },
         'feature_columns': p_feature_columns  # 순서 확인용
     }
@@ -505,7 +589,8 @@ debug_info
         return {
             coefficients: result.coefficients,
             intercept: result.intercept ?? 0.0,
-            metrics: result.metrics
+            metrics: result.metrics,
+            tuning: result.tuning
         };
     } catch (error: any) {
         // 정리

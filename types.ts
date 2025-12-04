@@ -115,6 +115,20 @@ export interface SplitDataOutput {
   test: DataPreview;
 }
 
+export interface TuningCandidateScore {
+  params: Record<string, number>;
+  score: number;
+}
+
+export interface TuningSummary {
+  enabled: boolean;
+  strategy?: 'grid';
+  bestParams?: Record<string, number>;
+  bestScore?: number;
+  scoringMetric?: string;
+  candidates?: TuningCandidateScore[];
+}
+
 export interface TrainedModelOutput {
   type: 'TrainedModelOutput';
   modelType: ModuleType;
@@ -124,6 +138,7 @@ export interface TrainedModelOutput {
   metrics: Record<string, number>;
   featureColumns: string[];
   labelColumn: string;
+  tuningSummary?: TuningSummary;
 }
 
 export type StatsModelFamily = 'OLS' | 'Logit' | 'Poisson' | 'NegativeBinomial' | 'Gamma' | 'Tweedie';

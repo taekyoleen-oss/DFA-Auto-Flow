@@ -71,6 +71,22 @@
 설명: 메뉴가 제대로 표시되도록 z-index를 z-[9999]로 설정하고 이벤트 처리 개선
 파일: App.tsx
 ---
+[2025-12-04 17:45:00] Linear Regression 모듈 하이퍼파라미터 튜닝 추가
+위치: C:\cursor\insure-auto-flow
+명령: Linear Regression 모듈에 Ridge/Lasso/ElasticNet 튜닝 옵션 및 결과 표시 추가
+설명: Pyodide 학습 로직에 GridSearchCV 기반 튜닝을 적용하고, PropertiesPanel 및 TrainedModelPreviewModal에 관련 UI를 추가하여 최적 하이퍼파라미터와 점수를 확인 가능하도록 개선
+파일: App.tsx, constants.ts, components/PropertiesPanel.tsx, components/TrainedModelPreviewModal.tsx, utils/pyodideRunner.ts, types.ts, HISTORY.md, history
+커밋 해시: (추후 업데이트)
+복구 명령:
+```bash
+# 백업 후 복구
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# 또는 직접 복구
+git reset --hard <커밋해시>
+```
+---
 [2025-12-04 17:30:00] Samples 버튼 작동 수정 및 실행 버튼 색상 변경
 위치: C:\cursor\insure-auto-flow
 명령: overflow-visible 설정 및 외부 클릭 감지 로직 개선

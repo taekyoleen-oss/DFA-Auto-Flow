@@ -41,7 +41,7 @@ export const TrainedModelPreviewModal: React.FC<TrainedModelPreviewModalProps> =
     const output = module.outputData as TrainedModelOutput;
     if (!output || output.type !== 'TrainedModelOutput') return null;
 
-    const { modelType, coefficients, intercept, metrics, featureColumns, labelColumn } = output;
+    const { modelType, coefficients, intercept, metrics, featureColumns, labelColumn, tuningSummary } = output;
 
     const handleInterpret = async () => {
         setIsInterpreting(true);
@@ -157,6 +157,73 @@ ${topFeatures}
                                 AI 분석 요약
                             </h3>
                             <MarkdownRenderer text={aiInterpretation} />
+                        </div>
+                    )}
+
+                    {tuningSummary?.enabled && (
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                            <h3 className="text-lg font-bold text-blue-900 mb-3">Hyperparameter Tuning Results</h3>
+                            <div className="grid md:grid-cols-2 gap-4 text-sm">
+                                <div>
+                                    <p className="text-gray-600 mb-1">Strategy</p>
+                                    <p className="font-semibold text-gray-900">{tuningSummary.strategy ?? 'grid'}</p>
+                                </div>
+                                {tuningSummary.scoringMetric && (
+                                    <div>
+                                        <p className="text-gray-600 mb-1">Scoring Metric</p>
+                                        <p className="font-semibold text-gray-900">{tuningSummary.scoringMetric}</p>
+                                    </div>
+                                )}
+                                {typeof tuningSummary.bestScore === 'number' && (
+                                    <div>
+                                        <p className="text-gray-600 mb-1">Best Score</p>
+                                        <p className="font-semibold text-gray-900">{tuningSummary.bestScore.toFixed(4)}</p>
+                                    </div>
+                                )}
+                            </div>
+                            {tuningSummary.bestParams && (
+                                <div className="mt-4">
+                                    <p className="text-gray-600 mb-2">Best Parameters</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {Object.entries(tuningSummary.bestParams).map(([key, value]) => (
+                                            <span key={key} className="px-3 py-1 bg-white rounded-full text-xs font-semibold text-gray-700 border border-blue-200">
+                                                {key}: {typeof value === 'number' ? value.toFixed(4) : value}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {tuningSummary.candidates && tuningSummary.candidates.length > 0 && (
+                                <div className="mt-4">
+                                    <p className="text-gray-600 mb-2">Top Candidates</p>
+                                    <div className="bg-white rounded-lg border border-blue-100 max-h-48 overflow-y-auto">
+                                        <table className="w-full text-xs">
+                                            <thead className="bg-blue-100 text-blue-900">
+                                                <tr>
+                                                    <th className="p-2 text-left">Parameters</th>
+                                                    <th className="p-2 text-right">Score</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {tuningSummary.candidates.slice(0, 5).map((candidate, idx) => (
+                                                    <tr key={idx} className="border-t border-blue-100">
+                                                        <td className="p-2">
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {Object.entries(candidate.params).map(([paramKey, paramValue]) => (
+                                                                    <span key={paramKey} className="px-2 py-0.5 bg-blue-50 rounded text-blue-900">
+                                                                        {paramKey}: {typeof paramValue === 'number' ? paramValue.toFixed(3) : paramValue}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-2 text-right font-mono">{candidate.score.toFixed(4)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

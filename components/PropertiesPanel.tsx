@@ -910,6 +910,49 @@ const renderParameters = (
                         step="0.1"
                     />
                 )}
+                <PropertySelect 
+                    label="Hyperparameter Tuning" 
+                    value={module.parameters.tuning_enabled || 'False'} 
+                    onChange={v => onParamChange('tuning_enabled', v)} 
+                    options={['False', 'True']} 
+                />
+                {module.parameters.tuning_enabled === 'True' && (
+                    <>
+                        <PropertySelect
+                            label="Tuning Strategy"
+                            value={module.parameters.tuning_strategy || 'GridSearch'}
+                            onChange={v => onParamChange('tuning_strategy', v)}
+                            options={['GridSearch']}
+                        />
+                        <PropertyInput
+                            label="Alpha Candidates (comma-separated)"
+                            type="text"
+                            value={module.parameters.alpha_candidates || '0.01,0.1,1,10'}
+                            onChange={v => onParamChange('alpha_candidates', v)}
+                        />
+                        {module.parameters.model_type === 'ElasticNet' && (
+                            <PropertyInput
+                                label="L1 Ratio Candidates (comma-separated)"
+                                type="text"
+                                value={module.parameters.l1_ratio_candidates || '0.2,0.5,0.8'}
+                                onChange={v => onParamChange('l1_ratio_candidates', v)}
+                            />
+                        )}
+                        <PropertyInput
+                            label="CV Folds"
+                            type="number"
+                            min="2"
+                            value={module.parameters.cv_folds ?? 5}
+                            onChange={v => onParamChange('cv_folds', v)}
+                        />
+                        <PropertySelect
+                            label="Scoring Metric"
+                            value={module.parameters.scoring_metric || 'neg_mean_squared_error'}
+                            onChange={v => onParamChange('scoring_metric', v)}
+                            options={['neg_mean_squared_error', 'neg_mean_absolute_error', 'r2']}
+                        />
+                    </>
+                )}
             </>;
         case ModuleType.TrainModel:
         case ModuleType.ResultModel: {

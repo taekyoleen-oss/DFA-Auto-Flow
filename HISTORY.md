@@ -1,3 +1,39 @@
+## [2025-12-04 17:45:00] - Linear Regression 모듈 하이퍼파라미터 튜닝 추가
+
+변경 사항:
+
+- Linear Regression 모듈에 Ridge/Lasso/ElasticNet용 하이퍼파라미터 튜닝 옵션(Alpha/L1 Ratio 후보, CV 폴드, 스코어링) 추가
+- Pyodide 기반 학습 로직에 GridSearchCV를 적용하여 최적 파라미터 및 점수를 계산
+- TrainedModelPreviewModal에 튜닝 결과(전략, 스코어, 최적 파라미터, 후보 점수표) 표시 섹션 추가
+- HISTORY 및 history 로그 업데이트
+
+영향받은 파일:
+
+- App.tsx
+- constants.ts
+- components/PropertiesPanel.tsx
+- components/TrainedModelPreviewModal.tsx
+- utils/pyodideRunner.ts
+- types.ts
+- HISTORY.md
+- history
+
+복구 방법
+
+# 특정 커밋으로 되돌리기
+
+git checkout <커밋해시>
+
+# 또는 현재 브랜치에서 이 커밋 상태로 되돌리기 (변경사항 유지)
+
+git reset --soft <커밋해시>
+
+# 완전히 이 커밋 상태로 되돌리기 (변경사항 삭제)
+
+git reset --hard <커밋해시>
+
+---
+
 ## [2025-12-04 16:10:45] - Samples 버튼 클릭 이벤트 및 에러 처리 개선
 
 변경 사항:
@@ -347,4 +383,5 @@ git reset --soft <커밋해시>
 git reset --hard <커밋해시>
 
 ---
+
 

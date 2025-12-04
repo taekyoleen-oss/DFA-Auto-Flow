@@ -2000,6 +2000,32 @@ ${header}
                         const modelType = modelSourceModule.parameters.model_type || 'LinearRegression';
                         const alpha = parseFloat(modelSourceModule.parameters.alpha) || 1.0;
                         const l1_ratio = parseFloat(modelSourceModule.parameters.l1_ratio) || 0.5;
+                        const parseCandidates = (raw: any, fallback: number[]): number[] => {
+                            if (Array.isArray(raw)) {
+                                const parsed = raw.map(val => {
+                                    const num = typeof val === 'number' ? val : parseFloat(val);
+                                    return isNaN(num) ? null : num;
+                                }).filter((num): num is number => num !== null);
+                                return parsed.length ? parsed : fallback;
+                            }
+                            if (typeof raw === 'string') {
+                                const parsed = raw.split(',').map(part => parseFloat(part.trim())).filter(num => !isNaN(num));
+                                return parsed.length ? parsed : fallback;
+                            }
+                            if (typeof raw === 'number' && !isNaN(raw)) {
+                                return [raw];
+                            }
+                            return fallback;
+                        };
+                        const tuningEnabled = modelSourceModule.parameters.tuning_enabled === 'True';
+                        const tuningOptions = tuningEnabled ? {
+                            enabled: true,
+                            strategy: 'GridSearch' as const,
+                            alphaCandidates: parseCandidates(modelSourceModule.parameters.alpha_candidates, [alpha]),
+                            l1RatioCandidates: modelType === 'ElasticNet' ? parseCandidates(modelSourceModule.parameters.l1_ratio_candidates, [l1_ratio]) : undefined,
+                            cvFolds: Math.max(2, parseInt(modelSourceModule.parameters.cv_folds, 10) || 5),
+                            scoringMetric: modelSourceModule.parameters.scoring_metric || 'neg_mean_squared_error'
+                        } : undefined;
                         
                         if (X.length < ordered_feature_columns.length) {
                             throw new Error(`Insufficient data: need at least ${ordered_feature_columns.length} samples for ${ordered_feature_columns.length} features, but got ${X.length}.`);
@@ -2019,7 +2045,8 @@ ${header}
                                 alpha,
                                 l1_ratio,
                                 ordered_feature_columns, // feature columns 전달
-                                60000 // 타임아웃: 60초
+                                60000, // 타임아웃: 60초
+                                tuningOptions
                             );
                             
                             if (!fitResult.coefficients || fitResult.coefficients.length !== ordered_feature_columns.length) {
@@ -2034,6 +2061,17 @@ ${header}
                                     throw new Error(`Missing coefficient for feature ${col} at index ${idx}.`);
                                 }
                             });
+                            const tuningSummary = fitResult.tuning ? {
+                                enabled: Boolean(fitResult.tuning.enabled),
+                                strategy: fitResult.tuning.strategy,
+                                bestParams: fitResult.tuning.bestParams,
+                                bestScore: typeof fitResult.tuning.bestScore === 'number' ? fitResult.tuning.bestScore : undefined,
+                                scoringMetric: fitResult.tuning.scoringMetric,
+                                candidates: Array.isArray(fitResult.tuning.candidates) ? fitResult.tuning.candidates : undefined
+                            } : undefined;
+                            if (tuningSummary?.enabled && tuningSummary.bestParams) {
+                                addLog('INFO', `Hyperparameter tuning selected params: ${Object.entries(tuningSummary.bestParams).map(([k, v]) => `${k}=${v}`).join(', ')}.`);
+                            }
 
                             // Python에서 계산된 메트릭 사용
                             const r2Value = typeof fitResult.metrics['R-squared'] === 'number' 
@@ -2081,7 +2119,7 @@ ${header}
                     throw new Error(`Training simulation for model type '${modelSourceModule.type}' is not implemented, or its 'model_purpose' parameter is not set correctly.`);
                 }
                 
-                trainedModelOutput = {
+                            trainedModelOutput = {
                     type: 'TrainedModelOutput',
                     modelType: modelSourceModule.type,
                     modelPurpose: modelIsClassification ? 'classification' : 'regression',
@@ -2089,7 +2127,8 @@ ${header}
                     intercept,
                     metrics,
                     featureColumns: ordered_feature_columns,
-                    labelColumn: label_column,
+                                labelColumn: label_column,
+                                tuningSummary,
                 };
                 
                 newOutputData = trainedModelOutput;
