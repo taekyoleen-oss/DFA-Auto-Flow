@@ -24,6 +24,268 @@ const ModalModelMetrics: React.FC<{ metrics: TrainedModelOutput['metrics'] }> = 
     </div>
 );
 
+interface TuningChartProps {
+    candidates: Array<{ params: Record<string, number>; score: number }>;
+    scoringMetric?: string;
+}
+
+const TuningChart: React.FC<TuningChartProps> = ({ candidates, scoringMetric }) => {
+    if (!candidates || candidates.length === 0) return null;
+
+    // alpha 파라미터와 score 추출
+    const dataPoints = candidates
+        .map(candidate => {
+            const alpha = candidate.params.alpha;
+            // score가 음수일 수 있으므로 절댓값 처리 (neg_mean_squared_error 등)
+            const score = Math.abs(candidate.score);
+            return { alpha, score };
+        })
+        .filter(point => typeof point.alpha === 'number' && !isNaN(point.alpha) && typeof point.score === 'number' && !isNaN(point.score))
+        .sort((a, b) => a.alpha - b.alpha);
+
+    if (dataPoints.length === 0) return null;
+
+    // 차트 크기
+    const width = 600;
+    const height = 300;
+    const padding = { top: 40, right: 60, bottom: 50, left: 60 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+
+    // 데이터 범위 계산
+    const alphaMin = Math.min(...dataPoints.map(p => p.alpha));
+    const alphaMax = Math.max(...dataPoints.map(p => p.alpha));
+    const scoreMin = Math.min(...dataPoints.map(p => p.score));
+    const scoreMax = Math.max(...dataPoints.map(p => p.score));
+
+    // 스케일 계산 (로그 스케일을 위한 변환)
+    const alphaRange = alphaMax - alphaMin || 1;
+    const scoreRange = scoreMax - scoreMin || 1;
+
+    // 좌표 변환 함수
+    const scaleX = (alpha: number) => {
+        // 로그 스케일 적용
+        const logMin = Math.log10(Math.max(alphaMin, 0.001));
+        const logMax = Math.log10(Math.max(alphaMax, 0.001));
+        const logAlpha = Math.log10(Math.max(alpha, 0.001));
+        return padding.left + ((logAlpha - logMin) / (logMax - logMin)) * chartWidth;
+    };
+
+    const scaleY = (score: number) => {
+        return padding.top + chartHeight - ((score - scoreMin) / scoreRange) * chartHeight;
+    };
+
+    // 경로 생성
+    const pathData = dataPoints
+        .map((point, idx) => {
+            const x = scaleX(point.alpha);
+            const y = scaleY(point.score);
+            return idx === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
+        })
+        .join(' ');
+
+    // X축 눈금 (로그 스케일)
+    const xTicks: number[] = [];
+    const logMin = Math.log10(Math.max(alphaMin, 0.001));
+    const logMax = Math.log10(Math.max(alphaMax, 0.001));
+    const logRange = logMax - logMin;
+    const numTicks = 5;
+    for (let i = 0; i <= numTicks; i++) {
+        const logValue = logMin + (logRange * i) / numTicks;
+        xTicks.push(Math.pow(10, logValue));
+    }
+
+    // Y축 눈금
+    const numYTicks = 5;
+    const yTicks: number[] = [];
+    for (let i = 0; i <= numYTicks; i++) {
+        yTicks.push(scoreMin + (scoreRange * i) / numYTicks);
+    }
+
+    // Y축 라벨 (MAE 또는 scoring metric)
+    const yLabel = scoringMetric?.includes('MAE') || scoringMetric?.includes('mean_absolute') 
+        ? 'MAE' 
+        : scoringMetric?.includes('MSE') || scoringMetric?.includes('mean_squared')
+        ? 'MSE'
+        : scoringMetric?.includes('neg_')
+        ? scoringMetric.replace('neg_', '').toUpperCase()
+        : 'Score';
+
+    return (
+        <div className="mt-4">
+            <p className="text-gray-600 mb-2">Hyperparameter Performance</p>
+            <div className="bg-white rounded-lg border border-blue-200 p-4">
+                <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`}>
+                    {/* 그리드 라인 */}
+                    {xTicks.map((tick, idx) => {
+                        const x = scaleX(tick);
+                        return (
+                            <g key={`x-grid-${idx}`}>
+                                <line
+                                    x1={x}
+                                    y1={padding.top}
+                                    x2={x}
+                                    y2={height - padding.bottom}
+                                    stroke="#e5e7eb"
+                                    strokeWidth="1"
+                                    strokeDasharray="2,2"
+                                />
+                            </g>
+                        );
+                    })}
+                    {yTicks.map((tick, idx) => {
+                        const y = scaleY(tick);
+                        return (
+                            <g key={`y-grid-${idx}`}>
+                                <line
+                                    x1={padding.left}
+                                    y1={y}
+                                    x2={width - padding.right}
+                                    y2={y}
+                                    stroke="#e5e7eb"
+                                    strokeWidth="1"
+                                    strokeDasharray="2,2"
+                                />
+                            </g>
+                        );
+                    })}
+
+                    {/* 데이터 라인 */}
+                    <path
+                        d={pathData}
+                        fill="none"
+                        stroke="#ef4444"
+                        strokeWidth="2"
+                        strokeDasharray="5,5"
+                    />
+
+                    {/* 데이터 포인트 */}
+                    {dataPoints.map((point, idx) => {
+                        const x = scaleX(point.alpha);
+                        const y = scaleY(point.score);
+                        return (
+                            <circle
+                                key={idx}
+                                cx={x}
+                                cy={y}
+                                r="5"
+                                fill="#3b82f6"
+                                stroke="white"
+                                strokeWidth="2"
+                            />
+                        );
+                    })}
+
+                    {/* X축 */}
+                    <line
+                        x1={padding.left}
+                        y1={height - padding.bottom}
+                        x2={width - padding.right}
+                        y2={height - padding.bottom}
+                        stroke="#374151"
+                        strokeWidth="2"
+                    />
+                    {/* X축 라벨 */}
+                    {xTicks.map((tick, idx) => {
+                        const x = scaleX(tick);
+                        return (
+                            <g key={`x-tick-${idx}`}>
+                                <line
+                                    x1={x}
+                                    y1={height - padding.bottom}
+                                    x2={x}
+                                    y2={height - padding.bottom + 5}
+                                    stroke="#374151"
+                                    strokeWidth="2"
+                                />
+                                <text
+                                    x={x}
+                                    y={height - padding.bottom + 20}
+                                    textAnchor="middle"
+                                    fontSize="12"
+                                    fill="#374151"
+                                    className="font-mono"
+                                >
+                                    {tick < 0.1 ? tick.toFixed(2) : tick < 1 ? tick.toFixed(1) : tick.toFixed(0)}
+                                </text>
+                            </g>
+                        );
+                    })}
+                    <text
+                        x={width / 2}
+                        y={height - 10}
+                        textAnchor="middle"
+                        fontSize="14"
+                        fill="#374151"
+                        fontWeight="bold"
+                    >
+                        α
+                    </text>
+
+                    {/* Y축 */}
+                    <line
+                        x1={padding.left}
+                        y1={padding.top}
+                        x2={padding.left}
+                        y2={height - padding.bottom}
+                        stroke="#374151"
+                        strokeWidth="2"
+                    />
+                    {/* Y축 라벨 */}
+                    {yTicks.map((tick, idx) => {
+                        const y = scaleY(tick);
+                        return (
+                            <g key={`y-tick-${idx}`}>
+                                <line
+                                    x1={padding.left}
+                                    y1={y}
+                                    x2={padding.left - 5}
+                                    y2={y}
+                                    stroke="#374151"
+                                    strokeWidth="2"
+                                />
+                                <text
+                                    x={padding.left - 10}
+                                    y={y + 4}
+                                    textAnchor="end"
+                                    fontSize="12"
+                                    fill="#374151"
+                                    className="font-mono"
+                                >
+                                    {tick.toFixed(3)}
+                                </text>
+                            </g>
+                        );
+                    })}
+                    <text
+                        x={15}
+                        y={height / 2}
+                        textAnchor="middle"
+                        fontSize="14"
+                        fill="#374151"
+                        fontWeight="bold"
+                        transform={`rotate(-90, 15, ${height / 2})`}
+                    >
+                        {yLabel}
+                    </text>
+
+                    {/* "예상 성능" 텍스트 */}
+                    <text
+                        x={width - padding.right - 10}
+                        y={padding.top + 20}
+                        textAnchor="end"
+                        fontSize="12"
+                        fill="#6b7280"
+                        className="font-sans"
+                    >
+                        예상 성능
+                    </text>
+                </svg>
+            </div>
+        </div>
+    );
+};
+
 // fix: Corrected ModuleType enums to be more specific (e.g., DecisionTreeClassifier) to match the type definitions.
 const complexModels = [
     ModuleType.DecisionTree,
@@ -194,35 +456,41 @@ ${topFeatures}
                                 </div>
                             )}
                             {tuningSummary.candidates && tuningSummary.candidates.length > 0 && (
-                                <div className="mt-4">
-                                    <p className="text-gray-600 mb-2">Top Candidates</p>
-                                    <div className="bg-white rounded-lg border border-blue-100 max-h-48 overflow-y-auto">
-                                        <table className="w-full text-xs">
-                                            <thead className="bg-blue-100 text-blue-900">
-                                                <tr>
-                                                    <th className="p-2 text-left">Parameters</th>
-                                                    <th className="p-2 text-right">Score</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {tuningSummary.candidates.slice(0, 5).map((candidate, idx) => (
-                                                    <tr key={idx} className="border-t border-blue-100">
-                                                        <td className="p-2">
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {Object.entries(candidate.params).map(([paramKey, paramValue]) => (
-                                                                    <span key={paramKey} className="px-2 py-0.5 bg-blue-50 rounded text-blue-900">
-                                                                        {paramKey}: {typeof paramValue === 'number' ? paramValue.toFixed(3) : paramValue}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        </td>
-                                                        <td className="p-2 text-right font-mono">{candidate.score.toFixed(4)}</td>
+                                <>
+                                    <div className="mt-4">
+                                        <p className="text-gray-600 mb-2">Top Candidates</p>
+                                        <div className="bg-white rounded-lg border border-blue-100 max-h-48 overflow-y-auto">
+                                            <table className="w-full text-xs">
+                                                <thead className="bg-blue-100 text-blue-900">
+                                                    <tr>
+                                                        <th className="p-2 text-left">Parameters</th>
+                                                        <th className="p-2 text-right">Score</th>
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                                </thead>
+                                                <tbody>
+                                                    {tuningSummary.candidates.slice(0, 5).map((candidate, idx) => (
+                                                        <tr key={idx} className="border-t border-blue-100">
+                                                            <td className="p-2">
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {Object.entries(candidate.params).map(([paramKey, paramValue]) => (
+                                                                        <span key={paramKey} className="px-2 py-0.5 bg-blue-50 rounded text-blue-900">
+                                                                            {paramKey}: {typeof paramValue === 'number' ? paramValue.toFixed(3) : paramValue}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                            <td className="p-2 text-right font-mono">{candidate.score.toFixed(4)}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
                                     </div>
-                                </div>
+                                    <TuningChart 
+                                        candidates={tuningSummary.candidates} 
+                                        scoringMetric={tuningSummary.scoringMetric}
+                                    />
+                                </>
                             )}
                         </div>
                     )}
