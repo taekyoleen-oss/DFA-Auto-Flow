@@ -181,3 +181,24 @@ git reset --hard c1b98bdecc45c06ea11a2ddb847123a5036d62ef
 git reset --hard c1b98bdecc45c06ea11a2ddb847123a5036d62ef
 ```
 ---
+[2025-12-04 20:20:00] Load Data 모듈의 CSV 데이터를 파일 이름으로 대체
+위치: C:\cursor\insure-auto-flow
+명령: 전체 코드의 Load Data 모듈에서 CSV 데이터 부분을 파일 이름으로 대체
+설명: 
+- Load Data 모듈의 생성된 코드에서 csv_data = \"\"\"...\"\"\" 부분 제거
+- StringIO(csv_data)를 file_path로 변경
+- module.parameters.source를 파일 이름으로 사용
+- 불필요한 StringIO import 제거
+- CSV 데이터 내용을 코드에서 제거하여 파일 이름만 사용
+파일: utils/generatePipelineCode.ts
+커밋 해시: bb1efa3
+복구 명령:
+```bash
+# 백업 후 복구
+git stash push -u -m "백업"
+git reset --hard bb1efa319c7101e2db77b21b0bab93c12acf076d
+
+# 또는 직접 복구
+git reset --hard bb1efa319c7101e2db77b21b0bab93c12acf076d
+```
+---
