@@ -1535,7 +1535,20 @@ const renderInputPreview = () => {
     
     if (module.type === ModuleType.TrainModel) {
         const modelSource = getConnectedModelSource(module.id);
-        return <StatRow label="Model Type" value={modelSource?.type || 'Not Connected'} />;
+        if (!modelSource) {
+            return <div className="text-center text-gray-500 p-4">Connect a model module to 'model_in'.</div>;
+        }
+        
+        // Linear Regression 모듈의 경우 model_type 파라미터에서 실제 모델 타입 가져오기
+        let modelTypeDisplay = modelSource.type;
+        if (modelSource.type === ModuleType.LinearRegression) {
+            const modelTypeParam = modelSource.parameters?.model_type;
+            if (modelTypeParam && typeof modelTypeParam === 'string') {
+                modelTypeDisplay = modelTypeParam;
+            }
+        }
+        
+        return <StatRow label="Model Type" value={modelTypeDisplay} />;
     }
 
     const inputData = getConnectedDataSource(module.id);
