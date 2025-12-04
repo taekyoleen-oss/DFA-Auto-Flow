@@ -43,6 +43,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   const panStart = useRef({ x: 0, y: 0 });
   const [selectionBox, setSelectionBox] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
   const isSelecting = useRef(false);
+  const isSpacePressed = useRef(false);
   
   // Refs for optimized dragging
   const dragInfoRef = useRef<{
@@ -62,16 +63,29 @@ export const Canvas: React.FC<CanvasProps> = ({
   const requestRef = useRef<number | null>(null);
 
     useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === ' ' || e.key === 'Space') {
+                e.preventDefault();
+                isSpacePressed.current = true;
+            }
+        };
+
         const handleKeyUp = (e: KeyboardEvent) => {
             if ((e.key === 'Control' || e.key === 'Meta') && isSuggestionDrag) {
                 onClearSuggestion();
                 setDragConnection(null);
                 setIsSuggestionDrag(false);
             }
+            if (e.key === ' ' || e.key === 'Space') {
+                e.preventDefault();
+                isSpacePressed.current = false;
+            }
         };
 
+        window.addEventListener('keydown', handleKeyDown);
         window.addEventListener('keyup', handleKeyUp);
         return () => {
+            window.removeEventListener('keydown', handleKeyDown);
             window.removeEventListener('keyup', handleKeyUp);
         };
     }, [isSuggestionDrag, onClearSuggestion]);
@@ -317,20 +331,33 @@ export const Canvas: React.FC<CanvasProps> = ({
 
     if (e.target === e.currentTarget && e.button === 0) {
         onClearSuggestion();
-        if (!e.shiftKey) {
-            setSelectedModuleIds([]);
-        }
         setTappedSourcePort(null);
         
-        isSelecting.current = true;
-        const canvasRect = canvasContainerRef.current!.getBoundingClientRect();
-        const startX = e.clientX - canvasRect.left;
-        const startY = e.clientY - canvasRect.top;
-        setSelectionBox({ x1: startX, y1: startY, x2: startX, y2: startY });
+        // Space 키를 누른 상태에서만 선택 박스 모드
+        if (isSpacePressed.current || e.shiftKey) {
+            if (!e.shiftKey) {
+                setSelectedModuleIds([]);
+            }
+            isSelecting.current = true;
+            const canvasRect = canvasContainerRef.current!.getBoundingClientRect();
+            const startX = e.clientX - canvasRect.left;
+            const startY = e.clientY - canvasRect.top;
+            setSelectionBox({ x1: startX, y1: startY, x2: startX, y2: startY });
+        } else {
+            // 기본 동작: 빈 공간 드래그 시 패닝
+            isPanning.current = true;
+            panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+            (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+        }
     }
   };
 
   const handleCanvasMouseMove = (e: MouseEvent) => {
+      // 모듈 드래그 중이면 패닝하지 않음
+      if (dragInfoRef.current) {
+          return;
+      }
+      
       if (dragConnection && canvasContainerRef.current) {
         const canvasRect = canvasContainerRef.current.getBoundingClientRect();
         setDragConnection(prev => prev ? ({
@@ -341,6 +368,7 @@ export const Canvas: React.FC<CanvasProps> = ({
             },
         }) : null);
       } else if (isPanning.current) {
+          e.preventDefault();
           setPan({
               x: e.clientX - panStart.current.x,
               y: e.clientY - panStart.current.y
@@ -362,7 +390,9 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       if(isPanning.current) {
           isPanning.current = false;
-          (e.currentTarget as HTMLElement).style.cursor = 'grab';
+          if (e.currentTarget) {
+              (e.currentTarget as HTMLElement).style.cursor = 'grab';
+          }
       }
 
       if (isSelecting.current) {
@@ -555,7 +585,8 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   return (
     <div
-      className="w-full h-full relative cursor-grab"
+      className="w-full h-full relative"
+      style={{ cursor: isPanning.current ? 'grabbing' : 'grab' }}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onMouseDown={handleCanvasMouseDown}

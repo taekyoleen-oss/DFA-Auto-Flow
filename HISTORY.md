@@ -1,3 +1,30 @@
+## [2025-12-04 19:00:00] - 캔버스 드래그 패닝 기능 추가
+
+변경 사항:
+
+- 빈 공간에서 마우스 드래그로 캔버스 전체 이동 기능 추가
+- Space 키를 누른 상태에서 드래그 시 선택 박스 모드로 전환
+- 모듈 드래그와 캔버스 패닝 충돌 방지 로직 추가
+- 마우스 커서 상태 개선 (grab/grabbing)
+
+영향받은 파일:
+
+- components/Canvas.tsx
+- HISTORY.md
+
+커밋 해시: (커밋 후 업데이트)
+
+복구 방법:
+
+# 백업하고 복구
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# 또는 직접 복구
+git reset --hard <커밋해시>
+
+---
+
 ## [2025-12-04 18:30:00] - Logistic Regression 모듈 Python 실행 및 하이퍼파라미터 튜닝 추가
 
 변경 사항:
@@ -24,10 +51,12 @@
 복구 방법:
 
 # 백업하고 복구
+
 git stash push -u -m "백업"
 git reset --hard <커밋해시>
 
 # 또는 직접 복구
+
 git reset --hard <커밋해시>
 
 ---
