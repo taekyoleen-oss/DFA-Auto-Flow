@@ -124,3 +124,19 @@ git reset --hard 79cff4679c99c75a7465ebf0180cd0600a6c230a
 git reset --hard 79cff4679c99c75a7465ebf0180cd0600a6c230a
 ```
 ---
+[2025-12-04 19:50:00] Train Model tuningSummary 에러 수정
+위치: C:\cursor\insure-auto-flow
+명령: tuningSummary 변수 초기화 수정
+설명: tuningSummary가 Linear Regression 블록에서만 정의되어 다른 모델 타입에서 에러 발생. 모든 모델 타입에서 사용 가능하도록 블록 밖에서 초기화
+파일: App.tsx
+커밋 해시: 5a611bc
+복구 명령:
+```bash
+# 백업 후 복구
+git stash push -u -m "백업"
+git reset --hard 5a611bcd0c717ff4d8534bd1bf8eea62d001b5a9
+
+# 또는 직접 복구
+git reset --hard 5a611bcd0c717ff4d8534bd1bf8eea62d001b5a9
+```
+---
