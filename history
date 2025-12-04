@@ -76,15 +76,15 @@
 명령: Linear Regression 모듈에 Ridge/Lasso/ElasticNet 튜닝 옵션 및 결과 표시 추가
 설명: Pyodide 학습 로직에 GridSearchCV 기반 튜닝을 적용하고, PropertiesPanel 및 TrainedModelPreviewModal에 관련 UI를 추가하여 최적 하이퍼파라미터와 점수를 확인 가능하도록 개선
 파일: App.tsx, constants.ts, components/PropertiesPanel.tsx, components/TrainedModelPreviewModal.tsx, utils/pyodideRunner.ts, types.ts, HISTORY.md, history
-커밋 해시: (추후 업데이트)
+커밋 해시: 48c3d80
 복구 명령:
 ```bash
 # 백업 후 복구
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 48c3d80e2c2deed99165aa6ef35014e7c155a477
 
 # 또는 직접 복구
-git reset --hard <커밋해시>
+git reset --hard 48c3d80e2c2deed99165aa6ef35014e7c155a477
 ```
 ---
 [2025-12-04 17:30:00] Samples 버튼 작동 수정 및 실행 버튼 색상 변경

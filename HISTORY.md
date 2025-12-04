@@ -18,19 +18,21 @@
 - HISTORY.md
 - history
 
+커밋 해시: 48c3d80
+
 복구 방법
 
 # 특정 커밋으로 되돌리기
 
-git checkout <커밋해시>
+git checkout 48c3d80
 
 # 또는 현재 브랜치에서 이 커밋 상태로 되돌리기 (변경사항 유지)
 
-git reset --soft <커밋해시>
+git reset --soft 48c3d80
 
 # 완전히 이 커밋 상태로 되돌리기 (변경사항 삭제)
 
-git reset --hard <커밋해시>
+git reset --hard 48c3d80
 
 ---
 
