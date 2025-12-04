@@ -162,3 +162,22 @@ git reset --hard 362243ae10b89511ae1fc183c118f332bb5ad463
 git reset --hard 362243ae10b89511ae1fc183c118f332bb5ad463
 ```
 ---
+[2025-12-04 20:10:00] Train Model Input Preview에 실제 모델 타입 표시
+위치: C:\cursor\insure-auto-flow
+명령: Train Model의 Preview Input에 지도학습의 Model Type 표시
+설명: 
+- Train Model의 Input Preview에서 모듈 타입 대신 실제 모델 타입 파라미터 표시
+- Linear Regression 모듈의 경우 parameters.model_type 값 (Ridge, Lasso, ElasticNet, LinearRegression) 표시
+- 모델 타입 파라미터가 없으면 모듈 타입으로 폴백
+파일: components/PropertiesPanel.tsx
+커밋 해시: c1b98bd
+복구 명령:
+```bash
+# 백업 후 복구
+git stash push -u -m "백업"
+git reset --hard c1b98bdecc45c06ea11a2ddb847123a5036d62ef
+
+# 또는 직접 복구
+git reset --hard c1b98bdecc45c06ea11a2ddb847123a5036d62ef
+```
+---
