@@ -963,6 +963,88 @@ ${header}
   
   const createModule = useCallback((type: ModuleType, position: { x: number; y: number }) => {
     clearSuggestion();
+    
+    // Handle shape types (TextBox, GroupBox)
+    if (type === ModuleType.TextBox || type === ModuleType.GroupBox) {
+      const shapeName = type === ModuleType.TextBox ? '텍스트 상자' : '그룹 상자';
+      const count = modules.filter(m => m.type === type).length + 1;
+      
+      let shapeData: CanvasModule['shapeData'];
+      
+      if (type === ModuleType.TextBox) {
+        shapeData = { text: '', width: 200, height: 100, fontSize: 14 };
+      } else {
+        // GroupBox: Calculate bounds for selected modules
+        const selectedModules = modules.filter(m => 
+          selectedModuleIds.includes(m.id) && 
+          m.type !== ModuleType.TextBox && 
+          m.type !== ModuleType.GroupBox
+        );
+        
+        if (selectedModules.length > 0) {
+          const moduleWidth = 256;
+          const moduleHeight = 120;
+          
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          
+          selectedModules.forEach(module => {
+            const x = module.position.x;
+            const y = module.position.y;
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + moduleWidth);
+            maxY = Math.max(maxY, y + moduleHeight);
+          });
+          
+          // 모듈만 들어갈 수 있도록 여백 최소화
+          const padding = 10;
+          const bounds = {
+            x: minX - padding,
+            y: minY - padding,
+            width: maxX - minX + padding * 2,
+            height: maxY - minY + padding * 2,
+          };
+          
+          shapeData = {
+            moduleIds: selectedModules.map(m => m.id),
+            bounds,
+          };
+          
+          // Set group box position to bounds position
+          position = { x: bounds.x, y: bounds.y };
+        } else {
+          // Default bounds if no modules selected
+          const defaultWidth = 300;
+          const defaultHeight = 200;
+          shapeData = { 
+            moduleIds: [], 
+            bounds: {
+              x: position.x,
+              y: position.y,
+              width: defaultWidth,
+              height: defaultHeight,
+            }
+          };
+        }
+      }
+      
+      const newModule: CanvasModule = {
+        id: `${type}-${Date.now()}`,
+        name: `${shapeName} ${count}`,
+        type,
+        position,
+        status: ModuleStatus.Pending,
+        parameters: {},
+        inputs: [],
+        outputs: [],
+        shapeData,
+      };
+      setModules(prev => [...prev, newModule]);
+      setSelectedModuleIds([newModule.id]);
+      setIsDirty(true);
+      return;
+    }
+    
     const defaultData = DEFAULT_MODULES.find(m => m.type === type);
     if (!defaultData) return;
     
@@ -987,6 +1069,66 @@ ${header}
   }, [modules, setModules, setSelectedModuleIds, clearSuggestion]);
   
   const handleModuleToolboxDoubleClick = useCallback((type: ModuleType) => {
+    // GroupBox는 선택된 모듈들을 기준으로 생성
+    if (type === ModuleType.GroupBox) {
+      const selectedModules = modules.filter(m => 
+        selectedModuleIds.includes(m.id) && 
+        m.type !== ModuleType.TextBox && 
+        m.type !== ModuleType.GroupBox
+      );
+      
+      if (selectedModules.length === 0) {
+        addLog('WARN', '그룹 상자를 만들려면 하나 이상의 모듈을 선택해야 합니다.');
+        return;
+      }
+      
+      const moduleWidth = 256;
+      const moduleHeight = 120;
+      const padding = 10; // 여백을 줄임
+      
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      
+      selectedModules.forEach(module => {
+        const x = module.position.x;
+        const y = module.position.y;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + moduleWidth);
+        maxY = Math.max(maxY, y + moduleHeight);
+      });
+      
+      const bounds = {
+        x: minX - padding,
+        y: minY - padding,
+        width: maxX - minX + padding * 2,
+        height: maxY - minY + padding * 2,
+      };
+      
+      const shapeName = '그룹 상자';
+      const count = modules.filter(m => m.type === type).length + 1;
+      const newModule: CanvasModule = {
+        id: `${type}-${Date.now()}`,
+        name: `${shapeName} ${count}`,
+        type,
+        position: { x: bounds.x, y: bounds.y }, // position과 bounds.x, bounds.y를 일치시킴
+        status: ModuleStatus.Pending,
+        parameters: {},
+        inputs: [],
+        outputs: [],
+        shapeData: {
+          moduleIds: selectedModules.map(m => m.id),
+          bounds,
+        },
+      };
+      
+      setModules(prev => [...prev, newModule]);
+      setSelectedModuleIds([newModule.id]);
+      setIsDirty(true);
+      addLog('SUCCESS', `${selectedModules.length}개의 모듈을 그룹으로 묶었습니다.`);
+      return;
+    }
+    
+    // 다른 모듈들은 기존대로 중앙에 생성
     if (canvasContainerRef.current) {
         const canvasRect = canvasContainerRef.current.getBoundingClientRect();
         // Position in the middle, accounting for current pan and scale
@@ -996,14 +1138,100 @@ ${header}
         };
         createModule(type, position);
     }
-  }, [createModule, scale, pan]);
+  }, [createModule, scale, pan, modules, selectedModuleIds, setModules, setSelectedModuleIds, addLog]);
+
+  const handleFontSizeChange = useCallback((increase: boolean) => {
+    const selectedTextBoxes = modules.filter(m => 
+      selectedModuleIds.includes(m.id) && 
+      m.type === ModuleType.TextBox
+    );
+    
+    if (selectedTextBoxes.length === 0) {
+      addLog('WARN', '글자 크기를 조절하려면 텍스트 상자를 선택하세요.');
+      return;
+    }
+    
+    setModules(prev => prev.map(m => {
+      if (selectedTextBoxes.some(tb => tb.id === m.id)) {
+        const currentFontSize = m.shapeData?.fontSize || 14;
+        const newFontSize = increase 
+          ? Math.min(currentFontSize + 2, 32) // 최대 32px
+          : Math.max(currentFontSize - 2, 8); // 최소 8px
+        
+        return {
+          ...m,
+          shapeData: {
+            ...m.shapeData,
+            fontSize: newFontSize,
+          },
+        };
+      }
+      return m;
+    }), true);
+    setIsDirty(true);
+  }, [modules, selectedModuleIds, setModules, addLog]);
 
   const updateModulePositions = useCallback((updates: {id: string, position: {x: number, y: number}}[]) => {
       const updatesMap = new Map(updates.map(u => [u.id, u.position]));
-      setModules(prev => prev.map(m => {
-          const newPos = updatesMap.get(m.id);
-          return newPos ? { ...m, position: newPos } : m;
-      }), true);
+      setModules(prev => {
+          // First pass: Calculate group box movements and store dx/dy
+          const groupMovements = new Map<string, { dx: number; dy: number }>();
+          
+          const updatedModules = prev.map(m => {
+              const newPos = updatesMap.get(m.id);
+              if (!newPos) return m;
+              
+              // If this is a GroupBox being moved, calculate movement delta
+              if (m.type === ModuleType.GroupBox && m.shapeData?.moduleIds) {
+                  const dx = newPos.x - m.position.x;
+                  const dy = newPos.y - m.position.y;
+                  
+                  // Store movement delta for modules in this group
+                  if (dx !== 0 || dy !== 0) {
+                      groupMovements.set(m.id, { dx, dy });
+                  }
+                  
+                  // Update bounds to match new position
+                  const newBounds = m.shapeData.bounds ? {
+                      ...m.shapeData.bounds,
+                      x: newPos.x, // bounds.x를 새 position과 일치시킴
+                      y: newPos.y, // bounds.y를 새 position과 일치시킴
+                  } : undefined;
+                  
+                  // Return updated group box
+                  return { ...m, position: newPos, shapeData: { ...m.shapeData, bounds: newBounds } };
+              }
+              
+              return { ...m, position: newPos };
+          });
+          
+          // Second pass: Update modules in groups if group box was moved
+          return updatedModules.map(m => {
+              // Skip if this module is a group box or shape
+              if (m.type === ModuleType.GroupBox || m.type === ModuleType.TextBox) {
+                  return m;
+              }
+              
+              // Find the group box that contains this module
+              const groupBox = updatedModules.find(g => 
+                  g.type === ModuleType.GroupBox && 
+                  g.shapeData?.moduleIds?.includes(m.id)
+              );
+              
+              if (groupBox && groupMovements.has(groupBox.id)) {
+                  const movement = groupMovements.get(groupBox.id)!;
+                  return { 
+                      ...m, 
+                      position: { 
+                          x: m.position.x + movement.dx, 
+                          y: m.position.y + movement.dy 
+                      } 
+                  };
+              }
+              
+              return m;
+          });
+      }, true);
       setIsDirty(true);
   }, [setModules]);
 
@@ -1063,6 +1291,11 @@ ${header}
     });
     setIsDirty(true);
   }, [setModules, connections, getDownstreamModules]);
+
+  const updateModule = useCallback((id: string, updates: Partial<CanvasModule>) => {
+    setModules(prev => prev.map(m => m.id === id ? { ...m, ...updates } : m), true);
+    setIsDirty(true);
+  }, [setModules]);
 
   const updateModuleName = useCallback((id: string, newName: string) => {
     setModules(prev => {
@@ -3155,6 +3388,7 @@ ${header}
                   onRunModule={(moduleId) => runSimulation(moduleId, false)}
                   onDeleteModule={(id) => deleteModules([id])}
                   onUpdateModuleName={updateModuleName}
+                  onUpdateModule={updateModule}
                   suggestion={suggestion}
                   onAcceptSuggestion={acceptSuggestion}
                   onClearSuggestion={clearSuggestion}
@@ -3186,7 +3420,10 @@ ${header}
             
             {/* Toolbox Panel */}
             <div className={`absolute top-0 left-0 h-full z-10 transition-transform duration-300 ease-in-out ${isLeftPanelVisible ? 'translate-x-0' : '-translate-x-full'}`} style={{ left: 0 }}>
-                <Toolbox onModuleDoubleClick={handleModuleToolboxDoubleClick} />
+                <Toolbox 
+                    onModuleDoubleClick={handleModuleToolboxDoubleClick}
+                    onFontSizeChange={handleFontSizeChange}
+                />
             </div>
 
             <div className={`absolute top-0 right-0 h-full z-10 transition-transform duration-300 ease-in-out ${isRightPanelVisible ? 'translate-x-0' : 'translate-x-full'}`}>

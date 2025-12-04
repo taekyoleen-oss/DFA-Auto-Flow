@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, MouseEvent, TouchEvent, useEffect } from 'react';
 import { CanvasModule, Connection, ModuleType } from '../types';
 import { ComponentRenderer as ModuleNode } from './ComponentRenderer';
+import { ShapeRenderer } from './ShapeRenderer';
 
 interface CanvasProps {
   modules: CanvasModule[];
@@ -20,6 +21,7 @@ interface CanvasProps {
   onRunModule: (moduleId: string) => void;
   onDeleteModule: (moduleId: string) => void;
   onUpdateModuleName: (id: string, newName: string) => void;
+  onUpdateModule: (id: string, updates: Partial<CanvasModule>) => void;
   suggestion: { module: CanvasModule, connection: Connection } | null;
   onAcceptSuggestion: () => void;
   onClearSuggestion: () => void;
@@ -31,7 +33,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     modules, connections, setConnections, selectedModuleIds, setSelectedModuleIds, 
     updateModulePositions, onModuleDrop, scale, setScale, pan, setPan, 
     canvasContainerRef, onViewDetails, onModuleDoubleClick, onRunModule, 
-    onDeleteModule, onUpdateModuleName, suggestion, onAcceptSuggestion, 
+    onDeleteModule, onUpdateModuleName, onUpdateModule, suggestion, onAcceptSuggestion, 
     onClearSuggestion, onStartSuggestion, areUpstreamModulesReady
 }) => {
   const [dragConnection, setDragConnection] = useState<{ from: { moduleId: string, portName: string, isInput: boolean }, to: { x: number, y: number } } | null>(null);
@@ -333,8 +335,13 @@ export const Canvas: React.FC<CanvasProps> = ({
         onClearSuggestion();
         setTappedSourcePort(null);
         
-        // Space 키를 누른 상태에서만 선택 박스 모드
-        if (isSpacePressed.current || e.shiftKey) {
+        if (e.shiftKey) {
+            // Shift 키를 누른 상태에서만 패닝
+            isPanning.current = true;
+            panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+            (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+        } else {
+            // 일반 드래그 시 선택 박스 모드 (Space 키 없이도 작동)
             if (!e.shiftKey) {
                 setSelectedModuleIds([]);
             }
@@ -343,11 +350,6 @@ export const Canvas: React.FC<CanvasProps> = ({
             const startX = e.clientX - canvasRect.left;
             const startY = e.clientY - canvasRect.top;
             setSelectionBox({ x1: startX, y1: startY, x2: startX, y2: startY });
-        } else {
-            // 기본 동작: 빈 공간 드래그 시 패닝
-            isPanning.current = true;
-            panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
-            (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
         }
     }
   };
@@ -605,34 +607,51 @@ export const Canvas: React.FC<CanvasProps> = ({
           transformOrigin: 'top left',
         }}
       >
-        {allModules.map(module => (
-          <ModuleNode 
-            key={module.id} 
-            module={module} 
-            isSelected={selectedModuleIds.includes(module.id)} 
-            onDragStart={handleModuleDragStart}
-            onTouchDragStart={handleModuleTouchDragStart}
-            onDoubleClick={onModuleDoubleClick}
-            portRefs={portRefs}
-            onStartConnection={handleStartConnection}
-            onEndConnection={handleEndConnection}
-            onViewDetails={onViewDetails}
-            scale={scale}
-            onRunModule={onRunModule}
-            tappedSourcePort={tappedSourcePort}
-            onTapPort={handleTapPort}
-            cancelDragConnection={cancelDragConnection}
-            onDelete={onDeleteModule}
-            onModuleNameChange={onUpdateModuleName}
-            isSuggestion={!!suggestion && suggestion.module.id === module.id}
-            onAcceptSuggestion={onAcceptSuggestion}
-            onStartSuggestion={handleStartSuggestionDrag}
-            dragConnection={dragConnection}
-            areUpstreamModulesReady={areUpstreamModulesReady}
-            allModules={allModules}
-            allConnections={allConnections}
-          />
-        ))}
+        {allModules.map(module => {
+          // Render shapes separately
+          if (module.type === ModuleType.TextBox || module.type === ModuleType.GroupBox) {
+            return (
+              <ShapeRenderer
+                key={module.id}
+                module={module}
+                isSelected={selectedModuleIds.includes(module.id)}
+                onDragStart={handleModuleDragStart}
+                onDelete={onDeleteModule}
+                onUpdateModule={onUpdateModule}
+                scale={scale}
+              />
+            );
+          }
+          // Render regular modules
+          return (
+            <ModuleNode 
+              key={module.id} 
+              module={module} 
+              isSelected={selectedModuleIds.includes(module.id)} 
+              onDragStart={handleModuleDragStart}
+              onTouchDragStart={handleModuleTouchDragStart}
+              onDoubleClick={onModuleDoubleClick}
+              portRefs={portRefs}
+              onStartConnection={handleStartConnection}
+              onEndConnection={handleEndConnection}
+              onViewDetails={onViewDetails}
+              scale={scale}
+              onRunModule={onRunModule}
+              tappedSourcePort={tappedSourcePort}
+              onTapPort={handleTapPort}
+              cancelDragConnection={cancelDragConnection}
+              onDelete={onDeleteModule}
+              onModuleNameChange={onUpdateModuleName}
+              isSuggestion={!!suggestion && suggestion.module.id === module.id}
+              onAcceptSuggestion={onAcceptSuggestion}
+              onStartSuggestion={handleStartSuggestionDrag}
+              dragConnection={dragConnection}
+              areUpstreamModulesReady={areUpstreamModulesReady}
+              allModules={allModules}
+              allConnections={allConnections}
+            />
+          );
+        })}
       </div>
 
        {selectionBox && (

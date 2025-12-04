@@ -51,6 +51,10 @@ export enum ModuleType {
   
   // Deprecating these
   LogisticTradition = 'LogisticTradition',
+  
+  // Shape Types
+  TextBox = 'TextBox',
+  GroupBox = 'GroupBox',
 }
 
 export enum ModuleStatus {
@@ -292,6 +296,14 @@ export interface CanvasModule {
   inputs: Port[];
   outputs: Port[];
   outputData?: DataPreview | StatisticsOutput | SplitDataOutput | TrainedModelOutput | ModelDefinitionOutput | StatsModelsResultOutput | FittedDistributionOutput | ExposureCurveOutput | XoLPriceOutput | XolContractOutput | FinalXolPriceOutput | EvaluationOutput | KMeansOutput | HierarchicalClusteringOutput | PCAOutput | DBSCANOutput | MissingHandlerOutput | EncoderOutput | NormalizerOutput;
+  // Shape-specific properties
+  shapeData?: {
+    // For TextBox
+    text?: string;
+    // For GroupBox
+    moduleIds?: string[]; // IDs of modules in this group
+    bounds?: { x: number; y: number; width: number; height: number }; // Bounding box of the group
+  };
 }
 
 export interface Connection {
