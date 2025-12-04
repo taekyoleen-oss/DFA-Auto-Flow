@@ -20,6 +20,7 @@ import { EvaluationPreviewModal } from './components/EvaluationPreviewModal';
 import { AIPipelineFromGoalModal } from './components/AIPipelineFromGoalModal';
 import { AIPipelineFromDataModal } from './components/AIPipelineFromDataModal';
 import { AIPlanDisplayModal } from './components/AIPlanDisplayModal';
+import { PipelineCodePanel } from './components/PipelineCodePanel';
 import { GoogleGenAI, Type } from "@google/genai";
 
 
@@ -86,12 +87,11 @@ const App: React.FC = () => {
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [aiPlan, setAiPlan] = useState<string | null>(null);
   const [isSampleMenuOpen, setIsSampleMenuOpen] = useState(false);
-  const [sampleMenuPosition, setSampleMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const sampleMenuRef = useRef<HTMLDivElement>(null);
-  const sampleButtonRef = useRef<HTMLButtonElement>(null);
 
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(false);
   const [isRightPanelVisible, setIsRightPanelVisible] = useState(false);
+  const [isCodePanelVisible, setIsCodePanelVisible] = useState(false);
   const [activePropertiesTab, setActivePropertiesTab] = useState<PropertiesTab>('properties');
   const [rightPanelWidth, setRightPanelWidth] = useState(384); // w-96 in Tailwind is 384px
   
@@ -799,24 +799,10 @@ ${header}
     setTimeout(() => handleFitToView(), 100);
   }, [resetModules, addLog, handleFitToView]);
 
-  // Update sample menu position when opened
-  useEffect(() => {
-    if (isSampleMenuOpen && sampleButtonRef.current) {
-      const rect = sampleButtonRef.current.getBoundingClientRect();
-      setSampleMenuPosition({
-        top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX
-      });
-    } else {
-      setSampleMenuPosition(null);
-    }
-  }, [isSampleMenuOpen]);
-
   // Close sample menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (sampleMenuRef.current && !sampleMenuRef.current.contains(event.target as Node) &&
-          sampleButtonRef.current && !sampleButtonRef.current.contains(event.target as Node)) {
+      if (sampleMenuRef.current && !sampleMenuRef.current.contains(event.target as Node)) {
         setIsSampleMenuOpen(false);
       }
     };
@@ -2754,47 +2740,6 @@ ${header}
                 >
                     <ArrowUturnRightIcon className="h-[10.67px] w-[10.67px] md:h-5 md:w-5" />
                 </button>
-                <div className="flex-shrink-0">
-                    <button 
-                        ref={sampleButtonRef}
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsSampleMenuOpen(!isSampleMenuOpen);
-                        }} 
-                        className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-blue-600 hover:bg-blue-700 rounded-md font-semibold transition-colors" 
-                        title="Load Sample Model"
-                    >
-                        <SparklesIcon className="h-2 w-2 md:h-4 md:w-4" />
-                        <span className="hidden sm:inline">Samples</span>
-                    </button>
-                </div>
-                {isSampleMenuOpen && sampleMenuPosition && (
-                    <div 
-                        ref={sampleMenuRef}
-                        className="fixed bg-gray-800 border border-gray-700 rounded-md shadow-lg z-[9999] min-w-[200px] max-h-[300px] overflow-y-auto"
-                        style={{
-                            top: `${sampleMenuPosition.top}px`,
-                            left: `${sampleMenuPosition.left}px`
-                        }}
-                    >
-                        {SAMPLE_MODELS.length > 0 ? (
-                            SAMPLE_MODELS.map((sample: any) => (
-                                <button
-                                    key={sample.name}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleLoadSample(sample.name);
-                                    }}
-                                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 first:rounded-t-md last:rounded-b-md transition-colors"
-                                >
-                                    {sample.name}
-                                </button>
-                            ))
-                        ) : (
-                            <div className="px-4 py-2 text-sm text-gray-500">No samples available</div>
-                        )}
-                    </div>
-                )}
                 <button onClick={handleSetFolder} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0" title="Set Save Folder">
                     <FolderOpenIcon className="h-2 w-2 md:h-4 md:w-4" />
                     <span className="hidden sm:inline">Set Folder</span>
@@ -2816,10 +2761,43 @@ ${header}
             
             {/* 세 번째 줄: 햄버거 버튼(왼쪽) 및 AI 버튼 2개, Run All, 설정 버튼(오른쪽) */}
             <div className="flex items-center justify-between gap-1 md:gap-2 w-full mt-1 overflow-x-auto scrollbar-hide">
-                <button onClick={() => setIsLeftPanelVisible(v => !v)} className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors flex-shrink-0" aria-label="Toggle modules panel" title="Toggle Modules Panel">
-                    <Bars3Icon className="h-4 w-4 md:h-5 md:w-5"/>
-                </button>
+                <div className="flex items-center gap-1 md:gap-2">
+                    <button onClick={() => setIsLeftPanelVisible(v => !v)} className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors flex-shrink-0" aria-label="Toggle modules panel" title="Toggle Modules Panel">
+                        <Bars3Icon className="h-4 w-4 md:h-5 md:w-5"/>
+                    </button>
+                    <div className="relative flex-shrink-0" ref={sampleMenuRef}>
+                        <button 
+                            onClick={() => setIsSampleMenuOpen(!isSampleMenuOpen)} 
+                            className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1 md:py-1.5 text-[6.67px] md:text-xs bg-blue-600 hover:bg-blue-700 rounded-md font-semibold transition-colors" 
+                            title="Load Sample Model"
+                        >
+                            <SparklesIcon className="h-2 w-2 md:h-4 md:w-4" />
+                            <span className="hidden sm:inline">Samples</span>
+                        </button>
+                        {isSampleMenuOpen && (
+                            <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50 min-w-[200px]">
+                                {SAMPLE_MODELS.map((sample: any) => (
+                                    <button
+                                        key={sample.name}
+                                        onClick={() => handleLoadSample(sample.name)}
+                                        className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 first:rounded-t-md last:rounded-b-md transition-colors"
+                                    >
+                                        {sample.name}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
                 <div className="flex items-center gap-1 md:gap-2 ml-auto">
+                    <button
+                        onClick={() => setIsCodePanelVisible(v => !v)}
+                        className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-gray-600 hover:bg-gray-700 rounded-md font-semibold transition-colors flex-shrink-0"
+                        title="View Full Pipeline Code"
+                    >
+                        <CodeBracketIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
+                        <span className="whitespace-nowrap">전체 코드</span>
+                    </button>
                     <button
                         onClick={() => setIsGoalModalOpen(true)}
                         className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-purple-600 hover:bg-purple-700 rounded-md font-semibold transition-colors flex-shrink-0"
@@ -2890,7 +2868,16 @@ ${header}
             </main>
 
             {/* -- Unified Side Panels -- */}
-            <div className={`absolute top-0 left-0 h-full z-10 transition-transform duration-300 ease-in-out ${isLeftPanelVisible ? 'translate-x-0' : '-translate-x-full'}`}>
+            {/* Code Panel - Rightmost */}
+            <PipelineCodePanel
+                modules={modules}
+                connections={connections}
+                isVisible={isCodePanelVisible}
+                onToggle={() => setIsCodePanelVisible(v => !v)}
+            />
+            
+            {/* Toolbox Panel */}
+            <div className={`absolute top-0 left-0 h-full z-10 transition-transform duration-300 ease-in-out ${isLeftPanelVisible ? 'translate-x-0' : '-translate-x-full'}`} style={{ left: 0 }}>
                 <Toolbox onModuleDoubleClick={handleModuleToolboxDoubleClick} />
             </div>
 

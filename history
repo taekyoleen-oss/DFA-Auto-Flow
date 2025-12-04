@@ -1,0 +1,36 @@
+﻿[2025-12-04 14:27:17] .cursorrules 파일 생성
+위치: C:\cursor\insure-auto-flow
+명령: .cursorrules 파일 생성 및 history 자동 기록 규칙 추가
+설명: 프로젝트 루트에 .cursorrules 파일을 생성하여 명령 실행 시마다 history 파일에 위치, 명령어, 설명, 시간 등을 자동으로 기록하는 규칙 추가
+파일: .cursorrules
+---
+[2025-12-04 14:28:59] 전체 코드 패널 z-index 조정
+위치: C:\cursor\insure-auto-flow
+명령: PipelineCodePanel의 z-index를 z-20에서 z-10으로 변경하여 팝업이 항상 위에 표시되도록 수정
+설명: 전체 코드 패널이 열려있을 때 팝업이 가운데로 몰려서 발생하는 문제를 해결하기 위해 z-index 조정
+파일: components/PipelineCodePanel.tsx
+---
+[2025-12-04 14:30:45] Toolbox Panel 위치 수정
+위치: C:\cursor\insure-auto-flow
+명령: Toolbox Panel이 항상 가장 왼쪽(left: 0)에 위치하도록 style 속성 추가
+설명: 왼쪽 모듈이 항상 가장 왼쪽에서 열리도록 명시적으로 left: 0 스타일 추가
+파일: App.tsx
+---
+[2025-12-04 14:33:57] 전체 코드 버튼 및 패널 복구
+위치: C:\cursor\insure-auto-flow
+명령: PipelineCodePanel 컴포넌트 재생성 및 App.tsx에 통합
+설명: 삭제된 전체 코드 버튼과 패널을 복구하여 오른쪽에서 나타나도록 구현
+파일: components/PipelineCodePanel.tsx, App.tsx
+---
+[2025-12-04 14:38:24] generatePipelineCode.ts 파일 복구
+위치: C:\cursor\insure-auto-flow
+명령: utils/generatePipelineCode.ts 파일을 복구하여 generateFullPipelineCode 함수 재생성
+설명: 삭제된 generatePipelineCode.ts 파일을 복구하여 전체 파이프라인 코드 생성 기능 복원
+파일: utils/generatePipelineCode.ts
+---
+[2025-12-04 14:40:24] Samples 버튼 위치 변경
+위치: C:\cursor\insure-auto-flow
+명령: Samples 버튼을 햄버거 버튼 우측으로 이동
+설명: Samples 버튼을 두 번째 줄에서 세 번째 줄로 이동하여 햄버거 버튼 바로 우측에 배치
+파일: App.tsx
+---
