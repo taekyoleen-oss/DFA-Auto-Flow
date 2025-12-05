@@ -294,7 +294,7 @@ export const DEFAULT_MODULES: Omit<CanvasModule, 'id' | 'position' | 'name'>[] =
   {
     type: ModuleType.EvaluateModel,
     status: ModuleStatus.Pending,
-    parameters: { label_column: null, prediction_column: null, model_type: 'regression' },
+    parameters: { label_column: null, prediction_column: null, model_type: 'regression', threshold: 0.5 },
     inputs: [{ name: 'data_in', type: 'data' }],
     outputs: [{ name: 'evaluation_out', type: 'evaluation' }],
   },

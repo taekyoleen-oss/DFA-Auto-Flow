@@ -1238,15 +1238,76 @@ const renderParameters = (
             </>;
         case ModuleType.EvaluateModel: {
             const sourceData = getConnectedDataSource(module.id);
-            const inputColumns = sourceData?.columns.map(c => c.name) || [];
+            const inputColumns = sourceData?.columns?.map(c => c.name) || [];
 
             if (inputColumns.length === 0) {
                 return <p className="text-sm text-gray-500">Connect a scored data module to configure evaluation.</p>;
             }
+
+            // module.parameters가 undefined일 수 있으므로 안전하게 처리
+            const params = module.parameters || {};
+
+            // 연결된 Train Model을 찾아서 모델 타입 감지 및 기본값 설정
+            // allConnections와 allModules를 사용해야 함
+            const inputConnection = allConnections.find(c => c.to.moduleId === module.id);
+            let detectedModelType: 'classification' | 'regression' | null = null;
+            let trainModelLabelColumn: string | null = null;
+            
+            if (inputConnection) {
+                const sourceModule = allModules.find(m => m.id === inputConnection.from.moduleId);
+                
+                // Score Model인 경우, 그 Score Model이 연결된 Train Model 찾기
+                if (sourceModule?.type === ModuleType.ScoreModel) {
+                    const modelInputConnection = allConnections.find(c => 
+                        c.to.moduleId === sourceModule.id && c.to.portName === 'model_in'
+                    );
+                    if (modelInputConnection) {
+                        const trainModelModule = allModules.find(m => 
+                            m.id === modelInputConnection.from.moduleId && 
+                            m.outputData?.type === 'TrainedModelOutput'
+                        );
+                        if (trainModelModule?.outputData?.type === 'TrainedModelOutput') {
+                            const trainedModel = trainModelModule.outputData;
+                            trainModelLabelColumn = trainedModel.labelColumn;
+                            if (trainedModel.modelPurpose) {
+                                detectedModelType = trainedModel.modelPurpose;
+                            } else {
+                                // modelType으로 분류 모델인지 확인 (간단한 체크)
+                                const classificationTypes = [
+                                    ModuleType.LogisticRegression,
+                                    ModuleType.LinearDiscriminantAnalysis,
+                                    ModuleType.NaiveBayes,
+                                ];
+                                detectedModelType = classificationTypes.includes(trainedModel.modelType) 
+                                    ? 'classification' 
+                                    : 'regression';
+                            }
+                        }
+                    }
+                }
+            }
+
+            const isClassification = detectedModelType === 'classification' || params.model_type === 'classification';
+            const thresholdValue = params.threshold ?? 0.5;
+            
             return <>
-                <PropertySelect label="Actual Label Column" value={module.parameters.label_column || ''} onChange={v => onParamChange('label_column', v)} options={['', ...inputColumns]} />
-                <PropertySelect label="Prediction Column" value={module.parameters.prediction_column || ''} onChange={v => onParamChange('prediction_column', v)} options={['', ...inputColumns]} />
-                <PropertySelect label="Model Type" value={module.parameters.model_type} onChange={v => onParamChange('model_type', v)} options={['regression', 'classification']} />
+                <PropertySelect label="Actual Label Column" value={params.label_column || ''} onChange={v => onParamChange('label_column', v)} options={['', ...inputColumns]} />
+                <PropertySelect label="Prediction Column" value={params.prediction_column || ''} onChange={v => onParamChange('prediction_column', v)} options={['', ...inputColumns]} />
+                <PropertySelect label="Model Type" value={params.model_type || 'regression'} onChange={v => onParamChange('model_type', v)} options={['regression', 'classification']} />
+                {isClassification && (
+                    <PropertyInput 
+                        label="Threshold" 
+                        type="number" 
+                        value={typeof thresholdValue === 'number' ? thresholdValue : 0.5} 
+                        onChange={v => {
+                            const newThreshold = typeof v === 'number' ? Math.round(v * 10) / 10 : 0.5; // 0.1 단위로 반올림
+                            onParamChange('threshold', newThreshold);
+                        }} 
+                        step="0.1"
+                        min="0"
+                        max="1"
+                    />
+                )}
             </>;
         }
         case ModuleType.StatModels:
@@ -1500,6 +1561,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         setActivePreviewTab(module.status === ModuleStatus.Success ? 'Output' : 'Input');
     }
   }, [module]);
+
 
   const handleParamChange = useCallback((key: string, value: any) => {
     if (module) {

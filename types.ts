@@ -174,10 +174,32 @@ export interface StatsModelsResultOutput {
     labelColumn: string;
 }
 
+export interface ConfusionMatrix {
+    tp: number;
+    fp: number;
+    tn: number;
+    fn: number;
+}
+
+export interface ThresholdMetric {
+    threshold: number;
+    accuracy: number;
+    precision: number;
+    recall: number;
+    f1Score: number;
+    tp: number;
+    fp: number;
+    tn: number;
+    fn: number;
+}
+
 export interface EvaluationOutput {
     type: 'EvaluationOutput';
     modelType: 'classification' | 'regression';
     metrics: Record<string, number | string>;
+    confusionMatrix?: ConfusionMatrix;
+    threshold?: number;
+    thresholdMetrics?: ThresholdMetric[]; // 여러 threshold에 대한 precision/recall
 }
 
 // --- New Unsupervised Learning Outputs ---

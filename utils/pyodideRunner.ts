@@ -1225,8 +1225,10 @@ export async function evaluateModelPython(
     labelColumn: string,
     predictionColumn: string,
     modelType: 'classification' | 'regression',
-    timeoutMs: number = 60000
-): Promise<Record<string, number | string>> {
+    threshold: number = 0.5,
+    timeoutMs: number = 60000,
+    calculateThresholdMetrics: boolean = false // 여러 threshold에 대한 precision/recall 계산 여부
+): Promise<Record<string, number | string> & { thresholdMetrics?: Array<{threshold: number, accuracy: number, precision: number, recall: number, f1Score: number, tp: number, fp: number, tn: number, fn: number}> }> {
     try {
         // Pyodide 로드 (타임아웃: 30초)
         const py = await withTimeout(
@@ -1240,6 +1242,8 @@ export async function evaluateModelPython(
         py.globals.set('js_label_column', labelColumn);
         py.globals.set('js_prediction_column', predictionColumn);
         py.globals.set('js_model_type', modelType);
+        py.globals.set('js_threshold', threshold);
+        py.globals.set('js_calculate_threshold_metrics', calculateThresholdMetrics);
         
         // Python 코드 실행
         const code = `
@@ -1253,15 +1257,23 @@ df = pd.DataFrame(js_data.to_py())
 label_column = str(js_label_column)
 prediction_column = str(js_prediction_column)
 model_type = str(js_model_type)
+threshold = float(js_threshold)
+calculate_threshold_metrics = bool(js_calculate_threshold_metrics)
 
-# 실제값과 예측값 추출
+# 실제값 추출
 y_true = df[label_column].values
-y_pred = df[prediction_column].values
 
 metrics = {}
+threshold_metrics_list = []
 
 if model_type == 'classification':
-    # 분류 메트릭
+    # 분류 모델: prediction_column이 확률값인 경우 threshold로 이진 분류 수행
+    y_pred_proba = df[prediction_column].values
+    
+    # 확률값을 threshold 기반으로 이진 분류로 변환
+    y_pred = (y_pred_proba >= threshold).astype(int)
+    
+    # 분류 메트릭 계산
     accuracy = float(accuracy_score(y_true, y_pred))
     precision = float(precision_score(y_true, y_pred, average='weighted', zero_division=0))
     recall = float(recall_score(y_true, y_pred, average='weighted', zero_division=0))
@@ -1277,12 +1289,60 @@ if model_type == 'classification':
     else:
         tp = fp = tn = fn = 0
     
+    metrics['Threshold'] = threshold
     metrics['Accuracy'] = accuracy
     metrics['Precision'] = precision
     metrics['Recall'] = recall
     metrics['F1-Score'] = f1
     metrics['Confusion Matrix'] = f"TP:{tp}, FP:{fp}, TN:{tn}, FN:{fn}"
+    metrics['TP'] = tp
+    metrics['FP'] = fp
+    metrics['TN'] = tn
+    metrics['FN'] = fn
+    
+    # 여러 threshold에 대한 모든 통계량 계산 (0부터 1까지 0.01 단위)
+    if calculate_threshold_metrics:
+        threshold_list = np.arange(0, 1.01, 0.01)
+        for th in threshold_list:
+            y_pred_th = (y_pred_proba >= th).astype(int)
+            try:
+                acc = float(accuracy_score(y_true, y_pred_th))
+                prec = float(precision_score(y_true, y_pred_th, average='weighted', zero_division=0))
+                rec = float(recall_score(y_true, y_pred_th, average='weighted', zero_division=0))
+                f1 = float(f1_score(y_true, y_pred_th, average='weighted', zero_division=0))
+                
+                # 혼동 행렬
+                cm_th = confusion_matrix(y_true, y_pred_th)
+                if cm_th.shape == (2, 2):
+                    tp_th = int(cm_th[1, 1])
+                    fp_th = int(cm_th[0, 1])
+                    tn_th = int(cm_th[0, 0])
+                    fn_th = int(cm_th[1, 0])
+                else:
+                    tp_th = fp_th = tn_th = fn_th = 0
+                
+                threshold_metrics_list.append({
+                    'threshold': float(th),
+                    'accuracy': acc,
+                    'precision': prec,
+                    'recall': rec,
+                    'f1Score': f1,
+                    'tp': tp_th,
+                    'fp': fp_th,
+                    'tn': tn_th,
+                    'fn': fn_th
+                })
+            except:
+                # 에러 발생 시 스킵
+                pass
+        
+        # threshold_metrics를 JSON 문자열로 변환하여 전달
+        import json as json_module
+        metrics['_threshold_metrics_json'] = json_module.dumps(threshold_metrics_list)
 else:
+    # 회귀 모델: prediction_column이 직접 예측값
+    y_pred = df[prediction_column].values
+    
     # 회귀 메트릭
     mse = float(mean_squared_error(y_true, y_pred))
     rmse = float(np.sqrt(mse))
@@ -1306,13 +1366,26 @@ metrics
         // Python 딕셔너리를 JavaScript 객체로 변환
         const metrics = fromPython(resultPyObj);
         
+        // threshold_metrics가 있으면 파싱
+        let thresholdMetrics: Array<{threshold: number, accuracy: number, precision: number, recall: number, f1Score: number, tp: number, fp: number, tn: number, fn: number}> | undefined = undefined;
+        if (metrics['_threshold_metrics_json']) {
+            try {
+                thresholdMetrics = JSON.parse(metrics['_threshold_metrics_json'] as string);
+                delete metrics['_threshold_metrics_json'];
+            } catch (e) {
+                // 파싱 실패 시 무시
+            }
+        }
+        
         // 정리
         py.globals.delete('js_data');
         py.globals.delete('js_label_column');
         py.globals.delete('js_prediction_column');
         py.globals.delete('js_model_type');
+        py.globals.delete('js_threshold');
+        py.globals.delete('js_calculate_threshold_metrics');
         
-        return metrics;
+        return { ...metrics, thresholdMetrics };
     } catch (error: any) {
         // 정리
         try {
@@ -1322,6 +1395,7 @@ metrics
                 py.globals.delete('js_label_column');
                 py.globals.delete('js_prediction_column');
                 py.globals.delete('js_model_type');
+                py.globals.delete('js_threshold');
             }
         } catch {}
         

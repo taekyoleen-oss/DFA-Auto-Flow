@@ -1393,7 +1393,10 @@ ${header}
   const runSimulation = async (startModuleId: string, runAll: boolean = false) => {
     const runQueue: string[] = [];
     const visited = new Set<string>();
-    let currentModules = [...modules]; // Use a mutable copy for the current simulation run
+    // 최신 modules 상태를 가져오기 위해 함수 내부에서 참조
+    // 클로저를 통해 항상 최신 상태를 참조하도록 함
+    const getCurrentModules = () => [...modules];
+    let currentModules = getCurrentModules(); // Use a mutable copy for the current simulation run
 
     const traverse = (moduleId: string) => {
         if(visited.has(moduleId)) return;
@@ -2546,6 +2549,89 @@ ${header}
                     };
                     
                     addLog('SUCCESS', 'Python으로 모델 예측 완료');
+                    
+                    // 연결된 Evaluate Model의 파라미터 자동 설정
+                    const evaluateModelConnections = connections.filter(c => 
+                        c.from.moduleId === module.id && 
+                        currentModules.find(m => m.id === c.to.moduleId)?.type === ModuleType.EvaluateModel
+                    );
+                    
+                    for (const evalConn of evaluateModelConnections) {
+                        const evalModule = currentModules.find(m => m.id === evalConn.to.moduleId);
+                        if (evalModule) {
+                            const evalParams = evalModule.parameters || {};
+                            const updates: Record<string, any> = {};
+                            
+                            const inputColumns = result.columns.map(c => c.name);
+                            
+                            // label_column 자동 설정 (항상 업데이트)
+                            if (inputColumns.includes(labelColumn)) {
+                                updates.label_column = labelColumn;
+                            } else if (inputColumns.length > 0) {
+                                updates.label_column = inputColumns[0];
+                            }
+                            
+                            // prediction_column 자동 설정 (항상 업데이트)
+                            if (modelIsClassification) {
+                                const probaColumn = `${labelColumn}_Predict_Proba_1`;
+                                if (inputColumns.includes(probaColumn)) {
+                                    updates.prediction_column = probaColumn;
+                                } else if (inputColumns.includes('Predict')) {
+                                    updates.prediction_column = 'Predict';
+                                }
+                            } else {
+                                if (inputColumns.includes('Predict')) {
+                                    updates.prediction_column = 'Predict';
+                                }
+                            }
+                            
+                            // model_type 자동 설정 (항상 업데이트)
+                            const detectedModelType = modelIsClassification ? 'classification' : 'regression';
+                            updates.model_type = detectedModelType;
+                            
+                            // threshold 기본값 설정 (분류 모델인 경우, 값이 없을 때만)
+                            // threshold가 이미 설정되어 있으면 절대 변경하지 않음
+                            if (modelIsClassification && (evalParams.threshold === undefined || evalParams.threshold === null)) {
+                                // threshold가 없을 때만 기본값 설정
+                                updates.threshold = 0.5;
+                            }
+                            // threshold가 이미 설정되어 있으면 updates에 추가하지 않음
+                            
+                            // 파라미터 업데이트 (threshold는 절대 덮어쓰지 않음)
+                            if (Object.keys(updates).length > 0) {
+                                setModules(prev => prev.map(m => {
+                                    if (m.id === evalModule.id) {
+                                        // threshold를 제외한 파라미터만 업데이트
+                                        const finalUpdates = { ...updates };
+                                        const existingThreshold = m.parameters?.threshold;
+                                        
+                                        // threshold가 이미 있으면 절대 덮어쓰지 않음
+                                        if (existingThreshold !== undefined && existingThreshold !== null) {
+                                            delete finalUpdates.threshold;
+                                        }
+                                        
+                                        // threshold를 제외한 파라미터만 업데이트하고, threshold는 기존 값 유지
+                                        return { 
+                                            ...m, 
+                                            parameters: { 
+                                                ...m.parameters, 
+                                                ...finalUpdates,
+                                                // threshold는 기존 값 명시적으로 유지
+                                                threshold: existingThreshold !== undefined && existingThreshold !== null
+                                                    ? existingThreshold
+                                                    : (finalUpdates.threshold !== undefined ? finalUpdates.threshold : m.parameters?.threshold)
+                                            } 
+                                        };
+                                    }
+                                    return m;
+                                }), true);
+                                
+                                // 파라미터 업데이트만 하고 자동 재실행은 하지 않음
+                                // 사용자가 수동으로 실행하거나, Score Model이 완료된 후에 실행되도록 함
+                                addLog('INFO', `Evaluate Model [${evalModule.name}] 파라미터가 자동으로 설정되었습니다. 실행하려면 모듈을 클릭하세요.`);
+                            }
+                        }
+                    }
                 } catch (error: any) {
                     const errorMessage = error.message || String(error);
                     addLog('ERROR', `Python ScoreModel 실패: ${errorMessage}`);
@@ -2555,7 +2641,149 @@ ${header}
                 const inputData = getSingleInputData(module.id) as DataPreview;
                 if (!inputData) throw new Error("Input data for evaluation not available.");
 
-                const { label_column, prediction_column, model_type } = module.parameters;
+                // 최신 모듈 상태에서 파라미터 가져오기 (threshold 변경 반영)
+                // getCurrentModules()를 통해 항상 최신 상태를 가져옴
+                const latestModules = getCurrentModules();
+                const latestModule = latestModules.find(m => m.id === module.id) || module;
+                let { label_column, prediction_column, model_type, threshold } = latestModule.parameters;
+                
+                // threshold가 설정되어 있으면 로그 출력 (디버깅용)
+                if (threshold !== undefined && threshold !== null) {
+                    addLog('INFO', `Evaluate Model [${module.name}] 실행 시 threshold: ${threshold} (최신 상태에서 가져옴)`);
+                } else {
+                    addLog('INFO', `Evaluate Model [${module.name}] threshold가 설정되지 않음`);
+                }
+                
+                // 연결된 Train Model을 찾아서 modelPurpose를 자동으로 감지 및 기본값 설정
+                let detectedModelType: 'classification' | 'regression' = model_type === 'regression' ? 'regression' : 'classification';
+                let trainModelLabelColumn: string | null = null;
+                
+                // Evaluate Model의 입력 연결 찾기 (보통 Score Model)
+                const inputConnection = connections.find(c => c.to.moduleId === module.id);
+                if (inputConnection) {
+                    const sourceModule = currentModules.find(m => m.id === inputConnection.from.moduleId);
+                    
+                    // Score Model인 경우, 그 Score Model이 연결된 Train Model 찾기
+                    if (sourceModule?.type === ModuleType.ScoreModel) {
+                        const modelInputConnection = connections.find(c => 
+                            c.to.moduleId === sourceModule.id && c.to.portName === 'model_in'
+                        );
+                        if (modelInputConnection) {
+                            const trainModelModule = currentModules.find(m => 
+                                m.id === modelInputConnection.from.moduleId && 
+                                m.outputData?.type === 'TrainedModelOutput'
+                            );
+                            if (trainModelModule?.outputData?.type === 'TrainedModelOutput') {
+                                const trainedModel = trainModelModule.outputData;
+                                trainModelLabelColumn = trainedModel.labelColumn;
+                                
+                                // modelPurpose가 있으면 사용, 없으면 modelType으로 추론
+                                if (trainedModel.modelPurpose) {
+                                    detectedModelType = trainedModel.modelPurpose;
+                                    addLog('INFO', `연결된 모델 타입 자동 감지: ${detectedModelType} (${trainModelModule.name})`);
+                                } else {
+                                    // modelType으로 분류 모델인지 확인
+                                    const isClassModel = isClassification(trainedModel.modelType, trainedModel.modelPurpose);
+                                    detectedModelType = isClassModel ? 'classification' : 'regression';
+                                    addLog('INFO', `모델 타입 자동 감지: ${detectedModelType} (${trainModelModule.name})`);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 자동 기본값 설정
+                const inputColumns = inputData.columns.map(c => c.name);
+                const paramUpdates: Record<string, any> = {};
+                
+                // label_column 자동 설정
+                if (!label_column) {
+                    if (trainModelLabelColumn && inputColumns.includes(trainModelLabelColumn)) {
+                        label_column = trainModelLabelColumn;
+                        paramUpdates.label_column = label_column;
+                        addLog('INFO', `Label column 자동 설정: ${label_column}`);
+                    } else if (inputColumns.length > 0) {
+                        label_column = inputColumns[0];
+                        paramUpdates.label_column = label_column;
+                        addLog('INFO', `Label column 자동 설정: ${label_column}`);
+                    }
+                }
+                
+                // prediction_column 자동 설정
+                if (!prediction_column) {
+                    if (detectedModelType === 'classification' && trainModelLabelColumn) {
+                        // 분류 모델: {label_column}_Predict_Proba_1 찾기
+                        const probaColumn = `${trainModelLabelColumn}_Predict_Proba_1`;
+                        if (inputColumns.includes(probaColumn)) {
+                            prediction_column = probaColumn;
+                            paramUpdates.prediction_column = prediction_column;
+                            addLog('INFO', `Prediction column 자동 설정: ${prediction_column} (확률값)`);
+                        } else if (inputColumns.includes('Predict')) {
+                            prediction_column = 'Predict';
+                            paramUpdates.prediction_column = prediction_column;
+                            addLog('INFO', `Prediction column 자동 설정: ${prediction_column}`);
+                        }
+                    } else {
+                        // 회귀 모델: Predict 사용
+                        if (inputColumns.includes('Predict')) {
+                            prediction_column = 'Predict';
+                            paramUpdates.prediction_column = prediction_column;
+                            addLog('INFO', `Prediction column 자동 설정: ${prediction_column}`);
+                        }
+                    }
+                }
+                
+                // model_type 자동 설정
+                if (model_type !== detectedModelType) {
+                    paramUpdates.model_type = detectedModelType;
+                }
+                
+                // threshold 기본값 설정 (분류 모델인 경우, 값이 없을 때만)
+                // threshold가 이미 설정되어 있으면 절대 덮어쓰지 않음
+                if (detectedModelType === 'classification') {
+                    if (threshold === undefined || threshold === null) {
+                        // threshold가 없을 때만 기본값 설정
+                        threshold = 0.5;
+                        // paramUpdates에 추가하지 않음 (사용자가 변경한 값이 있을 수 있으므로)
+                        // 대신 threshold 변수만 업데이트하여 평가에 사용
+                        addLog('INFO', `Evaluate Model [${module.name}] threshold 기본값 사용: ${threshold} (파라미터에는 저장하지 않음)`);
+                    } else {
+                        // threshold가 이미 설정되어 있으면 그 값을 사용
+                        addLog('INFO', `Evaluate Model [${module.name}] threshold 사용: ${threshold}`);
+                    }
+                }
+
+                // 자동으로 설정한 파라미터들을 모듈에 저장
+                // threshold는 절대 paramUpdates에 추가하지 않음 (사용자가 변경한 값 유지)
+                if (Object.keys(paramUpdates).length > 0) {
+                    setModules(prev => prev.map(m => {
+                        if (m.id === module.id) {
+                            // threshold를 제외한 파라미터만 업데이트
+                            const finalParamUpdates = { ...paramUpdates };
+                            // threshold가 paramUpdates에 있으면 제거
+                            delete finalParamUpdates.threshold;
+                            
+                            // 기존 threshold 값 확인 (절대 변경하지 않음)
+                            const existingThreshold = m.parameters?.threshold;
+                            
+                            // threshold는 기존 값을 명시적으로 유지 (절대 변경하지 않음)
+                            const updatedParameters = { 
+                                ...m.parameters, 
+                                ...finalParamUpdates,
+                                // threshold는 기존 값 유지 (변경하지 않음)
+                                threshold: existingThreshold !== undefined && existingThreshold !== null 
+                                    ? existingThreshold 
+                                    : (threshold !== undefined && threshold !== null ? threshold : 0.5)
+                            };
+                            
+                            addLog('INFO', `Evaluate Model [${module.name}] 파라미터 업데이트 후 threshold: ${updatedParameters.threshold} (기존: ${existingThreshold})`);
+                            
+                            return { ...m, parameters: updatedParameters };
+                        }
+                        return m;
+                    }), true);
+                }
+
                 if (!label_column || !prediction_column) {
                     throw new Error("Label and prediction columns must be configured for evaluation.");
                 }
@@ -2570,21 +2798,44 @@ ${header}
                     const pyodideModule = await import('./utils/pyodideRunner');
                     const { evaluateModelPython } = pyodideModule;
                     
-                    const metrics = await evaluateModelPython(
+                    // 분류 모델인 경우 여러 threshold에 대한 precision/recall도 계산
+                    const calculateThresholdMetrics = detectedModelType === 'classification';
+                    
+                    const result = await evaluateModelPython(
                         rows,
                         label_column,
                         prediction_column,
-                        model_type === 'regression' ? 'regression' : 'classification',
-                        60000 // 타임아웃: 60초
+                        detectedModelType, // 자동 감지된 모델 타입 사용
+                        threshold, // threshold 전달 (분류 모델인 경우)
+                        120000, // 타임아웃: 120초 (여러 threshold 계산 시 시간이 더 걸림)
+                        calculateThresholdMetrics // 여러 threshold에 대한 precision/recall 계산
                     );
+                    
+                    const { thresholdMetrics, ...metrics } = result;
                     
                     addLog('SUCCESS', 'Python으로 모델 평가 완료');
                     
+                    // 혼동행렬 추출
+                    const confusionMatrix = detectedModelType === 'classification' && 
+                        typeof metrics['TP'] === 'number' && 
+                        typeof metrics['FP'] === 'number' && 
+                        typeof metrics['TN'] === 'number' && 
+                        typeof metrics['FN'] === 'number' 
+                        ? {
+                            tp: metrics['TP'] as number,
+                            fp: metrics['FP'] as number,
+                            tn: metrics['TN'] as number,
+                            fn: metrics['FN'] as number
+                        }
+                        : undefined;
+                    
                     newOutputData = {
                         type: 'EvaluationOutput',
-                        modelType: model_type,
+                        modelType: detectedModelType, // 자동 감지된 모델 타입 사용
                         metrics,
-                        columns: inputData.columns
+                        confusionMatrix,
+                        threshold: detectedModelType === 'classification' ? threshold : undefined,
+                        thresholdMetrics: thresholdMetrics // 여러 threshold에 대한 precision/recall
                     };
                 } catch (error: any) {
                     const errorMessage = error.message || String(error);
@@ -3034,6 +3285,10 @@ ${header}
         // Update React's state for the UI
         setModules(prev => prev.map(m => {
             if (m.id === moduleId) {
+                // viewingEvaluation이 열려있고 이 모듈이면 자동으로 업데이트
+                if (viewingEvaluation && viewingEvaluation.id === moduleId) {
+                    setViewingEvaluation(finalModuleState);
+                }
                 return finalModuleState;
             }
             // Update connected model definition module status when TrainModel status changes
@@ -3522,12 +3777,36 @@ ${header}
                 onClose={handleCloseModal}
             />
         )}
-        {viewingEvaluation && (
-            <EvaluationPreviewModal
-                module={viewingEvaluation}
-                onClose={handleCloseModal}
-            />
-        )}
+        {viewingEvaluation && (() => {
+            // 최신 모듈 상태를 가져와서 모달에 전달
+            const latestModule = modules.find(m => m.id === viewingEvaluation.id) || viewingEvaluation;
+            return (
+                <EvaluationPreviewModal
+                    module={latestModule}
+                    onClose={handleCloseModal}
+                    onThresholdChange={async (moduleId, newThreshold) => {
+                        // threshold 변경 시 파라미터만 업데이트 (재계산하지 않음)
+                        addLog('INFO', `Evaluate Model threshold 변경: ${newThreshold.toFixed(2)} (재계산 없음)`);
+                        
+                        // threshold를 명시적으로 설정 (재계산하지 않음)
+                        setModules(prev => prev.map(m => {
+                            if (m.id === moduleId) {
+                                const updated = { 
+                                    ...m, 
+                                    parameters: { 
+                                        ...m.parameters, 
+                                        threshold: newThreshold 
+                                    } 
+                                };
+                                addLog('INFO', `Evaluate Model [${m.name}] threshold 업데이트: ${updated.parameters.threshold}`);
+                                return updated;
+                            }
+                            return m;
+                        }), true);
+                    }}
+                />
+            );
+        })()}
     </div>
   );
 };
