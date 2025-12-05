@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { TOOLBOX_MODULES } from '../constants';
 import { ModuleType } from '../types';
-import { LinkIcon, ChevronUpIcon, ChevronDownIcon, DocumentTextIcon, RectangleStackIcon, PlusIcon, MinusIcon } from './icons';
+import { LinkIcon, ChevronUpIcon, ChevronDownIcon, DocumentTextIcon, RectangleStackIcon } from './icons';
 
 interface ToolboxProps {
     onModuleDoubleClick: (type: ModuleType) => void;
@@ -212,26 +212,40 @@ export const Toolbox: React.FC<ToolboxProps> = ({ onModuleDoubleClick, onFontSiz
                     {/* 글자 크기 조절 버튼 */}
                     <div className="flex gap-1 ml-auto">
                         <button
-                            onClick={() => onFontSizeChange(false)}
-                            title="글자 크기 줄이기"
-                            className="relative group flex items-center justify-center w-6 h-6 rounded cursor-pointer bg-gray-800 hover:bg-gray-700 hover:text-blue-400 transition-colors"
+                            onClick={() => onFontSizeChange(true)}
+                            title="글자 크기 키우기"
+                            className="relative group flex flex-col items-center justify-center w-6 h-6 rounded cursor-pointer bg-gray-800 hover:bg-gray-700 hover:text-blue-400 transition-colors"
                         >
-                            <MinusIcon className="h-3.5 w-3.5" />
+                            <div className="relative flex flex-col items-center justify-center">
+                                {/* 위쪽 삼각형 */}
+                                <svg className="w-2 h-2 text-blue-400 mb-0.5" viewBox="0 0 8 8" fill="currentColor">
+                                    <path d="M4 0 L0 4 L8 4 Z" />
+                                </svg>
+                                {/* 가 문자 */}
+                                <span className="text-[10px] text-gray-300 leading-none">가</span>
+                            </div>
                             {/* Tooltip */}
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
-                                글자 크기 줄이기
+                                글자 크기 키우기
                                 <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
                             </div>
                         </button>
                         <button
-                            onClick={() => onFontSizeChange(true)}
-                            title="글자 크기 키우기"
-                            className="relative group flex items-center justify-center w-6 h-6 rounded cursor-pointer bg-gray-800 hover:bg-gray-700 hover:text-blue-400 transition-colors"
+                            onClick={() => onFontSizeChange(false)}
+                            title="글자 크기 줄이기"
+                            className="relative group flex flex-col items-center justify-center w-6 h-6 rounded cursor-pointer bg-gray-800 hover:bg-gray-700 hover:text-blue-400 transition-colors"
                         >
-                            <PlusIcon className="h-3.5 w-3.5" />
+                            <div className="relative flex flex-col items-center justify-center">
+                                {/* 아래쪽 삼각형 */}
+                                <svg className="w-2 h-2 text-blue-400 mb-0.5" viewBox="0 0 8 8" fill="currentColor">
+                                    <path d="M4 8 L0 4 L8 4 Z" />
+                                </svg>
+                                {/* 가 문자 */}
+                                <span className="text-[10px] text-gray-300 leading-none">가</span>
+                            </div>
                             {/* Tooltip */}
                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
-                                글자 크기 키우기
+                                글자 크기 줄이기
                                 <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900"></div>
                             </div>
                         </button>
