@@ -1,17 +1,20 @@
-import { CanvasModule } from './types';
+import { CanvasModule } from "./types";
 
-const replacePlaceholders = (template: string, params: Record<string, any>): string => {
+const replacePlaceholders = (
+  template: string,
+  params: Record<string, any>
+): string => {
   let code = template;
   for (const key in params) {
-    const placeholder = new RegExp(`{${key}}`, 'g');
+    const placeholder = new RegExp(`{${key}}`, "g");
     let value = params[key];
     // Stringify only if it's not already a string that looks like code
     if (value === null) {
-        value = 'None';
-    } else if (typeof value !== 'string' || !isNaN(Number(value))) {
-        value = JSON.stringify(value);
+      value = "None";
+    } else if (typeof value !== "string" || !isNaN(Number(value))) {
+      value = JSON.stringify(value);
     } else {
-        value = `'${value}'`; // Wrap strings in quotes for Python
+      value = `'${value}'`; // Wrap strings in quotes for Python
     }
     code = code.replace(placeholder, value);
   }
@@ -19,7 +22,7 @@ const replacePlaceholders = (template: string, params: Record<string, any>): str
 };
 
 const templates: Record<string, string> = {
-    LoadData: `
+  LoadData: `
 import pandas as pd
 
 # CSV 파일을 불러와서 DataFrame으로 반환합니다.
@@ -30,7 +33,7 @@ file_path = {source}
 dataframe = pd.read_csv(file_path)
 `,
 
-    Statistics: `
+  Statistics: `
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -79,7 +82,7 @@ def analyze_statistics(df: pd.DataFrame):
 # descriptive_statistics, correlation_matrix = analyze_statistics(dataframe)
 `,
 
-    SelectData: `
+  SelectData: `
 import pandas as pd
 
 def select_data(df: pd.DataFrame, columns: list):
@@ -100,7 +103,7 @@ selected_columns = [col for col, sel in column_selections.items() if sel.get('se
 # Execution
 # selected_data = select_data(dataframe, selected_columns)
 `,
-    HandleMissingValues: `
+  HandleMissingValues: `
 import pandas as pd
 import numpy as np
 from sklearn.impute import SimpleImputer, KNNImputer
@@ -159,7 +162,7 @@ p_n_neighbors = {n_neighbors}
 # Execution
 # cleaned_data = handle_missing_values(dataframe, p_method, p_strategy, p_columns, p_n_neighbors)
 `,
-    EncodeCategorical: `
+  EncodeCategorical: `
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
@@ -217,7 +220,7 @@ p_ordinal_mapping = {ordinal_mapping}
 # Execution
 # encoded_data = encode_categorical(dataframe, p_method, p_columns, p_drop, p_handle_unknown, p_ordinal_mapping)
 `,
-    NormalizeData: `
+  NormalizeData: `
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 import pandas as pd
 import numpy as np
@@ -257,7 +260,7 @@ p_columns = [col for col, sel in column_selections.items() if sel.get('selected'
 # Execution
 # normalized_data = normalize_data(dataframe, p_method, p_columns)
 `,
-    TransitionData: `
+  TransitionData: `
 import pandas as pd
 import numpy as np
 
@@ -302,7 +305,7 @@ p_transformations = {transformations}
 # Execution
 # transformed_data = transform_data(dataframe, p_transformations)
 `,
-    ResampleData: `
+  ResampleData: `
 import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import NearMiss
@@ -345,7 +348,7 @@ p_target_column = {target_column}
 # Execution
 # resampled_data = resample_data(dataframe, p_method, p_target_column)
 `,
-    SplitData: `
+  SplitData: `
 from sklearn.model_selection import train_test_split
 import pandas as pd
 
@@ -379,7 +382,7 @@ train_data, test_data = train_test_split(
 )
 `,
 
-    LinearRegression: `
+  LinearRegression: `
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet
 
 # This module creates a linear regression model instance.
@@ -414,7 +417,7 @@ if p_model_type == 'ElasticNet':
 # model variable contains the model instance ready for training.
 `,
 
-    DecisionTree: `
+  DecisionTree: `
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
 def create_decision_tree(model_purpose: str = 'classification', criterion: str = 'gini',
@@ -456,7 +459,7 @@ p_min_samples_leaf = {min_samples_leaf}
 # decision_tree_model = create_decision_tree(p_model_purpose, p_criterion, p_max_depth, p_min_samples_split, p_min_samples_leaf)
 `,
 
-    LogisticTradition: `
+  LogisticTradition: `
 from sklearn.linear_model import LogisticRegression
 
 def create_logistic_regression_model():
@@ -479,7 +482,7 @@ def create_logistic_regression_model():
 print("sklearn.linear_model.LogisticRegression model configured.")
 `,
 
-    TrainModel: `
+  TrainModel: `
 import pandas as pd
 
 # This module trains a model using the provided data.
@@ -498,7 +501,7 @@ trained_model = model.fit(X_train, y_train)
 
 # The trained_model is now ready for use in Score Model or Evaluate Model modules
 `,
-    ScoreModel: `
+  ScoreModel: `
 import pandas as pd
 
 # This module applies a trained model to a second dataset to generate predictions.
@@ -526,7 +529,7 @@ scored_data['Predict'] = predictions
 
 # The scored_data now contains the original data plus predictions
 `,
-    EvaluateModel: `
+  EvaluateModel: `
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, mean_absolute_error, r2_score
 import pandas as pd
 import numpy as np
@@ -586,7 +589,7 @@ else:  # regression
 
 # evaluation_metrics contains all calculated statistics
 `,
-    StatModels: `
+  StatModels: `
 # This module configures the type of statistical model to be used from the statsmodels library.
 # The actual model fitting occurs in the 'Result Model' module.
 
@@ -596,14 +599,176 @@ selected_model_type = {model}
 print(f"Selected statsmodels type: {selected_model_type}")
 `,
 
-    ResultModel: `
+  ResultModel: `
 import pandas as pd
+import numpy as np
 import statsmodels.api as sm
+
+def fit_count_regression_statsmodels(df: pd.DataFrame, distribution_type: str, feature_columns: list, label_column: str, 
+                                     max_iter: int = 100, disp: float = 1.0):
+    """
+    statsmodels를 사용하여 포아송, 음이항, Quasi-Poisson 회귀 모델을 피팅합니다.
+    """
+    print(f"{distribution_type} 회귀 모델 피팅 중...")
+    
+    X = df[feature_columns].copy()
+    y = df[label_column].copy()
+    
+    # 결측치 제거
+    mask = ~(X.isnull().any(axis=1) | y.isnull())
+    X = X[mask]
+    y = y[mask]
+    
+    if len(X) == 0:
+        raise ValueError("유효한 데이터가 없습니다. 결측치를 확인하세요.")
+    
+    X = sm.add_constant(X, prepend=True)
+    
+    try:
+        if distribution_type == 'Poisson':
+            model = sm.Poisson(y, X)
+            results = model.fit(maxiter=max_iter)
+        elif distribution_type == 'NegativeBinomial':
+            model = sm.NegativeBinomial(y, X, loglike_method='nb2')
+            results = model.fit(maxiter=max_iter, disp=disp)
+        elif distribution_type == 'QuasiPoisson':
+            # Quasi-Poisson은 GLM을 사용하여 구현
+            model = sm.GLM(y, X, family=sm.families.Poisson())
+            results = model.fit(maxiter=max_iter)
+            # Quasi-Poisson은 분산을 과분산 파라미터로 조정
+            mu = results.mu
+            pearson_resid = (y - mu) / np.sqrt(mu)
+            phi = np.sum(pearson_resid**2) / (len(y) - len(feature_columns) - 1)
+            results.scale = phi
+        else:
+            raise ValueError(f"지원하지 않는 분포 타입: {distribution_type}")
+        
+        # 모델 요약 텍스트 생성
+        summary_text = str(results.summary())
+        print(f"\\n--- {distribution_type} 회귀 모델 결과 ---")
+        print(summary_text)
+        
+        # 통계량 추출
+        metrics = {}
+        metrics['Log Likelihood'] = results.llf if hasattr(results, 'llf') else None
+        metrics['AIC'] = results.aic if hasattr(results, 'aic') else None
+        metrics['BIC'] = results.bic if hasattr(results, 'bic') else None
+        metrics['Deviance'] = results.deviance if hasattr(results, 'deviance') else None
+        metrics['Pearson chi2'] = results.pearson_chi2 if hasattr(results, 'pearson_chi2') else None
+        
+        # 음이항 회귀의 경우 dispersion 파라미터 추가
+        if distribution_type == 'NegativeBinomial':
+            if hasattr(model, 'alpha'):
+                metrics['Dispersion (alpha)'] = model.alpha
+            elif hasattr(results, 'alpha'):
+                metrics['Dispersion (alpha)'] = results.alpha
+        
+        # Quasi-Poisson의 경우 과분산 파라미터 추가
+        if distribution_type == 'QuasiPoisson':
+            if hasattr(results, 'scale'):
+                metrics['Dispersion (phi)'] = results.scale
+        
+        # 계수 정보 추출
+        coefficients = {}
+        if hasattr(results, 'params'):
+            params = results.params
+            if hasattr(params, 'to_dict'):
+                params_dict = params.to_dict()
+            else:
+                params_dict = {name: params.iloc[i] if hasattr(params, 'iloc') else params[i] 
+                               for i, name in enumerate(results.model.exog_names)}
+            
+            # 표준 오차, z/t 통계량, p-value, 신뢰구간 추출
+            if hasattr(results, 'bse'):
+                bse = results.bse
+                if hasattr(bse, 'to_dict'):
+                    bse_dict = bse.to_dict()
+                else:
+                    bse_dict = {name: bse.iloc[i] if hasattr(bse, 'iloc') else bse[i] 
+                               for i, name in enumerate(results.model.exog_names)}
+            else:
+                bse_dict = {name: 0.0 for name in params_dict.keys()}
+            
+            if hasattr(results, 'tvalues'):
+                tvalues = results.tvalues
+            elif hasattr(results, 'zvalues'):
+                tvalues = results.zvalues
+            else:
+                tvalues = None
+            
+            if hasattr(results, 'pvalues'):
+                pvalues = results.pvalues
+            else:
+                pvalues = None
+            
+            # 신뢰구간 추출
+            conf_int = None
+            if hasattr(results, 'conf_int'):
+                conf_int = results.conf_int()
+            
+            for param_name in params_dict.keys():
+                coef_value = params_dict[param_name]
+                std_err = bse_dict.get(param_name, 0.0)
+                z_value = tvalues[param_name] if tvalues is not None and param_name in tvalues.index else 0.0
+                p_value = pvalues[param_name] if pvalues is not None and param_name in pvalues.index else 1.0
+                
+                conf_lower = conf_int.loc[param_name, 0] if conf_int is not None and param_name in conf_int.index else 0.0
+                conf_upper = conf_int.loc[param_name, 1] if conf_int is not None and param_name in conf_int.index else 0.0
+                
+                coefficients[param_name] = {
+                    'coef': float(coef_value),
+                    'std err': float(std_err),
+                    'z': float(z_value),
+                    'P>|z|': float(p_value),
+                    '[0.025': float(conf_lower),
+                    '0.975]': float(conf_upper)
+                }
+        
+        return {
+            'results': results,
+            'summary_text': summary_text,
+            'metrics': metrics,
+            'coefficients': coefficients,
+            'distribution_type': distribution_type
+        }
+        
+    except Exception as e:
+        print(f"모델 피팅 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 def run_stats_model(df: pd.DataFrame, model_type: str, feature_columns: list, label_column: str):
     """
     statsmodels를 사용하여 통계 모델을 피팅합니다.
+    Count regression 모델(Poisson, NegativeBinomial, QuasiPoisson)은 fit_count_regression_statsmodels를 사용합니다.
     """
+    # Count regression 모델의 경우 fit_count_regression_statsmodels 사용
+    if model_type in ['Poisson', 'NegativeBinomial', 'QuasiPoisson']:
+        max_iter = 100
+        disp = 1.0
+        model_results = fit_count_regression_statsmodels(
+            df, model_type, feature_columns, label_column, max_iter, disp
+        )
+        
+        # 통계량 출력
+        print("\\n=== 모델 통계량 ===")
+        for key, value in model_results['metrics'].items():
+            if value is not None:
+                print(f"{key}: {value:.6f}")
+        
+        print("\\n=== 계수 정보 ===")
+        for param_name, coef_info in model_results['coefficients'].items():
+            print(f"{param_name}:")
+            print(f"  계수: {coef_info['coef']:.6f}")
+            print(f"  표준 오차: {coef_info['std err']:.6f}")
+            print(f"  z-통계량: {coef_info['z']:.6f}")
+            print(f"  p-value: {coef_info['P>|z|']:.6f}")
+            print(f"  신뢰구간: [{coef_info['[0.025']:.6f}, {coef_info['0.975]']:.6f}]")
+        
+        return model_results['results']
+    
+    # 다른 모델의 경우 기존 방식 사용
     print(f"{model_type} 모델 피팅 중...")
     
     X = df[feature_columns]
@@ -614,10 +779,6 @@ def run_stats_model(df: pd.DataFrame, model_type: str, feature_columns: list, la
         model = sm.OLS(y, X)
     elif model_type == 'Logit':
         model = sm.Logit(y, X)
-    elif model_type == 'Poisson':
-        model = sm.Poisson(y, X)
-    elif model_type == 'NegativeBinomial':
-        model = sm.NegativeBinomial(y, X)
     elif model_type == 'Gamma':
         model = sm.GLM(y, X, family=sm.families.Gamma())
     elif model_type == 'Tweedie':
@@ -650,40 +811,60 @@ p_label_column = {label_column}
 #     p_label_column
 # )
 `,
-    PredictModel: `
+  PredictModel: `
 import pandas as pd
 import statsmodels.api as sm
 
-def predict_with_statsmodel(results, df: pd.DataFrame):
+def predict_with_statsmodel(results, df: pd.DataFrame, feature_columns: list):
     """
     Applies a fitted statsmodels result object to a new dataset to generate predictions.
+    
+    Parameters:
+    -----------
+    results : 모델 결과 객체
+        피팅된 모델 결과 (ResultModel에서 생성)
+    df : pd.DataFrame
+        예측할 데이터
+    feature_columns : list
+        특성 컬럼 리스트 (모델 피팅 시 사용한 컬럼과 동일해야 함)
+    
+    Returns:
+    --------
+    pd.DataFrame
+        예측 결과가 추가된 데이터프레임
     """
-    print("Generating predictions with the fitted statsmodels model...")
+    print("statsmodels 모델로 예측 수행 중...")
     
-    # Ensure the 'const' column is present for the intercept
-    df_with_const = sm.add_constant(df, prepend=True, has_constant='raise')
+    # 특성 컬럼만 선택
+    X = df[feature_columns].copy()
     
-    # Ensure columns in the prediction data match the model's exog names
-    # and are in the same order.
+    # 상수항 추가 (모델 피팅 시와 동일한 방식)
+    X = sm.add_constant(X, prepend=True, has_constant='add')
+    
+    # 모델의 특성 순서에 맞춰 정렬 (모델 피팅 시 사용한 순서와 일치해야 함)
     required_cols = results.model.exog_names
-    df_aligned = df_with_const.reindex(columns=required_cols).fillna(0)
-
-    predictions = results.predict(df_aligned)
+    X_aligned = X.reindex(columns=required_cols).fillna(0)
     
+    # 예측 수행
+    predictions = results.predict(X_aligned)
+    
+    # 원본 데이터프레임에 예측 결과 추가
     predict_df = df.copy()
     predict_df['Predict'] = predictions
     
-    print("Prediction complete. 'Predict' column added.")
+    print("예측 완료. 'Predict' 컬럼이 추가되었습니다.")
     print(predict_df.head())
     
     return predict_df
 
 # Assuming 'model_results' (from ResultModel) and a dataframe 'data_to_predict' are available
-#
+# Parameters from UI
+p_feature_columns = {feature_columns}
+
 # Execution
-# predicted_data = predict_with_statsmodel(model_results, data_to_predict)
+# predicted_data = predict_with_statsmodel(model_results, data_to_predict, p_feature_columns)
 `,
-    FitLossDistribution: `
+  FitLossDistribution: `
 from scipy import stats
 import pandas as pd
 
@@ -715,7 +896,7 @@ p_dist_type = {distribution_type}
 # fitted_params = fit_loss_distribution(dataframe, p_loss_column, p_dist_type)
 `,
 
-    GenerateExposureCurve: `
+  GenerateExposureCurve: `
 import numpy as np
 from scipy import stats
 
@@ -749,7 +930,7 @@ def generate_exposure_curve(dist_type: str, params: tuple, total_loss: float):
 # exposure_curve = generate_exposure_curve(p_dist_type, fitted_params, p_total_loss)
 `,
 
-    PriceXoLLayer: `
+  PriceXoLLayer: `
 import numpy as np
 
 def price_xol_layer(curve_data: list, total_loss: float, retention: float, 
@@ -785,7 +966,7 @@ p_loading_factor = {loading_factor}
 # Execution
 # premium, _, _ = price_xol_layer(exposure_curve, p_total_loss, p_retention, p_limit, p_loading_factor)
 `,
-    XolLoading: `
+  XolLoading: `
 import pandas as pd
 
 # This is identical to the standard LoadData module but conceptually used for XoL data.
@@ -805,7 +986,7 @@ p_file_path = {source}
 # xol_dataframe = load_xol_data(p_file_path)
 `,
 
-    ApplyThreshold: `
+  ApplyThreshold: `
 import pandas as pd
 
 def apply_loss_threshold(df: pd.DataFrame, threshold: float, loss_col: str):
@@ -828,7 +1009,7 @@ p_loss_column = {loss_column}
 # large_claims_df = apply_loss_threshold(xol_dataframe, p_threshold, p_loss_column)
 `,
 
-    DefineXolContract: `
+  DefineXolContract: `
 # This module defines the parameters for an Excess of Loss (XoL) reinsurance contract.
 # These parameters are then used by downstream modules.
 
@@ -851,7 +1032,7 @@ print("XoL Contract terms defined:")
 print(contract_terms)
 `,
 
-    CalculateCededLoss: `
+  CalculateCededLoss: `
 import pandas as pd
 
 def calculate_ceded_loss(df: pd.DataFrame, deductible: float, limit: float, loss_col: str):
@@ -878,7 +1059,7 @@ p_loss_column = {loss_column}
 # ceded_df = calculate_ceded_loss(large_claims_df, contract_deductible, contract_limit, p_loss_column)
 `,
 
-    PriceXolContract: `
+  PriceXolContract: `
 import pandas as pd
 import numpy as np
 
@@ -926,12 +1107,279 @@ p_ceded_loss_column = {ceded_loss_column}
 #     p_ceded_loss_column
 # )
 `,
+
+  DiversionChecker: `
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+def fit_count_regression_statsmodels(df: pd.DataFrame, distribution_type: str, feature_columns: list, label_column: str, 
+                                     max_iter: int = 100, disp: float = 1.0):
+    """
+    statsmodels를 사용하여 포아송, 음이항, Quasi-Poisson 회귀 모델을 피팅합니다.
+    """
+    print(f"{distribution_type} 회귀 모델 피팅 중...")
+    
+    X = df[feature_columns].copy()
+    y = df[label_column].copy()
+    
+    # 결측치 제거
+    mask = ~(X.isnull().any(axis=1) | y.isnull())
+    X = X[mask]
+    y = y[mask]
+    
+    if len(X) == 0:
+        raise ValueError("유효한 데이터가 없습니다. 결측치를 확인하세요.")
+    
+    X = sm.add_constant(X, prepend=True)
+    
+    try:
+        if distribution_type == 'Poisson':
+            model = sm.Poisson(y, X)
+            results = model.fit(maxiter=max_iter)
+        elif distribution_type == 'NegativeBinomial':
+            model = sm.NegativeBinomial(y, X, loglike_method='nb2')
+            results = model.fit(maxiter=max_iter, disp=disp)
+        elif distribution_type == 'QuasiPoisson':
+            # Quasi-Poisson은 GLM을 사용하여 구현
+            model = sm.GLM(y, X, family=sm.families.Poisson())
+            results = model.fit(maxiter=max_iter)
+            # Quasi-Poisson은 분산을 과분산 파라미터로 조정
+            mu = results.mu
+            pearson_resid = (y - mu) / np.sqrt(mu)
+            phi = np.sum(pearson_resid**2) / (len(y) - len(feature_columns) - 1)
+            results.scale = phi
+        else:
+            raise ValueError(f"지원하지 않는 분포 타입: {distribution_type}")
+        
+        # 모델 요약 텍스트 생성
+        summary_text = str(results.summary())
+        print(f"\\n--- {distribution_type} 회귀 모델 결과 ---")
+        print(summary_text)
+        
+        # 통계량 추출
+        metrics = {}
+        metrics['Log Likelihood'] = results.llf if hasattr(results, 'llf') else None
+        metrics['AIC'] = results.aic if hasattr(results, 'aic') else None
+        metrics['BIC'] = results.bic if hasattr(results, 'bic') else None
+        metrics['Deviance'] = results.deviance if hasattr(results, 'deviance') else None
+        metrics['Pearson chi2'] = results.pearson_chi2 if hasattr(results, 'pearson_chi2') else None
+        
+        # 음이항 회귀의 경우 dispersion 파라미터 추가
+        if distribution_type == 'NegativeBinomial':
+            if hasattr(model, 'alpha'):
+                metrics['Dispersion (alpha)'] = model.alpha
+            elif hasattr(results, 'alpha'):
+                metrics['Dispersion (alpha)'] = results.alpha
+        
+        # Quasi-Poisson의 경우 과분산 파라미터 추가
+        if distribution_type == 'QuasiPoisson':
+            if hasattr(results, 'scale'):
+                metrics['Dispersion (phi)'] = results.scale
+        
+        # 계수 정보 추출
+        coefficients = {}
+        if hasattr(results, 'params'):
+            params = results.params
+            if hasattr(params, 'to_dict'):
+                params_dict = params.to_dict()
+            else:
+                params_dict = {name: params.iloc[i] if hasattr(params, 'iloc') else params[i] 
+                               for i, name in enumerate(results.model.exog_names)}
+            
+            # 표준 오차, z/t 통계량, p-value, 신뢰구간 추출
+            if hasattr(results, 'bse'):
+                bse = results.bse
+                if hasattr(bse, 'to_dict'):
+                    bse_dict = bse.to_dict()
+                else:
+                    bse_dict = {name: bse.iloc[i] if hasattr(bse, 'iloc') else bse[i] 
+                               for i, name in enumerate(results.model.exog_names)}
+            else:
+                bse_dict = {name: 0.0 for name in params_dict.keys()}
+            
+            if hasattr(results, 'tvalues'):
+                tvalues = results.tvalues
+            elif hasattr(results, 'zvalues'):
+                tvalues = results.zvalues
+            else:
+                tvalues = None
+            
+            if hasattr(results, 'pvalues'):
+                pvalues = results.pvalues
+            else:
+                pvalues = None
+            
+            # 신뢰구간 추출
+            conf_int = None
+            if hasattr(results, 'conf_int'):
+                conf_int = results.conf_int()
+            
+            for param_name in params_dict.keys():
+                coef_value = params_dict[param_name]
+                std_err = bse_dict.get(param_name, 0.0)
+                z_value = tvalues[param_name] if tvalues is not None and param_name in tvalues.index else 0.0
+                p_value = pvalues[param_name] if pvalues is not None and param_name in pvalues.index else 1.0
+                
+                conf_lower = conf_int.loc[param_name, 0] if conf_int is not None and param_name in conf_int.index else 0.0
+                conf_upper = conf_int.loc[param_name, 1] if conf_int is not None and param_name in conf_int.index else 0.0
+                
+                coefficients[param_name] = {
+                    'coef': float(coef_value),
+                    'std err': float(std_err),
+                    'z': float(z_value),
+                    'P>|z|': float(p_value),
+                    '[0.025': float(conf_lower),
+                    '0.975]': float(conf_upper)
+                }
+        
+        return {
+            'results': results,
+            'summary_text': summary_text,
+            'metrics': metrics,
+            'coefficients': coefficients,
+            'distribution_type': distribution_type
+        }
+        
+    except Exception as e:
+        print(f"모델 피팅 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+def dispersion_checker(df: pd.DataFrame, feature_columns: list, label_column: str, max_iter: int = 100):
+    """
+    과대산포를 측정하고 적합한 모델을 추천합니다.
+    """
+    print("=== 과대산포 검사 (Diversion Checker) ===\\n")
+    
+    # 1. 포아송 모델 적합
+    print("1. 포아송 모델 적합 중...")
+    poisson_result = fit_count_regression_statsmodels(
+        df, 'Poisson', feature_columns, label_column, max_iter, 1.0
+    )
+    poisson_results = poisson_result['results']
+    
+    # 2. Dispersion φ 계산
+    print("\\n2. Dispersion φ 계산 중...")
+    y = df[label_column].copy()
+    mask = ~(df[feature_columns].isnull().any(axis=1) | y.isnull())
+    y = y[mask]
+    mu = poisson_results.mu
+    pearson_resid = (y - mu) / np.sqrt(mu)
+    phi = np.sum(pearson_resid**2) / (len(y) - len(feature_columns) - 1)
+    
+    print(f"Dispersion φ = {phi:.6f}")
+    
+    # 3. 모델 추천
+    print("\\n3. 모델 추천:")
+    if phi < 1.2:
+        recommendation = "Poisson"
+        print(f"φ < 1.2 → Poisson 모델 추천")
+    elif 1.2 <= phi < 2:
+        recommendation = "QuasiPoisson"
+        print(f"1.2 ≤ φ < 2 → Quasi-Poisson 모델 추천")
+    else:
+        recommendation = "NegativeBinomial"
+        print(f"φ ≥ 2 → Negative Binomial 모델 추천")
+    
+    # 4. 포아송 vs 음이항 AIC 비교
+    print("\\n4. 포아송 vs 음이항 AIC 비교 (보조 기준):")
+    poisson_aic = poisson_result['metrics'].get('AIC', None)
+    print(f"Poisson AIC: {poisson_aic:.6f}" if poisson_aic else "Poisson AIC: N/A")
+    
+    print("음이항 모델 적합 중...")
+    nb_result = fit_count_regression_statsmodels(
+        df, 'NegativeBinomial', feature_columns, label_column, max_iter, 1.0
+    )
+    nb_aic = nb_result['metrics'].get('AIC', None)
+    print(f"Negative Binomial AIC: {nb_aic:.6f}" if nb_aic else "Negative Binomial AIC: N/A")
+    
+    aic_comparison = None
+    if poisson_aic is not None and nb_aic is not None:
+        if nb_aic < poisson_aic:
+            aic_comparison = "Negative Binomial이 더 낮은 AIC를 가짐 (더 나은 적합도)"
+        else:
+            aic_comparison = "Poisson이 더 낮은 AIC를 가짐 (더 나은 적합도)"
+        print(f"AIC 비교: {aic_comparison}")
+    
+    # 5. Cameron–Trivedi test
+    print("\\n5. Cameron–Trivedi test (최종 확인):")
+    # Cameron–Trivedi test: (y - mu)^2 - y를 종속변수로 하는 회귀
+    X = df[feature_columns].copy()
+    X = X[mask]
+    X = sm.add_constant(X, prepend=True)
+    
+    # 테스트 통계량 계산
+    test_stat = (y - mu)**2 - y
+    ct_model = sm.OLS(test_stat, X)
+    ct_results = ct_model.fit()
+    
+    # 상수항의 계수와 p-value 확인
+    const_coef = ct_results.params.get('const', ct_results.params.iloc[0] if len(ct_results.params) > 0 else 0)
+    const_pvalue = ct_results.pvalues.get('const', ct_results.pvalues.iloc[0] if len(ct_results.pvalues) > 0 else 1.0)
+    
+    print(f"Cameron–Trivedi test 통계량 (상수항 계수): {const_coef:.6f}")
+    print(f"Cameron–Trivedi test p-value: {const_pvalue:.6f}")
+    
+    if const_pvalue < 0.05:
+        ct_conclusion = "과대산포가 통계적으로 유의함 (p < 0.05)"
+        print(f"결론: {ct_conclusion}")
+    else:
+        ct_conclusion = "과대산포가 통계적으로 유의하지 않음 (p ≥ 0.05)"
+        print(f"결론: {ct_conclusion}")
+    
+    # 최종 추천
+    print("\\n=== 최종 추천 ===")
+    print(f"추천 모델: {recommendation}")
+    if aic_comparison:
+        print(f"AIC 비교: {aic_comparison}")
+    print(f"Cameron–Trivedi test: {ct_conclusion}")
+    
+    return {
+        'phi': phi,
+        'recommendation': recommendation,
+        'poisson_aic': poisson_aic,
+        'negative_binomial_aic': nb_aic,
+        'aic_comparison': aic_comparison,
+        'cameron_trivedi_coef': const_coef,
+        'cameron_trivedi_pvalue': const_pvalue,
+        'cameron_trivedi_conclusion': ct_conclusion,
+        'methods_used': [
+            '1. 포아송 모델 적합',
+            '2. Dispersion φ 계산',
+            '3. φ 기준 모델 추천',
+            '4. 포아송 vs 음이항 AIC 비교',
+            '5. Cameron–Trivedi test'
+        ],
+        'results': {
+            'phi': phi,
+            'phi_interpretation': f"φ = {phi:.6f}",
+            'recommendation': recommendation,
+            'poisson_aic': poisson_aic,
+            'negative_binomial_aic': nb_aic,
+            'cameron_trivedi_coef': const_coef,
+            'cameron_trivedi_pvalue': const_pvalue,
+            'cameron_trivedi_conclusion': ct_conclusion
+        }
+    }
+
+# Parameters from UI
+p_feature_columns = {feature_columns}
+p_label_column = {label_column}
+p_max_iter = {max_iter}
+
+# Execution
+result = dispersion_checker(dataframe, p_feature_columns, p_label_column, p_max_iter)
+print("\\n=== 분석 완료 ===")
+`,
 };
 
 export const getModuleCode = (module: CanvasModule | null): string => {
-    if (!module) {
-        return "# Select a module to view its Python code.";
-    }
-    const template = templates[module.type] || `# Code for ${module.name} is not available.`;
-    return replacePlaceholders(template.trim(), module.parameters);
+  if (!module) {
+    return "# Select a module to view its Python code.";
+  }
+  const template =
+    templates[module.type] || `# Code for ${module.name} is not available.`;
+  return replacePlaceholders(template.trim(), module.parameters);
 };

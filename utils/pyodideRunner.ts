@@ -1,6 +1,6 @@
 /**
  * Pyodide를 사용하여 브라우저에서 Python 코드를 실행하는 유틸리티
- * 
+ *
  * Pyodide는 WebAssembly를 통해 브라우저에서 직접 Python을 실행할 수 있게 해줍니다.
  * 별도의 백엔드 서버가 필요 없습니다.
  */
@@ -13,13 +13,17 @@ let loadStartTime: number = 0;
 /**
  * 타임아웃을 가진 Promise 래퍼
  */
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
-    return Promise.race([
-        promise,
-        new Promise<T>((_, reject) => 
-            setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
-        )
-    ]);
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+    ),
+  ]);
 }
 
 /**
@@ -27,111 +31,116 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: st
  * 타임아웃: 30초
  */
 export async function loadPyodide(timeoutMs: number = 30000): Promise<any> {
-    if (pyodide) {
-        return pyodide;
-    }
+  if (pyodide) {
+    return pyodide;
+  }
 
-    if (isLoading && loadPromise) {
-        return loadPromise;
-    }
-
-    isLoading = true;
-    loadStartTime = Date.now();
-    loadPromise = (async () => {
-        try {
-            // @ts-ignore - Pyodide는 전역에서 로드됩니다
-            const pyodideModule = await withTimeout(
-                loadPyodideModule(),
-                timeoutMs,
-                `Pyodide 로딩 타임아웃 (${timeoutMs / 1000}초 초과)`
-            );
-            pyodide = pyodideModule;
-            
-            // 필요한 패키지 설치 (타임아웃: 90초)
-            // imblearn은 scikit-learn에 포함되어 있지만 별도 설치가 필요할 수 있음
-            await withTimeout(
-                pyodide.loadPackage(['pandas', 'scikit-learn', 'numpy', 'scipy']),
-                90000,
-                '패키지 설치 타임아웃 (90초 초과)'
-            );
-            
-            isLoading = false;
-            loadStartTime = 0;
-            return pyodide;
-        } catch (error) {
-            isLoading = false;
-            loadPromise = null;
-            loadStartTime = 0;
-            throw error;
-        }
-    })();
-
+  if (isLoading && loadPromise) {
     return loadPromise;
+  }
+
+  isLoading = true;
+  loadStartTime = Date.now();
+  loadPromise = (async () => {
+    try {
+      // @ts-ignore - Pyodide는 전역에서 로드됩니다
+      const pyodideModule = await withTimeout(
+        loadPyodideModule(),
+        timeoutMs,
+        `Pyodide 로딩 타임아웃 (${timeoutMs / 1000}초 초과)`
+      );
+      pyodide = pyodideModule;
+
+      // 필요한 패키지 설치 (타임아웃: 90초)
+      // imblearn은 scikit-learn에 포함되어 있지만 별도 설치가 필요할 수 있음
+      await withTimeout(
+        pyodide.loadPackage(["pandas", "scikit-learn", "numpy", "scipy"]),
+        90000,
+        "패키지 설치 타임아웃 (90초 초과)"
+      );
+
+      isLoading = false;
+      loadStartTime = 0;
+      return pyodide;
+    } catch (error) {
+      isLoading = false;
+      loadPromise = null;
+      loadStartTime = 0;
+      throw error;
+    }
+  })();
+
+  return loadPromise;
 }
 
 /**
  * Pyodide 모듈을 동적으로 로드합니다
  */
 async function loadPyodideModule(): Promise<any> {
-    // Pyodide가 이미 로드되어 있는지 확인
-    if (typeof window !== 'undefined' && (window as any).loadPyodide) {
-        return (window as any).loadPyodide({
-            indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/'
-        });
-    }
+  // Pyodide가 이미 로드되어 있는지 확인
+  if (typeof window !== "undefined" && (window as any).loadPyodide) {
+    return (window as any).loadPyodide({
+      indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/",
+    });
+  }
 
-    // Pyodide가 아직 로드되지 않았다면 에러
-    throw new Error('Pyodide is not loaded. Please ensure pyodide.js is included in index.html');
+  // Pyodide가 아직 로드되지 않았다면 에러
+  throw new Error(
+    "Pyodide is not loaded. Please ensure pyodide.js is included in index.html"
+  );
 }
 
 /**
  * Python 코드를 실행하고 결과를 반환합니다
  */
 export async function runPython(code: string): Promise<any> {
-    const py = await loadPyodide();
-    
-    try {
-        const result = py.runPython(code);
-        return result;
-    } catch (error: any) {
-        throw new Error(`Python execution error: ${error.message}`);
-    }
+  const py = await loadPyodide();
+
+  try {
+    const result = py.runPython(code);
+    return result;
+  } catch (error: any) {
+    throw new Error(`Python execution error: ${error.message}`);
+  }
 }
 
 /**
  * Python 함수를 호출합니다
  */
-export async function callPythonFunction(functionName: string, ...args: any[]): Promise<any> {
-    const py = await loadPyodide();
-    
-    try {
-        const func = py.globals.get(functionName);
-        if (!func) {
-            throw new Error(`Function ${functionName} not found`);
-        }
-        
-        const result = func(...args);
-        return result;
-    } catch (error: any) {
-        throw new Error(`Python function call error: ${error.message}`);
+export async function callPythonFunction(
+  functionName: string,
+  ...args: any[]
+): Promise<any> {
+  const py = await loadPyodide();
+
+  try {
+    const func = py.globals.get(functionName);
+    if (!func) {
+      throw new Error(`Function ${functionName} not found`);
     }
+
+    const result = func(...args);
+    return result;
+  } catch (error: any) {
+    throw new Error(`Python function call error: ${error.message}`);
+  }
 }
 
 /**
  * 데이터를 Python 객체로 변환합니다
  */
 export function toPython(data: any): string {
-    return JSON.stringify(data);
+  return JSON.stringify(data);
 }
 
 /**
  * Python 객체를 JavaScript 객체로 변환합니다
  */
 export function fromPython(pythonObj: any): any {
-    if (pythonObj && typeof pythonObj.toJs === 'function') {
-        return pythonObj.toJs({ dict_converter: Object.fromEntries });
-    }
-    return pythonObj;
+  if (pythonObj && typeof pythonObj.toJs === "function") {
+    return pythonObj.toJs({ dict_converter: Object.fromEntries });
+  }
+  return pythonObj;
 }
 
 /**
@@ -139,45 +148,50 @@ export function fromPython(pythonObj: any): any {
  * 타임아웃: 60초
  */
 export async function splitDataPython(
-    data: any[],
-    trainSize: number,
-    randomState: number,
-    shuffle: boolean,
-    stratify: boolean,
-    stratifyColumn: string | null,
-    timeoutMs: number = 60000
-): Promise<{ trainIndices: number[], testIndices: number[] }> {
-    let py: any = null;
+  data: any[],
+  trainSize: number,
+  randomState: number,
+  shuffle: boolean,
+  stratify: boolean,
+  stratifyColumn: string | null,
+  timeoutMs: number = 60000
+): Promise<{ trainIndices: number[]; testIndices: number[] }> {
+  let py: any = null;
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
     try {
-        // Pyodide 로드 (타임아웃: 30초)
-        try {
-            py = await withTimeout(
-                loadPyodide(30000),
-                30000,
-                'Pyodide 로딩 타임아웃 (30초 초과)'
-            );
-        } catch (loadError: any) {
-            const loadErrorMessage = loadError.message || String(loadError);
-            if (loadErrorMessage.includes('Failed to fetch') || loadErrorMessage.includes('NetworkError')) {
-                throw new Error(`Pyodide CDN 로드 실패: 네트워크 연결을 확인하거나 인터넷 연결이 필요합니다. ${loadErrorMessage}`);
-            }
-            throw new Error(`Pyodide 로드 실패: ${loadErrorMessage}`);
-        }
-        
-        // 데이터를 Python에 전달
-        py.globals.set('js_data', data);
-        
-        // stratify_column을 Python 코드에 전달하기 위한 처리
-        // None이면 문자열 'None'으로, 아니면 문자열로 감싸서 전달
-        const stratifyColStr = stratifyColumn ? `'${stratifyColumn}'` : 'None';
-        
-        // JavaScript boolean을 Python boolean으로 변환
-        const shufflePython = shuffle ? 'True' : 'False';
-        const stratifyPython = stratify ? 'True' : 'False';
-        
-        // Python 코드 실행 (에러 처리 포함)
-        // 결과를 전역 변수에 저장한 후 가져오는 방식 사용
-        const code = `
+      py = await withTimeout(
+        loadPyodide(30000),
+        30000,
+        "Pyodide 로딩 타임아웃 (30초 초과)"
+      );
+    } catch (loadError: any) {
+      const loadErrorMessage = loadError.message || String(loadError);
+      if (
+        loadErrorMessage.includes("Failed to fetch") ||
+        loadErrorMessage.includes("NetworkError")
+      ) {
+        throw new Error(
+          `Pyodide CDN 로드 실패: 네트워크 연결을 확인하거나 인터넷 연결이 필요합니다. ${loadErrorMessage}`
+        );
+      }
+      throw new Error(`Pyodide 로드 실패: ${loadErrorMessage}`);
+    }
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+
+    // stratify_column을 Python 코드에 전달하기 위한 처리
+    // None이면 문자열 'None'으로, 아니면 문자열로 감싸서 전달
+    const stratifyColStr = stratifyColumn ? `'${stratifyColumn}'` : "None";
+
+    // JavaScript boolean을 Python boolean으로 변환
+    const shufflePython = shuffle ? "True" : "False";
+    const stratifyPython = stratify ? "True" : "False";
+
+    // Python 코드 실행 (에러 처리 포함)
+    // 결과를 전역 변수에 저장한 후 가져오는 방식 사용
+    const code = `
 import json
 import traceback
 import sys
@@ -234,100 +248,108 @@ except Exception as e:
     # 전역 변수에 저장
     js_result = error_result
 `;
-        
-        // Python 코드 실행
-        await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            `Python split_data 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
-        );
-        
-        // 전역 변수에서 결과 가져오기
-        const resultPyObj = py.globals.get('js_result');
-        
-        // 결과 객체 검증
-        if (!resultPyObj) {
-            throw new Error(`Python split_data error: Python code returned None or undefined.`);
-        }
-        
-        // Python 딕셔너리를 JavaScript 객체로 변환
-        const result = fromPython(resultPyObj);
-        
-        // 에러가 발생한 경우 처리
-        if (result && result.__error__) {
-            throw new Error(`Python split_data error:\n${result.error_traceback || result.error_message}`);
-        }
-        
-        // 결과 검증
-        if (!result.train_indices || !result.test_indices) {
-            throw new Error(`Python split_data error: Missing train_indices or test_indices in result.`);
-        }
-        
-        // 정리
-        py.globals.delete('js_data');
-        py.globals.delete('js_result');
-        // js_tuning_options는 Linear Regression에서만 사용되므로 존재할 때만 삭제
-        if (py.globals.has('js_tuning_options')) {
-            py.globals.delete('js_tuning_options');
-        }
-        
-        return {
-            trainIndices: result.train_indices,
-            testIndices: result.test_indices
-        };
-    } catch (error: any) {
-        // 정리
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_result');
-                // js_tuning_options는 Linear Regression에서만 사용되므로 존재할 때만 삭제
-                if (py.globals.has('js_tuning_options')) {
-                    py.globals.delete('js_tuning_options');
-                }
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python split_data error: ${errorMessage}`);
+
+    // Python 코드 실행
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      `Python split_data 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    // 전역 변수에서 결과 가져오기
+    const resultPyObj = py.globals.get("js_result");
+
+    // 결과 객체 검증
+    if (!resultPyObj) {
+      throw new Error(
+        `Python split_data error: Python code returned None or undefined.`
+      );
     }
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 에러가 발생한 경우 처리
+    if (result && result.__error__) {
+      throw new Error(
+        `Python split_data error:\n${
+          result.error_traceback || result.error_message
+        }`
+      );
+    }
+
+    // 결과 검증
+    if (!result.train_indices || !result.test_indices) {
+      throw new Error(
+        `Python split_data error: Missing train_indices or test_indices in result.`
+      );
+    }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_result");
+    // js_tuning_options는 Linear Regression에서만 사용되므로 존재할 때만 삭제
+    if (py.globals.has("js_tuning_options")) {
+      py.globals.delete("js_tuning_options");
+    }
+
+    return {
+      trainIndices: result.train_indices,
+      testIndices: result.test_indices,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_result");
+        // js_tuning_options는 Linear Regression에서만 사용되므로 존재할 때만 삭제
+        if (py.globals.has("js_tuning_options")) {
+          py.globals.delete("js_tuning_options");
+        }
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python split_data error: ${errorMessage}`);
+  }
 }
 
 export interface LinearRegressionTuningOptions {
-    enabled: boolean;
-    strategy?: 'GridSearch';
-    alphaCandidates?: number[];
-    l1RatioCandidates?: number[];
-    cvFolds?: number;
-    scoringMetric?: string;
+  enabled: boolean;
+  strategy?: "GridSearch";
+  alphaCandidates?: number[];
+  l1RatioCandidates?: number[];
+  cvFolds?: number;
+  scoringMetric?: string;
 }
 
 interface LinearRegressionTuningPayload {
-    enabled: boolean;
-    strategy?: 'grid';
-    bestParams?: Record<string, number>;
-    bestScore?: number;
-    scoringMetric?: string;
-    candidates?: { params: Record<string, number>; score: number }[];
+  enabled: boolean;
+  strategy?: "grid";
+  bestParams?: Record<string, number>;
+  bestScore?: number;
+  scoringMetric?: string;
+  candidates?: { params: Record<string, number>; score: number }[];
 }
 
 export interface LogisticRegressionTuningOptions {
-    enabled: boolean;
-    strategy?: 'GridSearch';
-    cCandidates?: number[];
-    l1RatioCandidates?: number[];
-    cvFolds?: number;
-    scoringMetric?: string;
+  enabled: boolean;
+  strategy?: "GridSearch";
+  cCandidates?: number[];
+  l1RatioCandidates?: number[];
+  cvFolds?: number;
+  scoringMetric?: string;
 }
 
 interface LogisticRegressionTuningPayload {
-    enabled: boolean;
-    strategy?: 'grid';
-    bestParams?: Record<string, number>;
-    bestScore?: number;
-    scoringMetric?: string;
-    candidates?: { params: Record<string, number>; score: number }[];
+  enabled: boolean;
+  strategy?: "grid";
+  bestParams?: Record<string, number>;
+  bestScore?: number;
+  scoringMetric?: string;
+  candidates?: { params: Record<string, number>; score: number }[];
 }
 
 /**
@@ -335,51 +357,59 @@ interface LogisticRegressionTuningPayload {
  * 타임아웃: 60초
  */
 export async function fitLinearRegressionPython(
-    X: number[][],
-    y: number[],
-    modelType: string = 'LinearRegression',
-    fitIntercept: boolean = true,
-    alpha: number = 1.0,
-    l1Ratio: number = 0.5,
-    featureColumns?: string[],
-    timeoutMs: number = 60000,
-    tuningOptions?: LinearRegressionTuningOptions
-): Promise<{ coefficients: number[], intercept: number, metrics: Record<string, number>, tuning?: LinearRegressionTuningPayload }> {
-    try {
-        // Pyodide 로드 (타임아웃: 30초)
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        // 데이터를 Python에 전달 (pandas DataFrame으로 변환하기 위해 전체 데이터 전달)
-        // 실제 Python 코드와 동일하게 pandas DataFrame 사용
-        const dataRows: any[] = [];
-        for (let i = 0; i < X.length; i++) {
-            const row: any = {};
-            if (featureColumns) {
-                featureColumns.forEach((col, idx) => {
-                    row[col] = X[i][idx];
-                });
-            } else {
-                // featureColumns가 없으면 x0, x1, ... 형태로 사용
-                X[i].forEach((val, idx) => {
-                    row[`x${idx}`] = val;
-                });
-            }
-            row['y'] = y[i];
-            dataRows.push(row);
-        }
-        
-        py.globals.set('js_data', dataRows);
-        py.globals.set('js_feature_columns', featureColumns || X[0].map((_, idx) => `x${idx}`));
-        py.globals.set('js_label_column', 'y');
-        py.globals.set('js_tuning_options', tuningOptions ? tuningOptions : null);
-        
-        // Python 코드 실행 (에러 처리 포함)
-        // 실제 Python 코드와 동일하게 pandas DataFrame 사용
-        const code = `
+  X: number[][],
+  y: number[],
+  modelType: string = "LinearRegression",
+  fitIntercept: boolean = true,
+  alpha: number = 1.0,
+  l1Ratio: number = 0.5,
+  featureColumns?: string[],
+  timeoutMs: number = 60000,
+  tuningOptions?: LinearRegressionTuningOptions
+): Promise<{
+  coefficients: number[];
+  intercept: number;
+  metrics: Record<string, number>;
+  tuning?: LinearRegressionTuningPayload;
+}> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달 (pandas DataFrame으로 변환하기 위해 전체 데이터 전달)
+    // 실제 Python 코드와 동일하게 pandas DataFrame 사용
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      if (featureColumns) {
+        featureColumns.forEach((col, idx) => {
+          row[col] = X[i][idx];
+        });
+      } else {
+        // featureColumns가 없으면 x0, x1, ... 형태로 사용
+        X[i].forEach((val, idx) => {
+          row[`x${idx}`] = val;
+        });
+      }
+      row["y"] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set(
+      "js_feature_columns",
+      featureColumns || X[0].map((_, idx) => `x${idx}`)
+    );
+    py.globals.set("js_label_column", "y");
+    py.globals.set("js_tuning_options", tuningOptions ? tuningOptions : null);
+
+    // Python 코드 실행 (에러 처리 포함)
+    // 실제 Python 코드와 동일하게 pandas DataFrame 사용
+    const code = `
 import json
 import numpy as np
 import pandas as pd
@@ -425,7 +455,7 @@ try:
     
     # 모델 생성 - LinearRegression 모듈에서 생성된 것과 동일
     model_type = '${modelType}'
-    p_fit_intercept = ${fitIntercept ? 'True' : 'False'}
+    p_fit_intercept = ${fitIntercept ? "True" : "False"}
     p_alpha = ${alpha}
     p_l1_ratio = ${l1Ratio}
     
@@ -550,22 +580,22 @@ except Exception as e:
     # 전역 변수에 저장
     js_result = error_result
 `;
-        
-        // Python 코드 실행
-        await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python LinearRegression 실행 타임아웃 (60초 초과)'
-        );
-        
-        // 전역 변수에서 결과 가져오기
-        const resultPyObj = py.globals.get('js_result');
-        
-        // 결과 객체 검증
-        if (!resultPyObj) {
-            // 디버깅을 위해 Python 상태 확인
-            try {
-                const debugInfo = py.runPython(`
+
+    // Python 코드 실행
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python LinearRegression 실행 타임아웃 (60초 초과)"
+    );
+
+    // 전역 변수에서 결과 가져오기
+    const resultPyObj = py.globals.get("js_result");
+
+    // 결과 객체 검증
+    if (!resultPyObj) {
+      // 디버깅을 위해 Python 상태 확인
+      try {
+        const debugInfo = py.runPython(`
 import sys
 debug_info = {
     'last_type': str(type(sys.last_value)) if hasattr(sys, 'last_value') and sys.last_value else None,
@@ -573,72 +603,101 @@ debug_info = {
 }
 debug_info
 `);
-                const debug = fromPython(debugInfo);
-                throw new Error(`Python LinearRegression error: Python code returned None or undefined. Debug info: ${JSON.stringify(debug)}`);
-            } catch (debugError) {
-                throw new Error(`Python LinearRegression error: Python code returned None or undefined. Check Python code execution.`);
-            }
-        }
-        
-        // Python 딕셔너리를 JavaScript 객체로 변환
-        const result = fromPython(resultPyObj);
-        
-        // 결과 검증
-        if (!result || typeof result !== 'object') {
-            throw new Error(`Python LinearRegression error: Invalid result returned from Python code. Got: ${typeof result}, value: ${JSON.stringify(result)}`);
-        }
-        
-        // 에러가 발생한 경우 처리
-        if (result.__error__) {
-            throw new Error(`Python LinearRegression error:\n${result.error_traceback || result.error_message || 'Unknown error'}`);
-        }
-        
-        // 필수 속성 검증
-        if (!result.coefficients || !Array.isArray(result.coefficients)) {
-            throw new Error(`Python LinearRegression error: Missing or invalid 'coefficients' in result. Got: ${JSON.stringify(result)}`);
-        }
-        if (typeof result.intercept !== 'number' && result.intercept !== null && result.intercept !== undefined) {
-            throw new Error(`Python LinearRegression error: Missing or invalid 'intercept' in result. Got: ${typeof result.intercept}`);
-        }
-        if (!result.metrics || typeof result.metrics !== 'object') {
-            throw new Error(`Python LinearRegression error: Missing or invalid 'metrics' in result. Got: ${typeof result.metrics}`);
-        }
-        
-        // 정리
-        py.globals.delete('js_data');
-        py.globals.delete('js_feature_columns');
-        py.globals.delete('js_label_column');
-        py.globals.delete('js_result');
-        
-        return {
-            coefficients: result.coefficients,
-            intercept: result.intercept ?? 0.0,
-            metrics: result.metrics,
-            tuning: result.tuning
-        };
-    } catch (error: any) {
-        // 정리
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_feature_columns');
-                py.globals.delete('js_label_column');
-                py.globals.delete('js_result');
-            }
-        } catch {}
-        
-        // 에러 메시지 추출
-        let errorMessage = error.message || String(error);
-        
-        // Pyodide PythonError의 경우 더 자세한 정보 추출 시도
-        if (error.name === 'PythonError' || error.toString().includes('Traceback')) {
-            try {
-                const py = pyodide;
-                if (py) {
-                    try {
-                        // Python의 sys.last_value에서 에러 정보 가져오기
-                        const lastError = py.runPython(`
+        const debug = fromPython(debugInfo);
+        throw new Error(
+          `Python LinearRegression error: Python code returned None or undefined. Debug info: ${JSON.stringify(
+            debug
+          )}`
+        );
+      } catch (debugError) {
+        throw new Error(
+          `Python LinearRegression error: Python code returned None or undefined. Check Python code execution.`
+        );
+      }
+    }
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 결과 검증
+    if (!result || typeof result !== "object") {
+      throw new Error(
+        `Python LinearRegression error: Invalid result returned from Python code. Got: ${typeof result}, value: ${JSON.stringify(
+          result
+        )}`
+      );
+    }
+
+    // 에러가 발생한 경우 처리
+    if (result.__error__) {
+      throw new Error(
+        `Python LinearRegression error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    // 필수 속성 검증
+    if (!result.coefficients || !Array.isArray(result.coefficients)) {
+      throw new Error(
+        `Python LinearRegression error: Missing or invalid 'coefficients' in result. Got: ${JSON.stringify(
+          result
+        )}`
+      );
+    }
+    if (
+      typeof result.intercept !== "number" &&
+      result.intercept !== null &&
+      result.intercept !== undefined
+    ) {
+      throw new Error(
+        `Python LinearRegression error: Missing or invalid 'intercept' in result. Got: ${typeof result.intercept}`
+      );
+    }
+    if (!result.metrics || typeof result.metrics !== "object") {
+      throw new Error(
+        `Python LinearRegression error: Missing or invalid 'metrics' in result. Got: ${typeof result.metrics}`
+      );
+    }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_result");
+
+    return {
+      coefficients: result.coefficients,
+      intercept: result.intercept ?? 0.0,
+      metrics: result.metrics,
+      tuning: result.tuning,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    // 에러 메시지 추출
+    let errorMessage = error.message || String(error);
+
+    // Pyodide PythonError의 경우 더 자세한 정보 추출 시도
+    if (
+      error.name === "PythonError" ||
+      error.toString().includes("Traceback")
+    ) {
+      try {
+        const py = pyodide;
+        if (py) {
+          try {
+            // Python의 sys.last_value에서 에러 정보 가져오기
+            const lastError = py.runPython(`
 import sys
 import traceback
 if hasattr(sys, 'last_value') and sys.last_value is not None:
@@ -647,24 +706,24 @@ if hasattr(sys, 'last_value') and sys.last_value is not None:
 else:
     ''
 `);
-                        if (lastError && String(lastError).trim()) {
-                            errorMessage = String(lastError);
-                        }
-                    } catch (tracebackError) {
-                        // traceback 추출 실패 시 원본 에러 사용
-                    }
-                }
-            } catch (e) {
-                // 에러 정보 추출 실패 시 원본 메시지 사용
+            if (lastError && String(lastError).trim()) {
+              errorMessage = String(lastError);
             }
+          } catch (tracebackError) {
+            // traceback 추출 실패 시 원본 에러 사용
+          }
         }
-        
-        // 전체 에러 메시지 포함
-        const fullError = errorMessage.includes('Traceback') 
-            ? errorMessage 
-            : `${error.toString()}\n${errorMessage}`;
-        throw new Error(`Python LinearRegression error:\n${fullError}`);
+      } catch (e) {
+        // 에러 정보 추출 실패 시 원본 메시지 사용
+      }
     }
+
+    // 전체 에러 메시지 포함
+    const fullError = errorMessage.includes("Traceback")
+      ? errorMessage
+      : `${error.toString()}\n${errorMessage}`;
+    throw new Error(`Python LinearRegression error:\n${fullError}`);
+  }
 }
 
 /**
@@ -672,48 +731,56 @@ else:
  * 타임아웃: 60초
  */
 export async function fitLogisticRegressionPython(
-    X: number[][],
-    y: number[],
-    penalty: string = 'l2',
-    C: number = 1.0,
-    solver: string = 'lbfgs',
-    maxIter: number = 100,
-    featureColumns?: string[],
-    timeoutMs: number = 60000,
-    tuningOptions?: LogisticRegressionTuningOptions
-): Promise<{ coefficients: number[][], intercept: number[], metrics: Record<string, number>, tuning?: LogisticRegressionTuningPayload }> {
-    try {
-        // Pyodide 로드 (타임아웃: 30초)
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        // 데이터를 Python에 전달
-        const dataRows: any[] = [];
-        for (let i = 0; i < X.length; i++) {
-            const row: any = {};
-            if (featureColumns) {
-                featureColumns.forEach((col, idx) => {
-                    row[col] = X[i][idx];
-                });
-            } else {
-                X[i].forEach((val, idx) => {
-                    row[`x${idx}`] = val;
-                });
-            }
-            row['y'] = y[i];
-            dataRows.push(row);
-        }
-        
-        py.globals.set('js_data', dataRows);
-        py.globals.set('js_feature_columns', featureColumns || X[0].map((_, idx) => `x${idx}`));
-        py.globals.set('js_label_column', 'y');
-        py.globals.set('js_tuning_options', tuningOptions ? tuningOptions : null);
-        
-        // Python 코드 실행
-        const code = `
+  X: number[][],
+  y: number[],
+  penalty: string = "l2",
+  C: number = 1.0,
+  solver: string = "lbfgs",
+  maxIter: number = 100,
+  featureColumns?: string[],
+  timeoutMs: number = 60000,
+  tuningOptions?: LogisticRegressionTuningOptions
+): Promise<{
+  coefficients: number[][];
+  intercept: number[];
+  metrics: Record<string, number>;
+  tuning?: LogisticRegressionTuningPayload;
+}> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      if (featureColumns) {
+        featureColumns.forEach((col, idx) => {
+          row[col] = X[i][idx];
+        });
+      } else {
+        X[i].forEach((val, idx) => {
+          row[`x${idx}`] = val;
+        });
+      }
+      row["y"] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set(
+      "js_feature_columns",
+      featureColumns || X[0].map((_, idx) => `x${idx}`)
+    );
+    py.globals.set("js_label_column", "y");
+    py.globals.set("js_tuning_options", tuningOptions ? tuningOptions : null);
+
+    // Python 코드 실행
+    const code = `
 import json
 import numpy as np
 import pandas as pd
@@ -901,74 +968,996 @@ except Exception as e:
     # 전역 변수에 저장
     js_result = error_result
 `;
-        
-        // Python 코드 실행
-        await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python LogisticRegression 실행 타임아웃 (60초 초과)'
-        );
-        
-        // 전역 변수에서 결과 가져오기
-        const resultPyObj = py.globals.get('js_result');
-        
-        // 결과 객체 검증
-        if (!resultPyObj) {
-            throw new Error(`Python LogisticRegression error: Python code returned None or undefined.`);
+
+    // Python 코드 실행
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python LogisticRegression 실행 타임아웃 (60초 초과)"
+    );
+
+    // 전역 변수에서 결과 가져오기
+    const resultPyObj = py.globals.get("js_result");
+
+    // 결과 객체 검증
+    if (!resultPyObj) {
+      throw new Error(
+        `Python LogisticRegression error: Python code returned None or undefined.`
+      );
+    }
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 에러가 발생한 경우 처리
+    if (result.__error__) {
+      throw new Error(
+        `Python LogisticRegression error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    // 필수 속성 검증
+    if (!result.coefficients || !Array.isArray(result.coefficients)) {
+      throw new Error(
+        `Python LogisticRegression error: Missing or invalid 'coefficients' in result.`
+      );
+    }
+    if (!result.intercept || !Array.isArray(result.intercept)) {
+      throw new Error(
+        `Python LogisticRegression error: Missing or invalid 'intercept' in result.`
+      );
+    }
+    if (!result.metrics || typeof result.metrics !== "object") {
+      throw new Error(
+        `Python LogisticRegression error: Missing or invalid 'metrics' in result.`
+      );
+    }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_result");
+    if (py.globals.has("js_tuning_options")) {
+      py.globals.delete("js_tuning_options");
+    }
+
+    return {
+      coefficients: result.coefficients,
+      intercept: result.intercept,
+      metrics: result.metrics,
+      tuning: result.tuning,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_result");
+        if (py.globals.has("js_tuning_options")) {
+          py.globals.delete("js_tuning_options");
         }
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python LogisticRegression error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * Count Regression (Poisson, Negative Binomial, Quasi-Poisson)을 statsmodels로 실행합니다
+ * 타임아웃: 60초
+ */
+export async function fitCountRegressionStatsmodels(
+  X: number[][],
+  y: number[],
+  distributionType: string,
+  featureColumns: string[],
+  maxIter: number = 100,
+  disp: number = 1.0,
+  timeoutMs: number = 60000
+): Promise<{
+  coefficients: Record<string, number>;
+  intercept: number;
+  metrics: Record<string, number>;
+  summary: {
+    coefficients: Record<
+      string,
+      {
+        coef: number;
+        "std err": number;
+        z: number;
+        "P>|z|": number;
+        "[0.025": number;
+        "0.975]": number;
+      }
+    >;
+    metrics: Record<string, number | string>;
+  };
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // statsmodels 패키지 로드
+    await withTimeout(
+      py.loadPackage(["statsmodels"]),
+      60000,
+      "statsmodels 패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    py.globals.set("js_X", X);
+    py.globals.set("js_y", y);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_distribution_type", distributionType);
+    py.globals.set("js_max_iter", maxIter);
+    py.globals.set("js_disp", disp);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+import sys
+sys.path.append('/')
+from data_analysis_modules import fit_count_regression_statsmodels
+
+# 데이터 준비
+X_array = js_X.to_py()
+y_array = js_y.to_py()
+feature_columns = js_feature_columns.to_py()
+distribution_type = js_distribution_type.to_py()
+max_iter = int(js_max_iter)
+disp = float(js_disp)
+
+# DataFrame 생성
+df = pd.DataFrame(X_array, columns=feature_columns)
+df['label'] = y_array
+
+# 모델 피팅
+result = fit_count_regression_statsmodels(
+    df=df,
+    distribution_type=distribution_type,
+    feature_columns=feature_columns,
+    label_column='label',
+    max_iter=max_iter,
+    disp=disp
+)
+
+# 결과 추출
+results_obj = result['results']
+coefficients_dict = result['coefficients']
+metrics_dict = result['metrics']
+
+# 계수와 절편 추출
+intercept = coefficients_dict.get('const', {}).get('coef', 0.0)
+feature_coefficients = {}
+for col in feature_columns:
+    if col in coefficients_dict:
+        feature_coefficients[col] = coefficients_dict[col]['coef']
+
+# 통계량 준비
+summary_coefficients = {}
+for param_name, param_data in coefficients_dict.items():
+    summary_coefficients[param_name] = {
+        'coef': float(param_data['coef']),
+        'std err': float(param_data['std err']),
+        'z': float(param_data['z']),
+        'P>|z|': float(param_data['P>|z|']),
+        '[0.025': float(param_data['[0.025']),
+        '0.975]': float(param_data['0.975]'])
+    }
+
+# 메트릭 준비 (None 값 제거)
+summary_metrics = {}
+for key, value in metrics_dict.items():
+    if value is not None:
+        if isinstance(value, (int, float)):
+            summary_metrics[key] = float(value)
+        else:
+            summary_metrics[key] = str(value)
+
+# 반환값 구성
+result_dict = {
+    'coefficients': feature_coefficients,
+    'intercept': float(intercept),
+    'metrics': summary_metrics,
+    'summary': {
+        'coefficients': summary_coefficients,
+        'metrics': summary_metrics
+    }
+}
+
+json.dumps(result_dict)
+`;
+
+    const resultJson = await withTimeout(
+      py.runPython(code),
+      timeoutMs,
+      `Count Regression 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    const result = JSON.parse(resultJson);
+
+    return {
+      coefficients: result.coefficients,
+      intercept: result.intercept,
+      metrics: result.metrics,
+      summary: result.summary,
+    };
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(
+      `Python Count Regression (statsmodels) error:\n${errorMessage}`
+    );
+  }
+}
+
+/**
+ * Statsmodels를 사용하여 통계 모델을 실행합니다
+ * 타임아웃: 120초
+ */
+export async function runStatsModel(
+  X: number[][],
+  y: number[],
+  modelType: string,
+  featureColumns: string[],
+  timeoutMs: number = 120000
+): Promise<{
+  summary: {
+    coefficients: Record<
+      string,
+      {
+        coef: number;
+        "std err": number;
+        t?: number;
+        z?: number;
+        "P>|t|"?: number;
+        "P>|z|"?: number;
+        "[0.025": number;
+        "0.975]": number;
+      }
+    >;
+    metrics: Record<string, string | number>;
+  };
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // statsmodels 패키지 로드
+    await withTimeout(
+      py.loadPackage(["statsmodels"]),
+      60000,
+      "statsmodels 패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    py.globals.set("js_X", X);
+    py.globals.set("js_y", y);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_model_type", modelType);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+# fit_count_regression_statsmodels 함수 정의
+def fit_count_regression_statsmodels(df, distribution_type, feature_columns, label_column, max_iter=100, disp=1.0):
+    print(f"{distribution_type} 회귀 모델 피팅 중...")
+    
+    X = df[feature_columns].copy()
+    y = df[label_column].copy()
+    
+    # 결측치 제거
+    mask = ~(X.isnull().any(axis=1) | y.isnull())
+    X = X[mask]
+    y = y[mask]
+    
+    if len(X) == 0:
+        raise ValueError("유효한 데이터가 없습니다. 결측치를 확인하세요.")
+    
+    X = sm.add_constant(X, prepend=True)
+    
+    try:
+        if distribution_type == 'Poisson':
+            model = sm.Poisson(y, X)
+            results = model.fit(maxiter=max_iter)
+        elif distribution_type == 'NegativeBinomial':
+            model = sm.NegativeBinomial(y, X, loglike_method='nb2')
+            results = model.fit(maxiter=max_iter, disp=disp)
+        elif distribution_type == 'QuasiPoisson':
+            model = sm.GLM(y, X, family=sm.families.Poisson())
+            results = model.fit(maxiter=max_iter)
+            mu = results.mu
+            pearson_resid = (y - mu) / np.sqrt(mu)
+            phi = np.sum(pearson_resid**2) / (len(y) - len(feature_columns) - 1)
+            results.scale = phi
+        else:
+            raise ValueError(f"지원하지 않는 분포 타입: {distribution_type}")
         
-        // Python 딕셔너리를 JavaScript 객체로 변환
-        const result = fromPython(resultPyObj);
+        summary_text = str(results.summary())
+        print(f"\\n--- {distribution_type} 회귀 모델 결과 ---")
+        print(summary_text)
         
-        // 에러가 발생한 경우 처리
-        if (result.__error__) {
-            throw new Error(`Python LogisticRegression error:\n${result.error_traceback || result.error_message || 'Unknown error'}`);
-        }
+        metrics = {}
+        metrics['Log Likelihood'] = results.llf if hasattr(results, 'llf') else None
+        metrics['AIC'] = results.aic if hasattr(results, 'aic') else None
+        metrics['BIC'] = results.bic if hasattr(results, 'bic') else None
+        metrics['Deviance'] = results.deviance if hasattr(results, 'deviance') else None
+        metrics['Pearson chi2'] = results.pearson_chi2 if hasattr(results, 'pearson_chi2') else None
         
-        // 필수 속성 검증
-        if (!result.coefficients || !Array.isArray(result.coefficients)) {
-            throw new Error(`Python LogisticRegression error: Missing or invalid 'coefficients' in result.`);
-        }
-        if (!result.intercept || !Array.isArray(result.intercept)) {
-            throw new Error(`Python LogisticRegression error: Missing or invalid 'intercept' in result.`);
-        }
-        if (!result.metrics || typeof result.metrics !== 'object') {
-            throw new Error(`Python LogisticRegression error: Missing or invalid 'metrics' in result.`);
-        }
+        if distribution_type == 'NegativeBinomial':
+            if hasattr(model, 'alpha'):
+                metrics['Dispersion (alpha)'] = model.alpha
+            elif hasattr(results, 'alpha'):
+                metrics['Dispersion (alpha)'] = results.alpha
         
-        // 정리
-        py.globals.delete('js_data');
-        py.globals.delete('js_feature_columns');
-        py.globals.delete('js_label_column');
-        py.globals.delete('js_result');
-        if (py.globals.has('js_tuning_options')) {
-            py.globals.delete('js_tuning_options');
-        }
+        if distribution_type == 'QuasiPoisson':
+            if hasattr(results, 'scale'):
+                metrics['Dispersion (phi)'] = results.scale
+        
+        coefficients = {}
+        if hasattr(results, 'params'):
+            params = results.params
+            if hasattr(params, 'to_dict'):
+                params_dict = params.to_dict()
+            else:
+                params_dict = {}
+                for i, name in enumerate(results.model.exog_names):
+                    if hasattr(params, 'iloc'):
+                        val = params.iloc[i]
+                    elif hasattr(params, '__getitem__'):
+                        val = params[i]
+                    else:
+                        val = params.values[i] if hasattr(params, 'values') else 0.0
+                    # 값이 메서드가 아닌지 확인하고 실제 값을 가져옴
+                    if callable(val) and not isinstance(val, (int, float, np.number)):
+                        try:
+                            val = val() if hasattr(val, '__call__') else 0.0
+                        except:
+                            val = 0.0
+                    params_dict[name] = val
+            
+            if hasattr(results, 'bse'):
+                bse = results.bse
+                if hasattr(bse, 'to_dict'):
+                    bse_dict = bse.to_dict()
+                else:
+                    bse_dict = {}
+                    for i, name in enumerate(results.model.exog_names):
+                        if hasattr(bse, 'iloc'):
+                            val = bse.iloc[i]
+                        elif hasattr(bse, '__getitem__'):
+                            val = bse[i]
+                        else:
+                            val = bse.values[i] if hasattr(bse, 'values') else 0.0
+                        # 값이 메서드가 아닌지 확인하고 실제 값을 가져옴
+                        if callable(val) and not isinstance(val, (int, float, np.number)):
+                            try:
+                                val = val() if hasattr(val, '__call__') else 0.0
+                            except:
+                                val = 0.0
+                        bse_dict[name] = val
+            else:
+                bse_dict = {name: 0.0 for name in params_dict.keys()}
+            
+            if hasattr(results, 'tvalues'):
+                tvalues = results.tvalues
+            elif hasattr(results, 'zvalues'):
+                tvalues = results.zvalues
+            else:
+                tvalues = None
+            
+            if hasattr(results, 'pvalues'):
+                pvalues = results.pvalues
+            else:
+                pvalues = None
+            
+            conf_int = None
+            if hasattr(results, 'conf_int'):
+                conf_int = results.conf_int()
+            
+            # float 변환을 안전하게 처리하는 헬퍼 함수
+            def safe_float(value, default=0.0):
+                if value is None:
+                    return default
+                # callable이지만 숫자 타입이 아닌 경우 (메서드 객체)
+                if callable(value) and not isinstance(value, (int, float, np.number)):
+                    try:
+                        value = value()
+                    except:
+                        return default
+                try:
+                    return float(value)
+                except (TypeError, ValueError):
+                    return default
+            
+            for param_name in params_dict.keys():
+                coef_value = params_dict[param_name]
+                std_err = bse_dict.get(param_name, 0.0)
+                z_value = tvalues[param_name] if tvalues is not None and param_name in tvalues.index else 0.0
+                p_value = pvalues[param_name] if pvalues is not None and param_name in pvalues.index else 1.0
+                
+                conf_lower = conf_int.loc[param_name, 0] if conf_int is not None and param_name in conf_int.index else 0.0
+                conf_upper = conf_int.loc[param_name, 1] if conf_int is not None and param_name in conf_int.index else 0.0
+                
+                coefficients[param_name] = {
+                    'coef': safe_float(coef_value),
+                    'std err': safe_float(std_err),
+                    'z': safe_float(z_value),
+                    'P>|z|': safe_float(p_value),
+                    '[0.025': safe_float(conf_lower),
+                    '0.975]': safe_float(conf_upper)
+                }
         
         return {
-            coefficients: result.coefficients,
-            intercept: result.intercept,
-            metrics: result.metrics,
-            tuning: result.tuning
-        };
-    } catch (error: any) {
-        // 정리
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_feature_columns');
-                py.globals.delete('js_label_column');
-                py.globals.delete('js_result');
-                if (py.globals.has('js_tuning_options')) {
-                    py.globals.delete('js_tuning_options');
-                }
-            }
-        } catch {}
+            'results': results,
+            'summary_text': summary_text,
+            'metrics': metrics,
+            'coefficients': coefficients,
+            'distribution_type': distribution_type
+        }
         
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python LogisticRegression error:\n${errorMessage}`);
+    except Exception as e:
+        print(f"모델 피팅 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+# run_stats_model 함수 정의
+def run_stats_model(df, model_type, feature_columns, label_column):
+    # Count regression 모델의 경우 fit_count_regression_statsmodels 사용
+    if model_type in ['Poisson', 'NegativeBinomial', 'QuasiPoisson']:
+        max_iter = 100
+        disp = 1.0
+        model_results = fit_count_regression_statsmodels(
+            df, model_type, feature_columns, label_column, max_iter, disp
+        )
+        
+        print("\\n=== 모델 통계량 ===")
+        for key, value in model_results['metrics'].items():
+            if value is not None:
+                print(f"{key}: {value:.6f}")
+        
+        print("\\n=== 계수 정보 ===")
+        for param_name, coef_info in model_results['coefficients'].items():
+            print(f"{param_name}:")
+            print(f"  계수: {coef_info['coef']:.6f}")
+            print(f"  표준 오차: {coef_info['std err']:.6f}")
+            print(f"  z-통계량: {coef_info['z']:.6f}")
+            print(f"  p-value: {coef_info['P>|z|']:.6f}")
+            print(f"  신뢰구간: [{coef_info['[0.025']:.6f}, {coef_info['0.975]']:.6f}]")
+        
+        return model_results['results']
+    
+    # 다른 모델의 경우 기존 방식 사용
+    print(f"{model_type} 모델 피팅 중...")
+    
+    X = df[feature_columns]
+    y = df[label_column]
+    X = sm.add_constant(X, prepend=True)
+    
+    if model_type == 'OLS':
+        model = sm.OLS(y, X)
+    elif model_type == 'Logistic':
+        model = sm.Logit(y, X)
+    elif model_type == 'Gamma':
+        model = sm.GLM(y, X, family=sm.families.Gamma())
+    elif model_type == 'Tweedie':
+        model = sm.GLM(y, X, family=sm.families.Tweedie(var_power=1.5))
+    else:
+        print(f"오류: 알 수 없는 모델 타입 '{model_type}'")
+        return None
+    
+    try:
+        results = model.fit()
+        print(f"\\n--- {model_type} 모델 결과 ---")
+        print(results.summary())
+        return results
+    except Exception as e:
+        print(f"모델 피팅 중 오류 발생: {e}")
+        return None
+
+# 데이터 준비
+X_array = js_X.to_py()
+y_array = js_y.to_py()
+feature_columns = js_feature_columns.to_py()
+model_type = str(js_model_type)  # 이미 문자열이므로 to_py() 불필요
+
+# DataFrame 생성
+df = pd.DataFrame(X_array, columns=feature_columns)
+df['label'] = y_array
+
+# 모델 피팅
+results_obj = run_stats_model(
+    df=df,
+    model_type=model_type,
+    feature_columns=feature_columns,
+    label_column='label'
+)
+
+if results_obj is None:
+    raise ValueError("모델 피팅 실패")
+
+# 결과 추출
+summary_text = str(results_obj.summary())
+
+# 계수 정보 추출
+coefficients_dict = {}
+if hasattr(results_obj, 'params'):
+    params = results_obj.params
+    bse = results_obj.bse if hasattr(results_obj, 'bse') else None
+    tvalues = results_obj.tvalues if hasattr(results_obj, 'tvalues') else None
+    zvalues = results_obj.zvalues if hasattr(results_obj, 'zvalues') else None
+    pvalues = results_obj.pvalues if hasattr(results_obj, 'pvalues') else None
+    conf_int = results_obj.conf_int() if hasattr(results_obj, 'conf_int') else None
+    
+    # float 변환을 안전하게 처리하는 헬퍼 함수
+    def safe_float(value, default=0.0):
+        if value is None:
+            return default
+        # callable이지만 숫자 타입이 아닌 경우 (메서드 객체)
+        if callable(value) and not isinstance(value, (int, float, np.number)):
+            try:
+                value = value()
+            except:
+                return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+    
+    for param_name in params.index:
+        coef_val = params[param_name]
+        coef_value = safe_float(coef_val)
+        std_err_val = bse[param_name] if bse is not None else 0.0
+        std_err = safe_float(std_err_val)
+        z_val = zvalues[param_name] if zvalues is not None else (tvalues[param_name] if tvalues is not None else 0.0)
+        z_value = safe_float(z_val)
+        p_val = pvalues[param_name] if pvalues is not None else 1.0
+        p_value = safe_float(p_val)
+        conf_lower_val = conf_int.loc[param_name, 0] if conf_int is not None else 0.0
+        conf_lower = safe_float(conf_lower_val)
+        conf_upper_val = conf_int.loc[param_name, 1] if conf_int is not None else 0.0
+        conf_upper = safe_float(conf_upper_val)
+        
+        coefficients_dict[param_name] = {
+            'coef': coef_value,
+            'std err': std_err,
+            'z': z_value,
+            't': z_value,
+            'P>|z|': p_value,
+            'P>|t|': p_value,
+            '[0.025': conf_lower,
+            '0.975]': conf_upper
+        }
+
+# 메트릭 추출
+metrics_dict = {}
+if hasattr(results_obj, 'llf'):
+    llf_val = results_obj.llf
+    metrics_dict['Log-Likelihood'] = safe_float(llf_val)
+if hasattr(results_obj, 'aic'):
+    aic_val = results_obj.aic
+    metrics_dict['AIC'] = safe_float(aic_val)
+if hasattr(results_obj, 'bic'):
+    bic_val = results_obj.bic
+    metrics_dict['BIC'] = safe_float(bic_val)
+if hasattr(results_obj, 'rsquared'):
+    rsq_val = results_obj.rsquared
+    metrics_dict['R-squared'] = safe_float(rsq_val)
+if hasattr(results_obj, 'rsquared_adj'):
+    rsq_adj_val = results_obj.rsquared_adj
+    metrics_dict['Adj. R-squared'] = safe_float(rsq_adj_val)
+if hasattr(results_obj, 'fvalue'):
+    fval = results_obj.fvalue
+    metrics_dict['F-statistic'] = safe_float(fval)
+if hasattr(results_obj, 'f_pvalue'):
+    fpval = results_obj.f_pvalue
+    metrics_dict['Prob (F-statistic)'] = safe_float(fpval)
+if hasattr(results_obj, 'llnull'):
+    llnull_val = results_obj.llnull
+    metrics_dict['LL-Null'] = safe_float(llnull_val)
+if hasattr(results_obj, 'llr'):
+    llr_val = results_obj.llr
+    metrics_dict['LLR'] = safe_float(llr_val)
+if hasattr(results_obj, 'llr_pvalue'):
+    llr_pval = results_obj.llr_pvalue
+    metrics_dict['LLR p-value'] = safe_float(llr_pval)
+if hasattr(results_obj, 'pseudo_rsquared'):
+    pseudo_rsq = results_obj.pseudo_rsquared
+    metrics_dict['Pseudo R-squ.'] = safe_float(pseudo_rsq)
+
+# 반환값 구성
+result_dict = {
+    'summary': {
+        'coefficients': coefficients_dict,
+        'metrics': metrics_dict
     }
+}
+
+json.dumps(result_dict)
+`;
+
+    const resultJson = await withTimeout(
+      py.runPython(code),
+      timeoutMs,
+      `Stats Model 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    const result = JSON.parse(resultJson);
+
+    return {
+      summary: result.summary,
+    };
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python Stats Model (statsmodels) error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * DiversionChecker를 Python으로 실행합니다
+ * 타임아웃: 120초
+ */
+export async function runDiversionChecker(
+  X: number[][],
+  y: number[],
+  featureColumns: string[],
+  labelColumn: string,
+  maxIter: number = 100,
+  timeoutMs: number = 120000
+): Promise<{
+  phi: number;
+  recommendation: "Poisson" | "QuasiPoisson" | "NegativeBinomial";
+  poissonAic: number | null;
+  negativeBinomialAic: number | null;
+  aicComparison: string | null;
+  cameronTrivediCoef: number;
+  cameronTrivediPvalue: number;
+  cameronTrivediConclusion: string;
+  methodsUsed: string[];
+  results: {
+    phi: number;
+    phiInterpretation: string;
+    recommendation: string;
+    poissonAic: number | null;
+    negativeBinomialAic: number | null;
+    cameronTrivediCoef: number;
+    cameronTrivediPvalue: number;
+    cameronTrivediConclusion: string;
+  };
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // statsmodels 패키지 로드
+    await withTimeout(
+      py.loadPackage(["statsmodels"]),
+      60000,
+      "statsmodels 패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      featureColumns.forEach((col, idx) => {
+        row[col] = X[i][idx];
+      });
+      row[labelColumn] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_max_iter", maxIter);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+# fit_count_regression_statsmodels 함수 정의
+def fit_count_regression_statsmodels(df, distribution_type, feature_columns, label_column, max_iter=100, disp=1.0):
+    print(f"{distribution_type} 회귀 모델 피팅 중...")
+    
+    X = df[feature_columns].copy()
+    y = df[label_column].copy()
+    
+    # 결측치 제거
+    mask = ~(X.isnull().any(axis=1) | y.isnull())
+    X = X[mask]
+    y = y[mask]
+    
+    if len(X) == 0:
+        raise ValueError("유효한 데이터가 없습니다. 결측치를 확인하세요.")
+    
+    X = sm.add_constant(X, prepend=True)
+    
+    try:
+        if distribution_type == 'Poisson':
+            model = sm.Poisson(y, X)
+            results = model.fit(maxiter=max_iter)
+        elif distribution_type == 'NegativeBinomial':
+            model = sm.NegativeBinomial(y, X, loglike_method='nb2')
+            results = model.fit(maxiter=max_iter, disp=disp)
+        elif distribution_type == 'QuasiPoisson':
+            model = sm.GLM(y, X, family=sm.families.Poisson())
+            results = model.fit(maxiter=max_iter)
+            mu = results.mu
+            pearson_resid = (y - mu) / np.sqrt(mu)
+            phi = np.sum(pearson_resid**2) / (len(y) - len(feature_columns) - 1)
+            results.scale = phi
+        else:
+            raise ValueError(f"지원하지 않는 분포 타입: {distribution_type}")
+        
+        summary_text = str(results.summary())
+        print(f"\\n--- {distribution_type} 회귀 모델 결과 ---")
+        print(summary_text)
+        
+        metrics = {}
+        metrics['Log Likelihood'] = results.llf if hasattr(results, 'llf') else None
+        metrics['AIC'] = results.aic if hasattr(results, 'aic') else None
+        metrics['BIC'] = results.bic if hasattr(results, 'bic') else None
+        metrics['Deviance'] = results.deviance if hasattr(results, 'deviance') else None
+        metrics['Pearson chi2'] = results.pearson_chi2 if hasattr(results, 'pearson_chi2') else None
+        
+        if distribution_type == 'NegativeBinomial':
+            if hasattr(model, 'alpha'):
+                metrics['Dispersion (alpha)'] = model.alpha
+            elif hasattr(results, 'alpha'):
+                metrics['Dispersion (alpha)'] = results.alpha
+        
+        if distribution_type == 'QuasiPoisson':
+            if hasattr(results, 'scale'):
+                metrics['Dispersion (phi)'] = results.scale
+        
+        coefficients = {}
+        if hasattr(results, 'params'):
+            params = results.params
+            if hasattr(params, 'to_dict'):
+                params_dict = params.to_dict()
+            else:
+                params_dict = {name: params.iloc[i] if hasattr(params, 'iloc') else params[i] 
+                               for i, name in enumerate(results.model.exog_names)}
+            
+            if hasattr(results, 'bse'):
+                bse = results.bse
+                if hasattr(bse, 'to_dict'):
+                    bse_dict = bse.to_dict()
+                else:
+                    bse_dict = {name: bse.iloc[i] if hasattr(bse, 'iloc') else bse[i] 
+                               for i, name in enumerate(results.model.exog_names)}
+            else:
+                bse_dict = {name: 0.0 for name in params_dict.keys()}
+            
+            if hasattr(results, 'tvalues'):
+                tvalues = results.tvalues
+            elif hasattr(results, 'zvalues'):
+                tvalues = results.zvalues
+            else:
+                tvalues = None
+            
+            if hasattr(results, 'pvalues'):
+                pvalues = results.pvalues
+            else:
+                pvalues = None
+            
+            conf_int = None
+            if hasattr(results, 'conf_int'):
+                conf_int = results.conf_int()
+            
+            for param_name in params_dict.keys():
+                coef_value = params_dict[param_name]
+                std_err = bse_dict.get(param_name, 0.0)
+                z_value = tvalues[param_name] if tvalues is not None and param_name in tvalues.index else 0.0
+                p_value = pvalues[param_name] if pvalues is not None and param_name in pvalues.index else 1.0
+                
+                conf_lower = conf_int.loc[param_name, 0] if conf_int is not None and param_name in conf_int.index else 0.0
+                conf_upper = conf_int.loc[param_name, 1] if conf_int is not None and param_name in conf_int.index else 0.0
+                
+                coefficients[param_name] = {
+                    'coef': float(coef_value),
+                    'std err': float(std_err),
+                    'z': float(z_value),
+                    'P>|z|': float(p_value),
+                    '[0.025': float(conf_lower),
+                    '0.975]': float(conf_upper)
+                }
+        
+        return {
+            'results': results,
+            'summary_text': summary_text,
+            'metrics': metrics,
+            'coefficients': coefficients,
+            'distribution_type': distribution_type
+        }
+        
+    except Exception as e:
+        print(f"모델 피팅 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+def dispersion_checker(df, feature_columns, label_column, max_iter=100):
+    print("=== 과대산포 검사 (Diversion Checker) ===\\n")
+    
+    # 1. 포아송 모델 적합
+    print("1. 포아송 모델 적합 중...")
+    poisson_result = fit_count_regression_statsmodels(
+        df, 'Poisson', feature_columns, label_column, max_iter, 1.0
+    )
+    poisson_results = poisson_result['results']
+    
+    # 2. Dispersion φ 계산
+    print("\\n2. Dispersion φ 계산 중...")
+    y = df[label_column].copy()
+    mask = ~(df[feature_columns].isnull().any(axis=1) | y.isnull())
+    y = y[mask]
+    # PoissonResults에서 mu는 fittedvalues 속성을 사용
+    if hasattr(poisson_results, 'fittedvalues'):
+        mu = poisson_results.fittedvalues
+    elif hasattr(poisson_results, 'mu'):
+        mu = poisson_results.mu
+    else:
+        # 예측값을 사용
+        X = df[feature_columns].copy()
+        X = X[mask]
+        X = sm.add_constant(X, prepend=True)
+        mu = poisson_results.predict(X)
+    pearson_resid = (y - mu) / np.sqrt(mu)
+    phi = np.sum(pearson_resid**2) / (len(y) - len(feature_columns) - 1)
+    
+    print(f"Dispersion φ = {phi:.6f}")
+    
+    # 3. 모델 추천
+    print("\\n3. 모델 추천:")
+    if phi < 1.2:
+        recommendation = "Poisson"
+        print(f"φ < 1.2 → Poisson 모델 추천")
+    elif 1.2 <= phi < 2:
+        recommendation = "QuasiPoisson"
+        print(f"1.2 ≤ φ < 2 → Quasi-Poisson 모델 추천")
+    else:
+        recommendation = "NegativeBinomial"
+        print(f"φ ≥ 2 → Negative Binomial 모델 추천")
+    
+    # 4. 포아송 vs 음이항 AIC 비교
+    print("\\n4. 포아송 vs 음이항 AIC 비교 (보조 기준):")
+    poisson_aic = poisson_result['metrics'].get('AIC', None)
+    print(f"Poisson AIC: {poisson_aic:.6f}" if poisson_aic else "Poisson AIC: N/A")
+    
+    print("음이항 모델 적합 중...")
+    nb_result = fit_count_regression_statsmodels(
+        df, 'NegativeBinomial', feature_columns, label_column, max_iter, 1.0
+    )
+    nb_aic = nb_result['metrics'].get('AIC', None)
+    print(f"Negative Binomial AIC: {nb_aic:.6f}" if nb_aic else "Negative Binomial AIC: N/A")
+    
+    aic_comparison = None
+    if poisson_aic is not None and nb_aic is not None:
+        if nb_aic < poisson_aic:
+            aic_comparison = "Negative Binomial이 더 낮은 AIC를 가짐 (더 나은 적합도)"
+        else:
+            aic_comparison = "Poisson이 더 낮은 AIC를 가짐 (더 나은 적합도)"
+        print(f"AIC 비교: {aic_comparison}")
+    
+    # 5. Cameron–Trivedi test
+    print("\\n5. Cameron–Trivedi test (최종 확인):")
+    # mu는 이미 위에서 계산됨
+    X_test = df[feature_columns].copy()
+    X_test = X_test[mask]
+    X_test = sm.add_constant(X_test, prepend=True)
+    
+    test_stat = (y - mu)**2 - y
+    ct_model = sm.OLS(test_stat, X_test)
+    ct_results = ct_model.fit()
+    
+    const_coef = ct_results.params.get('const', ct_results.params.iloc[0] if len(ct_results.params) > 0 else 0)
+    const_pvalue = ct_results.pvalues.get('const', ct_results.pvalues.iloc[0] if len(ct_results.pvalues) > 0 else 1.0)
+    
+    print(f"Cameron–Trivedi test 통계량 (상수항 계수): {const_coef:.6f}")
+    print(f"Cameron–Trivedi test p-value: {const_pvalue:.6f}")
+    
+    if const_pvalue < 0.05:
+        ct_conclusion = "과대산포가 통계적으로 유의함 (p < 0.05)"
+        print(f"결론: {ct_conclusion}")
+    else:
+        ct_conclusion = "과대산포가 통계적으로 유의하지 않음 (p ≥ 0.05)"
+        print(f"결론: {ct_conclusion}")
+    
+    # 최종 추천
+    print("\\n=== 최종 추천 ===")
+    print(f"추천 모델: {recommendation}")
+    if aic_comparison:
+        print(f"AIC 비교: {aic_comparison}")
+    print(f"Cameron–Trivedi test: {ct_conclusion}")
+    
+    return {
+        'phi': float(phi),
+        'recommendation': recommendation,
+        'poisson_aic': float(poisson_aic) if poisson_aic is not None else None,
+        'negative_binomial_aic': float(nb_aic) if nb_aic is not None else None,
+        'aic_comparison': aic_comparison,
+        'cameron_trivedi_coef': float(const_coef),
+        'cameron_trivedi_pvalue': float(const_pvalue),
+        'cameron_trivedi_conclusion': ct_conclusion,
+        'methods_used': [
+            '1. 포아송 모델 적합',
+            '2. Dispersion φ 계산',
+            '3. φ 기준 모델 추천',
+            '4. 포아송 vs 음이항 AIC 비교',
+            '5. Cameron–Trivedi test'
+        ],
+        'results': {
+            'phi': float(phi),
+            'phi_interpretation': f"φ = {phi:.6f}",
+            'recommendation': recommendation,
+            'poisson_aic': float(poisson_aic) if poisson_aic is not None else None,
+            'negative_binomial_aic': float(nb_aic) if nb_aic is not None else None,
+            'cameron_trivedi_coef': float(const_coef),
+            'cameron_trivedi_pvalue': float(const_pvalue),
+            'cameron_trivedi_conclusion': ct_conclusion
+        }
+    }
+
+# 데이터 준비
+dataframe = pd.DataFrame(js_data.to_py())
+p_feature_columns = js_feature_columns.to_py()
+p_label_column = str(js_label_column)
+p_max_iter = int(js_max_iter)
+
+# Execution
+result = dispersion_checker(dataframe, p_feature_columns, p_label_column, p_max_iter)
+print("\\n=== 분석 완료 ===")
+
+json.dumps(result)
+`;
+
+    const resultJson = await withTimeout(
+      py.runPython(code),
+      timeoutMs,
+      `DiversionChecker 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    const result = JSON.parse(resultJson);
+
+    return {
+      phi: result.phi,
+      recommendation: result.recommendation,
+      poissonAic: result.poisson_aic,
+      negativeBinomialAic: result.negative_binomial_aic,
+      aicComparison: result.aic_comparison,
+      cameronTrivediCoef: result.cameron_trivedi_coef,
+      cameronTrivediPvalue: result.cameron_trivedi_pvalue,
+      cameronTrivediConclusion: result.cameron_trivedi_conclusion,
+      methodsUsed: result.methods_used,
+      results: result.results,
+    };
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python DiversionChecker error:\n${errorMessage}`);
+  }
 }
 
 /**
@@ -976,24 +1965,27 @@ except Exception as e:
  * 타임아웃: 60초
  */
 export async function calculateStatisticsPython(
-    data: any[],
-    columns: Array<{ name: string, type: string }>,
-    timeoutMs: number = 60000
-): Promise<{ stats: Record<string, any>, correlation: Record<string, Record<string, number>> }> {
-    try {
-        // Pyodide 로드 (타임아웃: 30초)
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        // 데이터를 Python에 전달
-        py.globals.set('js_data', data);
-        py.globals.set('js_columns', columns);
-        
-        // Python 코드 실행
-        const code = `
+  data: any[],
+  columns: Array<{ name: string; type: string }>,
+  timeoutMs: number = 60000
+): Promise<{
+  stats: Record<string, any>;
+  correlation: Record<string, Record<string, number>>;
+}> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+    py.globals.set("js_columns", columns);
+
+    // Python 코드 실행
+    const code = `
 import json
 import pandas as pd
 import numpy as np
@@ -1065,37 +2057,37 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python Statistics 실행 타임아웃 (60초 초과)'
-        );
-        
-        // Python 딕셔너리를 JavaScript 객체로 변환
-        const result = fromPython(resultPyObj);
-        
-        // 정리
-        py.globals.delete('js_data');
-        py.globals.delete('js_columns');
-        
-        return {
-            stats: result.stats,
-            correlation: result.correlation
-        };
-    } catch (error: any) {
-        // 정리
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_columns');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python Statistics error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python Statistics 실행 타임아웃 (60초 초과)"
+    );
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_columns");
+
+    return {
+      stats: result.stats,
+      correlation: result.correlation,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_columns");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python Statistics error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1103,32 +2095,32 @@ result
  * 타임아웃: 60초
  */
 export async function scoreModelPython(
-    data: any[],
-    featureColumns: string[],
-    coefficients: Record<string, number>,
-    intercept: number,
-    labelColumn: string,
-    modelPurpose: 'classification' | 'regression',
-    timeoutMs: number = 60000
-): Promise<{ rows: any[], columns: Array<{ name: string, type: string }> }> {
-    try {
-        // Pyodide 로드 (타임아웃: 30초)
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        // 데이터를 Python에 전달
-        py.globals.set('js_data', data);
-        py.globals.set('js_feature_columns', featureColumns);
-        py.globals.set('js_coefficients', coefficients);
-        py.globals.set('js_intercept', intercept);
-        py.globals.set('js_label_column', labelColumn);
-        py.globals.set('js_model_purpose', modelPurpose);
-        
-        // Python 코드 실행
-        const code = `
+  data: any[],
+  featureColumns: string[],
+  coefficients: Record<string, number>,
+  intercept: number,
+  labelColumn: string,
+  modelPurpose: "classification" | "regression",
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_coefficients", coefficients);
+    py.globals.set("js_intercept", intercept);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_model_purpose", modelPurpose);
+
+    // Python 코드 실행
+    const code = `
 import json
 import pandas as pd
 import numpy as np
@@ -1175,45 +2167,45 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python ScoreModel 실행 타임아웃 (60초 초과)'
-        );
-        
-        // Python 딕셔너리를 JavaScript 객체로 변환
-        const result = fromPython(resultPyObj);
-        
-        // 정리
-        py.globals.delete('js_data');
-        py.globals.delete('js_feature_columns');
-        py.globals.delete('js_coefficients');
-        py.globals.delete('js_intercept');
-        py.globals.delete('js_label_column');
-        py.globals.delete('js_model_purpose');
-        
-        return {
-            rows: result.rows,
-            columns: result.columns
-        };
-    } catch (error: any) {
-        // 정리
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_feature_columns');
-                py.globals.delete('js_coefficients');
-                py.globals.delete('js_intercept');
-                py.globals.delete('js_label_column');
-                py.globals.delete('js_model_purpose');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python ScoreModel error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python ScoreModel 실행 타임아웃 (60초 초과)"
+    );
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_coefficients");
+    py.globals.delete("js_intercept");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_model_purpose");
+
+    return {
+      rows: result.rows,
+      columns: result.columns,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_coefficients");
+        py.globals.delete("js_intercept");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_model_purpose");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python ScoreModel error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1221,32 +2213,46 @@ result
  * 타임아웃: 60초
  */
 export async function evaluateModelPython(
-    data: any[],
-    labelColumn: string,
-    predictionColumn: string,
-    modelType: 'classification' | 'regression',
-    threshold: number = 0.5,
-    timeoutMs: number = 60000,
-    calculateThresholdMetrics: boolean = false // 여러 threshold에 대한 precision/recall 계산 여부
-): Promise<Record<string, number | string> & { thresholdMetrics?: Array<{threshold: number, accuracy: number, precision: number, recall: number, f1Score: number, tp: number, fp: number, tn: number, fn: number}> }> {
-    try {
-        // Pyodide 로드 (타임아웃: 30초)
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        // 데이터를 Python에 전달
-        py.globals.set('js_data', data);
-        py.globals.set('js_label_column', labelColumn);
-        py.globals.set('js_prediction_column', predictionColumn);
-        py.globals.set('js_model_type', modelType);
-        py.globals.set('js_threshold', threshold);
-        py.globals.set('js_calculate_threshold_metrics', calculateThresholdMetrics);
-        
-        // Python 코드 실행
-        const code = `
+  data: any[],
+  labelColumn: string,
+  predictionColumn: string,
+  modelType: "classification" | "regression",
+  threshold: number = 0.5,
+  timeoutMs: number = 60000,
+  calculateThresholdMetrics: boolean = false // 여러 threshold에 대한 precision/recall 계산 여부
+): Promise<
+  Record<string, number | string> & {
+    thresholdMetrics?: Array<{
+      threshold: number;
+      accuracy: number;
+      precision: number;
+      recall: number;
+      f1Score: number;
+      tp: number;
+      fp: number;
+      tn: number;
+      fn: number;
+    }>;
+  }
+> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_prediction_column", predictionColumn);
+    py.globals.set("js_model_type", modelType);
+    py.globals.set("js_threshold", threshold);
+    py.globals.set("js_calculate_threshold_metrics", calculateThresholdMetrics);
+
+    // Python 코드 실행
+    const code = `
 import json
 import pandas as pd
 import numpy as np
@@ -1356,52 +2362,445 @@ else:
 
 metrics
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python EvaluateModel 실행 타임아웃 (60초 초과)'
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python EvaluateModel 실행 타임아웃 (60초 초과)"
+    );
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const metrics = fromPython(resultPyObj);
+
+    // threshold_metrics가 있으면 파싱
+    let thresholdMetrics:
+      | Array<{
+          threshold: number;
+          accuracy: number;
+          precision: number;
+          recall: number;
+          f1Score: number;
+          tp: number;
+          fp: number;
+          tn: number;
+          fn: number;
+        }>
+      | undefined = undefined;
+    if (metrics["_threshold_metrics_json"]) {
+      try {
+        thresholdMetrics = JSON.parse(
+          metrics["_threshold_metrics_json"] as string
         );
-        
-        // Python 딕셔너리를 JavaScript 객체로 변환
-        const metrics = fromPython(resultPyObj);
-        
-        // threshold_metrics가 있으면 파싱
-        let thresholdMetrics: Array<{threshold: number, accuracy: number, precision: number, recall: number, f1Score: number, tp: number, fp: number, tn: number, fn: number}> | undefined = undefined;
-        if (metrics['_threshold_metrics_json']) {
-            try {
-                thresholdMetrics = JSON.parse(metrics['_threshold_metrics_json'] as string);
-                delete metrics['_threshold_metrics_json'];
-            } catch (e) {
-                // 파싱 실패 시 무시
-            }
-        }
-        
-        // 정리
-        py.globals.delete('js_data');
-        py.globals.delete('js_label_column');
-        py.globals.delete('js_prediction_column');
-        py.globals.delete('js_model_type');
-        py.globals.delete('js_threshold');
-        py.globals.delete('js_calculate_threshold_metrics');
-        
-        return { ...metrics, thresholdMetrics };
-    } catch (error: any) {
-        // 정리
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_label_column');
-                py.globals.delete('js_prediction_column');
-                py.globals.delete('js_model_type');
-                py.globals.delete('js_threshold');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python EvaluateModel error: ${errorMessage}`);
+        delete metrics["_threshold_metrics_json"];
+      } catch (e) {
+        // 파싱 실패 시 무시
+      }
     }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_prediction_column");
+    py.globals.delete("js_model_type");
+    py.globals.delete("js_threshold");
+    py.globals.delete("js_calculate_threshold_metrics");
+
+    return { ...metrics, thresholdMetrics };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_prediction_column");
+        py.globals.delete("js_model_type");
+        py.globals.delete("js_threshold");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python EvaluateModel error: ${errorMessage}`);
+  }
+}
+
+/**
+ * PredictModel을 Python으로 실행합니다 (statsmodels 모델 예측)
+ * 타임아웃: 120초
+ */
+export async function predictWithStatsmodel(
+  data: any[],
+  featureColumns: string[],
+  coefficients: Record<string, { coef: number }>,
+  modelType: string,
+  timeoutMs: number = 120000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // statsmodels 패키지 로드
+    await withTimeout(
+      py.loadPackage(["statsmodels"]),
+      60000,
+      "statsmodels 패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_coefficients", coefficients);
+    py.globals.set("js_model_type", modelType);
+
+    // Python 코드 실행
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+
+# 데이터 준비
+df = pd.DataFrame(js_data.to_py())
+feature_columns = js_feature_columns.to_py()
+coefficients_dict = js_coefficients.to_py()
+model_type = str(js_model_type)
+
+# 특성 컬럼만 선택
+X = df[feature_columns].copy()
+
+# 상수항 추가 (모델 피팅 시와 동일한 방식)
+X = sm.add_constant(X, prepend=True, has_constant='add')
+
+# 계수 정보를 사용하여 모델 재구성
+# statsmodels의 predict를 정확히 재현하기 위해 모델을 다시 피팅하는 대신
+# 선형 예측자를 직접 계산하고 link function을 적용
+
+# 계수 딕셔너리에서 실제 키 이름 확인 (statsmodels가 생성한 이름 사용)
+# 상수항 이름 확인 ('const' 또는 다른 이름)
+const_name = None
+for key in coefficients_dict.keys():
+    if key.lower() in ['const', 'intercept']:
+        const_name = key
+        break
+if const_name is None:
+    # 첫 번째 키가 상수항일 가능성이 높음
+    const_name = list(coefficients_dict.keys())[0] if coefficients_dict else 'const'
+
+# exog_names 생성: 상수항 + feature_columns (계수 딕셔너리의 키 순서 사용)
+# 하지만 feature_columns 순서를 우선하고, 계수 딕셔너리에 있는 것만 사용
+exog_names = [const_name] + feature_columns
+
+# 계수 배열 생성 (exog_names 순서에 맞춰)
+coef_array = []
+for name in exog_names:
+    if name in coefficients_dict:
+        coef_value = coefficients_dict[name].get('coef', 0.0) if isinstance(coefficients_dict[name], dict) else coefficients_dict[name]
+        coef_array.append(float(coef_value))
+    else:
+        coef_array.append(0.0)
+coef_array = np.array(coef_array)
+
+# X를 exog_names 순서에 맞춰 정렬
+X_aligned = X.reindex(columns=exog_names).fillna(0)
+
+# 선형 예측자 계산
+linear_predictor = np.dot(X_aligned.values, coef_array)
+
+# 모델 타입에 따라 link function 적용
+if model_type == 'OLS':
+    predictions = linear_predictor
+elif model_type == 'Logistic' or model_type == 'Logit':
+    # Logit: exp(x) / (1 + exp(x))
+    predictions = 1.0 / (1.0 + np.exp(-linear_predictor))
+elif model_type in ['Poisson', 'NegativeBinomial', 'QuasiPoisson']:
+    # Count regression: exp(x)
+    predictions = np.exp(linear_predictor)
+elif model_type == 'Gamma':
+    # Gamma GLM: exp(x) (log link)
+    predictions = np.exp(linear_predictor)
+elif model_type == 'Tweedie':
+    # Tweedie GLM: exp(x) (log link)
+    predictions = np.exp(linear_predictor)
+else:
+    # 기본값: 선형 예측자
+    predictions = linear_predictor
+
+# 결과 데이터프레임 생성
+result_df = df.copy()
+result_df['Predict'] = predictions
+
+# 정수 예측값 컬럼 추가 (Logistic, Poisson, NegativeBinomial, QuasiPoisson 모델)
+if model_type in ['Logistic', 'Logit', 'Poisson', 'NegativeBinomial', 'QuasiPoisson']:
+    # 가장 가까운 정수로 반올림
+    predictions_int = np.round(predictions).astype(int)
+    # 음수는 0으로 제한 (count 모델의 경우)
+    if model_type in ['Poisson', 'NegativeBinomial', 'QuasiPoisson']:
+        predictions_int = np.maximum(predictions_int, 0)
+    # Logistic의 경우 0 또는 1로 제한
+    elif model_type in ['Logistic', 'Logit']:
+        predictions_int = np.clip(predictions_int, 0, 1)
+    result_df['y_Pred'] = predictions_int
+
+# 결과를 딕셔너리 리스트로 변환
+result_rows = result_df.to_dict('records')
+result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(result_df[col]) else 'string'} for col in result_df.columns]
+
+result = {
+    'rows': result_rows,
+    'columns': result_columns
+}
+
+result
+`;
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python PredictModel 실행 타임아웃 (120초 초과)"
+    );
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_coefficients");
+    py.globals.delete("js_model_type");
+
+    return result;
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python PredictModel error: ${errorMessage}`);
+  }
+}
+
+/**
+ * EvaluateStats를 Python으로 실행합니다 (GLM 통계량 평가)
+ * 타임아웃: 120초
+ */
+export async function evaluateStatsPython(
+  data: any[],
+  labelColumn: string,
+  predictionColumn: string,
+  modelType: string,
+  timeoutMs: number = 120000
+): Promise<{
+  metrics: Record<string, number | string>;
+  residuals?: number[];
+  deviance?: number;
+  pearsonChi2?: number;
+  dispersion?: number;
+  aic?: number;
+  bic?: number;
+  logLikelihood?: number;
+}> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // statsmodels 패키지 로드
+    await withTimeout(
+      py.loadPackage(["statsmodels", "scipy"]),
+      60000,
+      "statsmodels 패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_prediction_column", predictionColumn);
+    py.globals.set("js_model_type", modelType);
+
+    // Python 코드 실행
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from scipy import stats
+
+# 데이터 준비
+df = pd.DataFrame(js_data.to_py())
+label_column = str(js_label_column)
+prediction_column = str(js_prediction_column)
+model_type = str(js_model_type)
+
+# 실제값과 예측값 추출
+y_true = df[label_column].values
+y_pred = df[prediction_column].values
+
+# 기본 메트릭 계산
+metrics = {}
+residuals = None
+deviance = None
+pearson_chi2 = None
+dispersion = None
+aic = None
+bic = None
+log_likelihood = None
+
+# 잔차 계산
+residuals = (y_true - y_pred).tolist()
+
+# 기본 회귀 메트릭
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+mse = float(mean_squared_error(y_true, y_pred))
+rmse = float(np.sqrt(mse))
+mae = float(mean_absolute_error(y_true, y_pred))
+r2 = float(r2_score(y_true, y_pred))
+
+metrics['Mean Squared Error (MSE)'] = mse
+metrics['Root Mean Squared Error (RMSE)'] = rmse
+metrics['Mean Absolute Error (MAE)'] = mae
+metrics['R-squared'] = r2
+
+# 모델 타입에 따른 추가 통계량
+if model_type in ['Poisson', 'NegativeBinomial', 'QuasiPoisson']:
+    # Count regression 모델 통계량
+    # Deviance 계산
+    if model_type == 'Poisson':
+        # Poisson deviance: 2 * sum(y * log(y/mu) - (y - mu))
+        mu = np.maximum(y_pred, 1e-10)  # 0 방지
+        deviance_val = 2 * np.sum(y_true * np.log(np.maximum(y_true, 1e-10) / mu) - (y_true - mu))
+        deviance = float(deviance_val)
+        
+        # Pearson chi2
+        pearson_resid = (y_true - mu) / np.sqrt(mu)
+        pearson_chi2_val = np.sum(pearson_resid ** 2)
+        pearson_chi2 = float(pearson_chi2_val)
+        
+        # Dispersion (phi)
+        n = len(y_true)
+        p = 1  # 간단히 1로 가정 (실제로는 모델의 파라미터 수)
+        dispersion_val = pearson_chi2_val / (n - p) if (n - p) > 0 else 1.0
+        dispersion = float(dispersion_val)
+        
+        # Log-likelihood (Poisson)
+        log_likelihood_val = np.sum(stats.poisson.logpmf(y_true, mu))
+        log_likelihood = float(log_likelihood_val)
+        
+        # AIC, BIC (근사치)
+        aic = float(-2 * log_likelihood_val + 2 * p)
+        bic = float(-2 * log_likelihood_val + np.log(n) * p)
+        
+    elif model_type in ['NegativeBinomial', 'QuasiPoisson']:
+        # Negative Binomial / Quasi-Poisson 통계량
+        mu = np.maximum(y_pred, 1e-10)
+        deviance_val = 2 * np.sum(y_true * np.log(np.maximum(y_true, 1e-10) / mu) - (y_true - mu))
+        deviance = float(deviance_val)
+        
+        pearson_resid = (y_true - mu) / np.sqrt(mu)
+        pearson_chi2_val = np.sum(pearson_resid ** 2)
+        pearson_chi2 = float(pearson_chi2_val)
+        
+        n = len(y_true)
+        p = 1
+        dispersion_val = pearson_chi2_val / (n - p) if (n - p) > 0 else 1.0
+        dispersion = float(dispersion_val)
+
+elif model_type in ['Logistic', 'Logit']:
+    # Logistic regression 통계량
+    # Deviance (binomial deviance)
+    y_pred_clipped = np.clip(y_pred, 1e-10, 1 - 1e-10)
+    y_true_clipped = np.clip(y_true, 1e-10, 1 - 1e-10)
+    deviance_val = -2 * np.sum(y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped))
+    deviance = float(deviance_val)
+    
+    # Pearson chi2
+    pearson_resid = (y_true - y_pred) / np.sqrt(y_pred * (1 - y_pred) + 1e-10)
+    pearson_chi2_val = np.sum(pearson_resid ** 2)
+    pearson_chi2 = float(pearson_chi2_val)
+    
+    # Log-likelihood
+    log_likelihood_val = np.sum(y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped))
+    log_likelihood = float(log_likelihood_val)
+    
+    n = len(y_true)
+    p = 1
+    aic = float(-2 * log_likelihood_val + 2 * p)
+    bic = float(-2 * log_likelihood_val + np.log(n) * p)
+
+elif model_type == 'OLS':
+    # OLS 통계량
+    # Deviance (residual sum of squares)
+    deviance_val = np.sum((y_true - y_pred) ** 2)
+    deviance = float(deviance_val)
+    
+    # Log-likelihood (normal distribution)
+    n = len(y_true)
+    sigma2 = deviance_val / n if n > 0 else 1.0
+    log_likelihood_val = -0.5 * n * (np.log(2 * np.pi * sigma2) + 1)
+    log_likelihood = float(log_likelihood_val)
+    
+    p = 1
+    aic = float(-2 * log_likelihood_val + 2 * p)
+    bic = float(-2 * log_likelihood_val + np.log(n) * p)
+
+# 메트릭에 추가
+if deviance is not None:
+    metrics['Deviance'] = deviance
+if pearson_chi2 is not None:
+    metrics['Pearson chi2'] = pearson_chi2
+if dispersion is not None:
+    metrics['Dispersion (phi)'] = dispersion
+if aic is not None:
+    metrics['AIC'] = aic
+if bic is not None:
+    metrics['BIC'] = bic
+if log_likelihood is not None:
+    metrics['Log-Likelihood'] = log_likelihood
+
+# 잔차 통계량
+if residuals is not None:
+    residuals_array = np.array(residuals)
+    metrics['Mean Residual'] = float(np.mean(residuals_array))
+    metrics['Std Residual'] = float(np.std(residuals_array))
+    metrics['Min Residual'] = float(np.min(residuals_array))
+    metrics['Max Residual'] = float(np.max(residuals_array))
+
+result = {
+    'metrics': metrics,
+    'residuals': residuals,
+    'deviance': deviance,
+    'pearsonChi2': pearson_chi2,
+    'dispersion': dispersion,
+    'aic': aic,
+    'bic': bic,
+    'logLikelihood': log_likelihood
+}
+
+result
+`;
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python EvaluateStats 실행 타임아웃 (120초 초과)"
+    );
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_prediction_column");
+    py.globals.delete("js_model_type");
+
+    return result;
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python EvaluateStats error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1409,27 +2808,27 @@ metrics
  * 타임아웃: 60초
  */
 export async function handleMissingValuesPython(
-    data: any[],
-    method: string,
-    strategy: string,
-    columns: string[] | null,
-    n_neighbors: number,
-    timeoutMs: number = 60000
+  data: any[],
+  method: string,
+  strategy: string,
+  columns: string[] | null,
+  n_neighbors: number,
+  timeoutMs: number = 60000
 ): Promise<{ imputation_values: Record<string, number | string> }> {
-    try {
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        py.globals.set('js_data', data);
-        py.globals.set('js_method', method);
-        py.globals.set('js_strategy', strategy);
-        py.globals.set('js_columns', columns);
-        py.globals.set('js_n_neighbors', n_neighbors);
-        
-        const code = `
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_method", method);
+    py.globals.set("js_strategy", strategy);
+    py.globals.set("js_columns", columns);
+    py.globals.set("js_n_neighbors", n_neighbors);
+
+    const code = `
 import pandas as pd
 import numpy as np
 from sklearn.impute import KNNImputer
@@ -1477,37 +2876,37 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python HandleMissingValues 실행 타임아웃 (60초 초과)'
-        );
-        
-        const result = fromPython(resultPyObj);
-        
-        py.globals.delete('js_data');
-        py.globals.delete('js_method');
-        py.globals.delete('js_strategy');
-        py.globals.delete('js_columns');
-        py.globals.delete('js_n_neighbors');
-        
-        return result;
-    } catch (error: any) {
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_method');
-                py.globals.delete('js_strategy');
-                py.globals.delete('js_columns');
-                py.globals.delete('js_n_neighbors');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python HandleMissingValues error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python HandleMissingValues 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_method");
+    py.globals.delete("js_strategy");
+    py.globals.delete("js_columns");
+    py.globals.delete("js_n_neighbors");
+
+    return result;
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_method");
+        py.globals.delete("js_strategy");
+        py.globals.delete("js_columns");
+        py.globals.delete("js_n_neighbors");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python HandleMissingValues error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1515,23 +2914,35 @@ result
  * 타임아웃: 60초
  */
 export async function normalizeDataPython(
-    data: any[],
-    method: string,
-    columns: string[],
-    timeoutMs: number = 60000
-): Promise<{ stats: Record<string, { min?: number; max?: number; mean?: number; stdDev?: number; median?: number; iqr?: number }> }> {
-    try {
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        py.globals.set('js_data', data);
-        py.globals.set('js_method', method);
-        py.globals.set('js_columns', columns);
-        
-        const code = `
+  data: any[],
+  method: string,
+  columns: string[],
+  timeoutMs: number = 60000
+): Promise<{
+  stats: Record<
+    string,
+    {
+      min?: number;
+      max?: number;
+      mean?: number;
+      stdDev?: number;
+      median?: number;
+      iqr?: number;
+    }
+  >;
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_method", method);
+    py.globals.set("js_columns", columns);
+
+    const code = `
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
@@ -1575,33 +2986,33 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python NormalizeData 실행 타임아웃 (60초 초과)'
-        );
-        
-        const result = fromPython(resultPyObj);
-        
-        py.globals.delete('js_data');
-        py.globals.delete('js_method');
-        py.globals.delete('js_columns');
-        
-        return result;
-    } catch (error: any) {
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_method');
-                py.globals.delete('js_columns');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python NormalizeData error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python NormalizeData 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_method");
+    py.globals.delete("js_columns");
+
+    return result;
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_method");
+        py.globals.delete("js_columns");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python NormalizeData error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1609,21 +3020,21 @@ result
  * 타임아웃: 60초
  */
 export async function transformDataPython(
-    data: any[],
-    transformations: Record<string, string>,
-    timeoutMs: number = 60000
-): Promise<{ rows: any[], columns: Array<{ name: string, type: string }> }> {
-    try {
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        py.globals.set('js_data', data);
-        py.globals.set('js_transformations', transformations);
-        
-        const code = `
+  data: any[],
+  transformations: Record<string, string>,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_transformations", transformations);
+
+    const code = `
 import pandas as pd
 import numpy as np
 
@@ -1664,31 +3075,31 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python TransitionData 실행 타임아웃 (60초 초과)'
-        );
-        
-        const result = fromPython(resultPyObj);
-        
-        py.globals.delete('js_data');
-        py.globals.delete('js_transformations');
-        
-        return result;
-    } catch (error: any) {
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_transformations');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python TransitionData error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python TransitionData 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_transformations");
+
+    return result;
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_transformations");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python TransitionData error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1696,29 +3107,29 @@ result
  * 타임아웃: 60초
  */
 export async function encodeCategoricalPython(
-    data: any[],
-    method: string,
-    columns: string[] | null,
-    ordinal_mapping: Record<string, string[]> | null,
-    drop: string,
-    handle_unknown: string,
-    timeoutMs: number = 60000
+  data: any[],
+  method: string,
+  columns: string[] | null,
+  ordinal_mapping: Record<string, string[]> | null,
+  drop: string,
+  handle_unknown: string,
+  timeoutMs: number = 60000
 ): Promise<{ mappings: Record<string, Record<string, number> | string[]> }> {
-    try {
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        py.globals.set('js_data', data);
-        py.globals.set('js_method', method);
-        py.globals.set('js_columns', columns);
-        py.globals.set('js_ordinal_mapping', ordinal_mapping);
-        py.globals.set('js_drop', drop);
-        py.globals.set('js_handle_unknown', handle_unknown);
-        
-        const code = `
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_method", method);
+    py.globals.set("js_columns", columns);
+    py.globals.set("js_ordinal_mapping", ordinal_mapping);
+    py.globals.set("js_drop", drop);
+    py.globals.set("js_handle_unknown", handle_unknown);
+
+    const code = `
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 
@@ -1766,39 +3177,39 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python EncodeCategorical 실행 타임아웃 (60초 초과)'
-        );
-        
-        const result = fromPython(resultPyObj);
-        
-        py.globals.delete('js_data');
-        py.globals.delete('js_method');
-        py.globals.delete('js_columns');
-        py.globals.delete('js_ordinal_mapping');
-        py.globals.delete('js_drop');
-        py.globals.delete('js_handle_unknown');
-        
-        return result;
-    } catch (error: any) {
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_method');
-                py.globals.delete('js_columns');
-                py.globals.delete('js_ordinal_mapping');
-                py.globals.delete('js_drop');
-                py.globals.delete('js_handle_unknown');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python EncodeCategorical error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python EncodeCategorical 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_method");
+    py.globals.delete("js_columns");
+    py.globals.delete("js_ordinal_mapping");
+    py.globals.delete("js_drop");
+    py.globals.delete("js_handle_unknown");
+
+    return result;
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_method");
+        py.globals.delete("js_columns");
+        py.globals.delete("js_ordinal_mapping");
+        py.globals.delete("js_drop");
+        py.globals.delete("js_handle_unknown");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python EncodeCategorical error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1806,23 +3217,23 @@ result
  * 타임아웃: 60초
  */
 export async function resampleDataPython(
-    data: any[],
-    method: string,
-    target_column: string,
-    timeoutMs: number = 60000
-): Promise<{ rows: any[], columns: Array<{ name: string, type: string }> }> {
-    try {
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        py.globals.set('js_data', data);
-        py.globals.set('js_method', method);
-        py.globals.set('js_target_column', target_column);
-        
-        const code = `
+  data: any[],
+  method: string,
+  target_column: string,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_method", method);
+    py.globals.set("js_target_column", target_column);
+
+    const code = `
 import pandas as pd
 import numpy as np
 from imblearn.over_sampling import SMOTE
@@ -1860,33 +3271,33 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python ResampleData 실행 타임아웃 (60초 초과)'
-        );
-        
-        const result = fromPython(resultPyObj);
-        
-        py.globals.delete('js_data');
-        py.globals.delete('js_method');
-        py.globals.delete('js_target_column');
-        
-        return result;
-    } catch (error: any) {
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_method');
-                py.globals.delete('js_target_column');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python ResampleData error: ${errorMessage}`);
-    }
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python ResampleData 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_method");
+    py.globals.delete("js_target_column");
+
+    return result;
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_method");
+        py.globals.delete("js_target_column");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python ResampleData error: ${errorMessage}`);
+  }
 }
 
 /**
@@ -1894,23 +3305,23 @@ result
  * 타임아웃: 60초
  */
 export async function applyTransformPython(
-    data: any[],
-    handler: any,
-    exclude_columns: string[],
-    timeoutMs: number = 60000
-): Promise<{ rows: any[], columns: Array<{ name: string, type: string }> }> {
-    try {
-        const py = await withTimeout(
-            loadPyodide(30000),
-            30000,
-            'Pyodide 로딩 타임아웃 (30초 초과)'
-        );
-        
-        py.globals.set('js_data', data);
-        py.globals.set('js_handler', handler);
-        py.globals.set('js_exclude_columns', exclude_columns);
-        
-        const code = `
+  data: any[],
+  handler: any,
+  exclude_columns: string[],
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_handler", handler);
+    py.globals.set("js_exclude_columns", exclude_columns);
+
+    const code = `
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
@@ -2009,32 +3420,31 @@ result = {
 
 result
 `;
-        
-        const resultPyObj = await withTimeout(
-            Promise.resolve(py.runPython(code)),
-            timeoutMs,
-            'Python TransformData 실행 타임아웃 (60초 초과)'
-        );
-        
-        const result = fromPython(resultPyObj);
-        
-        py.globals.delete('js_data');
-        py.globals.delete('js_handler');
-        py.globals.delete('js_exclude_columns');
-        
-        return result;
-    } catch (error: any) {
-        try {
-            const py = pyodide;
-            if (py) {
-                py.globals.delete('js_data');
-                py.globals.delete('js_handler');
-                py.globals.delete('js_exclude_columns');
-            }
-        } catch {}
-        
-        const errorMessage = error.message || String(error);
-        throw new Error(`Python TransformData error: ${errorMessage}`);
-    }
-}
 
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python TransformData 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_handler");
+    py.globals.delete("js_exclude_columns");
+
+    return result;
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_handler");
+        py.globals.delete("js_exclude_columns");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python TransformData error: ${errorMessage}`);
+  }
+}

@@ -446,6 +446,41 @@ export function generateFullPipelineCode(
           processedCode = processedCode.replace(/scored_data/g, scoredDataVar);
         }
       }
+    } else if (module.type === ModuleType.PredictModel) {
+      // PredictModel의 경우 연결된 ResultModel에서 featureColumns를 가져와서 사용
+      const modelInputConn = connections.find(c => 
+        c.to.moduleId === module.id && c.to.portName === 'model_in'
+      );
+      if (modelInputConn) {
+        const resultModelModule = executedModules.find(m => m.id === modelInputConn.from.moduleId);
+        if (resultModelModule && resultModelModule.status === ModuleStatus.Success) {
+          // ResultModel의 파라미터에서 feature_columns 가져오기
+          const featureColumns = resultModelModule.parameters.feature_columns as string[] | undefined;
+          if (featureColumns && Array.isArray(featureColumns) && featureColumns.length > 0) {
+            // feature_columns 파라미터를 코드에 주입
+            const featureColumnsStr = JSON.stringify(featureColumns);
+            processedCode = processedCode.replace(
+              /p_feature_columns\s*=\s*\{feature_columns\}/,
+              `p_feature_columns = ${featureColumnsStr}`
+            );
+            // data_to_predict를 연결된 데이터 변수로 치환
+            const dataInputConn = connections.find(c => 
+              c.to.moduleId === module.id && c.to.portName === 'data_in'
+            );
+            if (dataInputConn) {
+              const dataVar = moduleVariableMap.get(dataInputConn.from.moduleId);
+              if (dataVar) {
+                processedCode = processedCode.replace(/data_to_predict/g, dataVar);
+                // model_results를 연결된 ResultModel의 변수로 치환
+                const modelResultsVar = moduleVariableMap.get(resultModelModule.id);
+                if (modelResultsVar) {
+                  processedCode = processedCode.replace(/model_results/g, modelResultsVar);
+                }
+              }
+            }
+          }
+        }
+      }
     }
 
     // 빈 줄 정리

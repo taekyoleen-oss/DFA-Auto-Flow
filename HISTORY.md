@@ -1,3 +1,50 @@
+## [2025-01-XX XX:XX:XX] - PredictModel 및 EvaluateStats 모듈 개선
+
+변경 사항:
+
+- PredictModel 수정:
+  - Python 기반 예측으로 변경하여 statsmodels.predict()와 정확히 일치하는 결과 생성
+  - Logistic, Poisson, NegativeBinomial, QuasiPoisson 모델에 정수 예측값 컬럼(y_Pred) 추가
+  - QuasiPoisson 모델 타입 처리 추가
+  - codeSnippets.ts의 PredictModel 템플릿에 feature_columns 파라미터 추가
+  - generatePipelineCode.ts에서 PredictModel이 연결된 ResultModel의 featureColumns 자동 추출
+
+- EvaluateStats 모듈 추가:
+  - Traditional Analysis 카테고리에 EvaluateStats 모듈 추가
+  - GLM 모델(OLS, Logistic, Poisson, NegativeBinomial, QuasiPoisson, Gamma, Tweedie)에 대한 통계량 평가
+  - 통계량: Deviance, Pearson chi², Dispersion (φ), AIC, BIC, Log-Likelihood, 잔차 통계량
+  - EvaluateStatsPreviewModal 컴포넌트 추가 (View Details)
+
+- DataPreviewModal 개선:
+  - PredictModel의 _Predict 컬럼 표시명을 y_pred_prob로 변경
+  - y_pred_prob 컬럼 값 소수점 6자리로 포맷팅
+
+영향받은 파일:
+
+- App.tsx
+- codeSnippets.ts
+- components/DataPreviewModal.tsx
+- components/EvaluateStatsPreviewModal.tsx (신규)
+- components/PropertiesPanel.tsx
+- components/Toolbox.tsx
+- constants.ts
+- types.ts
+- utils/generatePipelineCode.ts
+- utils/pyodideRunner.ts
+
+커밋 해시: (커밋 후 업데이트)
+
+복구 방법:
+
+# 백업하고 복구
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# 또는 직접 복구
+git reset --hard <커밋해시>
+
+---
+
 ## [2025-12-04 20:10:00] - 글자 크기 아이콘 디자인 변경
 
 변경 사항:
