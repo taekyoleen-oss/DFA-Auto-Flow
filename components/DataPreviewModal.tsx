@@ -3,6 +3,8 @@ import { CanvasModule, ColumnInfo, DataPreview, ModuleType } from '../types';
 import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon } from './icons';
 import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
+// import { calculatePCAForScoreVisualization } from '../utils/pyodideRunner'; // Python 기반 (주석 처리)
+import { calculatePCA } from '../utils/pcaCalculator'; // JavaScript 기반 (ml-pca 사용)
 
 interface DataPreviewModalProps {
     module: CanvasModule;
@@ -145,6 +147,302 @@ const ScatterPlot: React.FC<{ rows: Record<string, any>[], xCol: string, yCol: s
     );
 };
 
+// PCA Scatter Plot 컴포넌트
+const PCAScatterPlot: React.FC<{
+    coordinates: number[][];
+    actualValues?: (string | number)[];
+    predictedValues?: (string | number)[];
+    modelType?: 'classification' | 'regression';
+    explainedVariance: number[];
+    hasLabel?: boolean; // Label Column이 있는지 여부
+}> = ({ coordinates, actualValues, predictedValues, modelType, explainedVariance, hasLabel = false }) => {
+    const dataPoints = useMemo(() => {
+        return coordinates.map((coord, idx) => ({
+            x: coord[0] || 0,
+            y: coord[1] || 0,
+            actual: actualValues?.[idx],
+            predicted: predictedValues?.[idx],
+            index: idx,
+        }));
+    }, [coordinates, actualValues, predictedValues]);
+    
+    // 이진 분류인지 감지 (0과 1만 있는지 확인)
+    const isBinaryClassification = useMemo(() => {
+        if (!hasLabel || modelType !== 'classification' || !actualValues || actualValues.length === 0) {
+            return false;
+        }
+        
+        const uniqueValues = new Set(actualValues.map(v => String(v)));
+        const validBinaryValues = ['0', '1'];
+        return uniqueValues.size <= 2 && Array.from(uniqueValues).every(v => validBinaryValues.includes(v));
+    }, [hasLabel, modelType, actualValues]);
+
+    if (dataPoints.length === 0) {
+        return <div className="flex items-center justify-center h-full text-gray-400">No data points available.</div>;
+    }
+
+    const margin = { top: 40, right: 40, bottom: 70, left: 70 };
+    const width = 1400;
+    const height = 650;
+
+    const xMin = Math.min(...dataPoints.map(d => d.x));
+    const xMax = Math.max(...dataPoints.map(d => d.x));
+    const yMin = Math.min(...dataPoints.map(d => d.y));
+    const yMax = Math.max(...dataPoints.map(d => d.y));
+
+    const xScale = (x: number) => margin.left + ((x - xMin) / (xMax - xMin || 1)) * (width - margin.left - margin.right);
+    const yScale = (y: number) => height - margin.bottom - ((y - yMin) / (yMax - yMin || 1)) * (height - margin.top - margin.bottom);
+
+    // 분류 모델: 클래스별 색상
+    const getColorForClassification = (actual: string | number, predicted: string | number) => {
+        const isCorrect = String(actual) === String(predicted);
+        const classKey = String(actual);
+        
+        // 이진 분류인 경우 간소한 색상 사용
+        if (isBinaryClassification) {
+            if (classKey === '0') {
+                // 실제값 0: 파랑 계열
+                return isCorrect ? '#2563eb' : '#93c5fd'; // 맞으면 진한 파랑, 틀리면 연한 파랑
+            } else if (classKey === '1') {
+                // 실제값 1: 빨강 계열
+                return isCorrect ? '#dc2626' : '#fca5a5'; // 맞으면 진한 빨강, 틀리면 연한 빨강
+            }
+        }
+        
+        // 다중 클래스 분류: 클래스별 기본 색상
+        const classColors: Record<string, string> = {
+            '0': '#2563eb', // 진한 파랑
+            '1': '#dc2626', // 진한 빨강
+            '2': '#16a34a', // 진한 초록
+            '3': '#ea580c', // 진한 주황
+            '4': '#9333ea', // 진한 보라
+            '5': '#0891b2', // 청록
+            '6': '#ca8a04', // 노랑
+            '7': '#e11d48', // 분홍
+        };
+        
+        const baseColor = classColors[classKey] || '#6b7280';
+        return isCorrect ? baseColor : `${baseColor}60`; // 틀린 경우 더 투명하게
+    };
+
+    // 회귀 모델: 실제 값에 따른 색상 (gradient) - 더 나은 색상 스케일
+    const getColorForRegression = (actual: number) => {
+        const allActuals = (actualValues || []).filter(v => typeof v === 'number') as number[];
+        if (allActuals.length === 0) return '#6366f1';
+        
+        const minVal = Math.min(...allActuals);
+        const maxVal = Math.max(...allActuals);
+        const range = maxVal - minVal || 1;
+        const normalized = (actual - minVal) / range;
+        
+        // 파랑(낮음) -> 보라 -> 빨강(높음) gradient (더 부드러운 전환)
+        if (normalized < 0.5) {
+            // 파랑 -> 보라
+            const t = normalized * 2;
+            const r = Math.round(37 + t * 99);
+            const g = Math.round(99 + t * 99);
+            const b = Math.round(235 - t * 99);
+            return `rgb(${r}, ${g}, ${b})`;
+        } else {
+            // 보라 -> 빨강
+            const t = (normalized - 0.5) * 2;
+            const r = Math.round(136 + t * 120);
+            const g = Math.round(198 - t * 172);
+            const b = Math.round(136 - t * 136);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+    };
+    
+    // Label이 없을 때 사용할 색상 (단일 색상)
+    const getDefaultColor = () => '#6366f1'; // 인디고
+
+    // 회귀 모델: 오차 크기 계산
+    const getErrorSize = (actual: number, predicted: number) => {
+        const error = Math.abs(actual - predicted);
+        const allErrors = dataPoints
+            .filter(p => typeof p.actual === 'number' && typeof p.predicted === 'number')
+            .map(p => Math.abs((p.actual as number) - (p.predicted as number)));
+        const maxError = Math.max(...allErrors, 1);
+        return 4 + (error / maxError) * 6; // 최소 4, 최대 10
+    };
+    
+    // 클래스별 통계 (범례용)
+    const classStats = useMemo(() => {
+        if (!hasLabel || modelType !== 'classification' || !actualValues) return null;
+        const stats: Record<string, { count: number; correct: number }> = {};
+        actualValues.forEach((actual, idx) => {
+            const key = String(actual);
+            if (!stats[key]) {
+                stats[key] = { count: 0, correct: 0 };
+            }
+            stats[key].count++;
+            if (predictedValues && String(actual) === String(predictedValues[idx])) {
+                stats[key].correct++;
+            }
+        });
+        return stats;
+    }, [hasLabel, modelType, actualValues, predictedValues]);
+
+    const totalVariance = explainedVariance.reduce((a, b) => a + b, 0) * 100;
+    const getTicks = (min: number, max: number, count: number) => {
+        if (min === max) return [min];
+        const ticks = [];
+        const step = (max - min) / (count - 1);
+        for (let i = 0; i < count; i++) {
+            ticks.push(min + i * step);
+        }
+        return ticks;
+    };
+    
+    const xTicks = getTicks(xMin, xMax, 6);
+    const yTicks = getTicks(yMin, yMax, 6);
+    
+    // 그리드 라인을 위한 tick 값
+    const gridXTicks = getTicks(xMin, xMax, 6);
+    const gridYTicks = getTicks(yMin, yMax, 6);
+
+    return (
+        <div className="w-full h-full flex flex-col items-center gap-3 p-4">
+            {/* 설명된 분산 비율 표시 */}
+            <div className="w-full max-w-6xl bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                <div className="text-sm font-semibold text-indigo-900 mb-1">Explained Variance</div>
+                <div className="flex items-center gap-4 text-xs text-indigo-700">
+                    <span>Total: <strong>{totalVariance.toFixed(1)}%</strong></span>
+                    <span>PC1: <strong>{(explainedVariance[0] * 100).toFixed(1)}%</strong></span>
+                    <span>PC2: <strong>{(explainedVariance[1] * 100).toFixed(1)}%</strong></span>
+                </div>
+            </div>
+            
+            <div className="w-full max-w-6xl">
+                {/* 그래프 영역 */}
+                <div className="w-full">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto" preserveAspectRatio="xMidYMid meet">
+                        {/* 그리드 라인 */}
+                        <g stroke="#e5e7eb" strokeWidth="0.5" opacity="0.5">
+                            {gridXTicks.map((tick, i) => (
+                                <line 
+                                    key={`grid-x-${i}`} 
+                                    x1={xScale(tick)} 
+                                    y1={margin.top} 
+                                    x2={xScale(tick)} 
+                                    y2={height - margin.bottom} 
+                                />
+                            ))}
+                            {gridYTicks.map((tick, i) => (
+                                <line 
+                                    key={`grid-y-${i}`} 
+                                    x1={margin.left} 
+                                    y1={yScale(tick)} 
+                                    x2={width - margin.right} 
+                                    y2={yScale(tick)} 
+                                />
+                            ))}
+                        </g>
+                        
+                        {/* Axes */}
+                        <line x1={margin.left} y1={height - margin.bottom} x2={width - margin.right} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+                        <line x1={margin.left} y1={margin.top} x2={margin.left} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+
+                        {/* X Ticks and Labels */}
+                        {xTicks.map((tick, i) => (
+                            <g key={`x-${i}`} transform={`translate(${xScale(tick)}, ${height - margin.bottom})`}>
+                                <line y2="6" stroke="#374151" strokeWidth="1.5" />
+                                <text y="25" textAnchor="middle" fill="#374151" fontSize="11" fontWeight="500">{tick.toFixed(2)}</text>
+                            </g>
+                        ))}
+                        <text x={width/2} y={height - 10} textAnchor="middle" fill="#1f2937" fontSize="13" fontWeight="bold">
+                            PC1 ({(explainedVariance[0] * 100).toFixed(1)}% variance)
+                        </text>
+                        
+                        {/* Y Ticks and Labels */}
+                        {yTicks.map((tick, i) => (
+                            <g key={`y-${i}`} transform={`translate(${margin.left}, ${yScale(tick)})`}>
+                                <line x2="-6" stroke="#374151" strokeWidth="1.5" />
+                                <text x="-12" y="4" textAnchor="end" fill="#374151" fontSize="11" fontWeight="500">{tick.toFixed(2)}</text>
+                            </g>
+                        ))}
+                        <text transform={`translate(${20}, ${height/2}) rotate(-90)`} textAnchor="middle" fill="#1f2937" fontSize="13" fontWeight="bold">
+                            PC2 ({(explainedVariance[1] * 100).toFixed(1)}% variance)
+                        </text>
+
+                        {/* Points */}
+                        <g>
+                            {dataPoints.map((d, i) => {
+                                let color: string;
+                                let size: number;
+                                let stroke: string = 'none';
+                                let strokeWidth: number = 0;
+                                let opacity: number = 0.75;
+                                
+                                if (hasLabel && modelType) {
+                                    if (modelType === 'classification' && d.actual !== undefined && d.predicted !== undefined) {
+                                        color = getColorForClassification(d.actual, d.predicted);
+                                        size = isBinaryClassification ? 6 : 5; // 이진 분류는 조금 더 크게
+                                        
+                                        // 이진 분류: 예측이 틀린 경우 테두리 추가
+                                        if (isBinaryClassification && String(d.actual) !== String(d.predicted)) {
+                                            stroke = '#000';
+                                            strokeWidth = 1.5;
+                                            opacity = 0.9; // 틀린 경우 더 선명하게
+                                        } else if (!isBinaryClassification && String(d.actual) !== String(d.predicted)) {
+                                            // 다중 클래스: 틀린 경우 검은 테두리
+                                            stroke = '#000';
+                                            strokeWidth = 2;
+                                        }
+                                    } else if (modelType === 'regression' && typeof d.actual === 'number' && typeof d.predicted === 'number') {
+                                        color = getColorForRegression(d.actual);
+                                        size = getErrorSize(d.actual, d.predicted);
+                                    } else {
+                                        color = getDefaultColor();
+                                        size = 5;
+                                    }
+                                } else {
+                                    color = getDefaultColor();
+                                    size = 5;
+                                }
+                                
+                                return (
+                                    <circle 
+                                        key={i} 
+                                        cx={xScale(d.x)} 
+                                        cy={yScale(d.y)} 
+                                        r={size} 
+                                        fill={color}
+                                        stroke={stroke}
+                                        strokeWidth={strokeWidth}
+                                        opacity={opacity}
+                                        className="hover:opacity-100 hover:r-7 transition-all cursor-pointer"
+                                    >
+                                        <title>
+                                            {hasLabel && d.actual !== undefined && d.predicted !== undefined
+                                                ? (modelType === 'classification' 
+                                                    ? `Actual: ${d.actual}, Predicted: ${d.predicted}${String(d.actual) === String(d.predicted) ? ' ✓' : ' ✗'}`
+                                                    : `Actual: ${d.actual}, Predicted: ${d.predicted}, Error: ${typeof d.actual === 'number' && typeof d.predicted === 'number' ? Math.abs(d.actual - d.predicted).toFixed(2) : 'N/A'}`)
+                                                : `Point ${i + 1}: (${d.x.toFixed(2)}, ${d.y.toFixed(2)})`
+                                            }
+                                        </title>
+                                    </circle>
+                                );
+                            })}
+                        </g>
+                    </svg>
+                </div>
+            </div>
+            
+            {/* 하단 설명 */}
+            {hasLabel && modelType && (
+                <div className="text-xs text-gray-500 text-center max-w-6xl">
+                    {modelType === 'classification' 
+                        ? (isBinaryClassification 
+                            ? 'Blue = Class 0, Red = Class 1. Black border indicates incorrect predictions.'
+                            : 'Color represents actual class. Black border indicates incorrect predictions.')
+                        : 'Color represents actual value (blue=low, red=high). Size represents prediction error magnitude.'}
+                </div>
+            )}
+        </div>
+    );
+};
+
 const ColumnStatistics: React.FC<{ data: (string | number | null)[]; columnName: string | null; isNumeric: boolean; }> = ({ data, columnName, isNumeric }) => {
     const stats = useMemo(() => {
         const isNull = (v: any) => v === null || v === undefined || v === '';
@@ -247,14 +545,14 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     const getPreviewData = (): DataPreview | null => {
         try {
             if (!module || !module.outputData) return null;
-            if (module.outputData.type === 'DataPreview') return module.outputData;
-            if (module.outputData.type === 'KMeansOutput' || module.outputData.type === 'HierarchicalClusteringOutput' || module.outputData.type === 'DBSCANOutput') {
+        if (module.outputData.type === 'DataPreview') return module.outputData;
+        if (module.outputData.type === 'KMeansOutput' || module.outputData.type === 'HierarchicalClusteringOutput' || module.outputData.type === 'DBSCANOutput') {
                 return module.outputData.clusterAssignments || null;
-            }
-            if (module.outputData.type === 'PCAOutput') {
+        }
+        if (module.outputData.type === 'PCAOutput') {
                 return module.outputData.transformedData || null;
-            }
-            return null;
+        }
+        return null;
         } catch (error) {
             console.error('Error in getPreviewData:', error);
             return null;
@@ -269,7 +567,7 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     const [selectedColumn, setSelectedColumn] = useState<string | null>(columns[0]?.name || null);
     const [activeTab, setActiveTab] = useState<'table' | 'visualization'>('table');
     const [yAxisCol, setYAxisCol] = useState<string | null>(null);
-    
+
     // Score Model용 label column state
     const predictCol = useMemo(() => {
         try {
@@ -328,26 +626,243 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
         }
     }, [module.id, module.type, defaultLabelCol]); // defaultLabelCol을 의존성에 추가
 
+// PCA Score Visualization 컴포넌트
+const PCAScoreVisualization: React.FC<{
+    module: CanvasModule;
+    rows: Record<string, any>[];
+    columns: ColumnInfo[];
+    predictCol: ColumnInfo | null;
+    labelCols: ColumnInfo[];
+    scoreLabelCol: string | null;
+    setScoreLabelCol: (col: string | null) => void;
+}> = ({ module, rows, columns, predictCol, labelCols, scoreLabelCol, setScoreLabelCol }) => {
+    const [pcaData, setPcaData] = useState<{
+        coordinates: number[][];
+        explainedVariance: number[];
+        actualValues?: (string | number)[];
+        predictedValues?: (string | number)[];
+    } | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [modelType, setModelType] = useState<'classification' | 'regression'>('classification');
+
+    // Feature columns 추출 (Predict 컬럼과 label 컬럼 제외한 숫자형 컬럼)
+    const featureColumns = useMemo(() => {
+        if (!predictCol) return [];
+        return columns
+            .filter(col => 
+                col.type === 'number' && 
+                col.name !== predictCol.name && 
+                (!scoreLabelCol || col.name !== scoreLabelCol)
+            )
+            .map(col => col.name);
+    }, [columns, predictCol, scoreLabelCol]);
+
+    // y 컬럼 찾기 (labelCols에서 "y"라는 이름의 컬럼)
+    const yCol = useMemo(() => {
+        return labelCols.find(col => col.name.toLowerCase() === 'y') || null;
+    }, [labelCols]);
+
+    // 실제 값과 예측 값 추출
+    const actualValues = useMemo(() => {
+        if (!scoreLabelCol) return [];
+        return rows.map(row => row[scoreLabelCol]);
+    }, [rows, scoreLabelCol]);
+
+    const predictedValues = useMemo(() => {
+        if (!predictCol) return [];
+        // scoreLabelCol이 predictCol.name이면, y 컬럼을 predicted로 사용
+        // 그렇지 않으면 항상 predictCol.name을 사용
+        if (scoreLabelCol === predictCol.name && yCol) {
+            return rows.map(row => row[yCol.name]);
+        }
+        return rows.map(row => row[predictCol.name]);
+    }, [rows, predictCol, scoreLabelCol, yCol]);
+
+    // Label Column 기본값을 Predict로 설정
+    useEffect(() => {
+        if (predictCol && !scoreLabelCol) {
+            setScoreLabelCol(predictCol.name);
+        }
+    }, [predictCol, scoreLabelCol]); // predictCol이 변경되거나 scoreLabelCol이 없을 때 실행
+
+    // 모델 타입 감지
+    useEffect(() => {
+        if (actualValues.length > 0) {
+            const firstActual = actualValues[0];
+            const isNumeric = typeof firstActual === 'number' || !isNaN(Number(firstActual));
+            setModelType(isNumeric ? 'regression' : 'classification');
+        }
+    }, [actualValues]);
+
+    // PCA 계산 (Label Column은 선택 사항)
+    useEffect(() => {
+        if (featureColumns.length < 2 || rows.length === 0 || !predictCol) {
+            setPcaData(null);
+            return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+
+        // JavaScript 기반 PCA 계산 (동기 함수)
+        try {
+            const result = calculatePCA(rows, featureColumns, 2);
+            
+            // validIndices를 사용하여 유효한 데이터만 필터링
+            let validCoords: number[][] = [];
+            let validActuals: (string | number)[] = [];
+            let validPredicteds: (string | number)[] = [];
+            
+            if (result.validIndices && result.validIndices.length > 0) {
+                // validIndices에 해당하는 데이터만 사용
+                validCoords = result.validIndices
+                    .map((idx: number) => result.coordinates[idx])
+                    .filter((c: number[]) => c && c.length >= 2 && !isNaN(c[0]) && !isNaN(c[1]));
+                
+                // Label Column이 있는 경우에만 actual/predicted 값 추출
+                if (scoreLabelCol) {
+                    validActuals = result.validIndices
+                        .map((idx: number) => actualValues[idx])
+                        .filter((v: any) => v !== undefined);
+                    
+                    validPredicteds = result.validIndices
+                        .map((idx: number) => predictedValues[idx])
+                        .filter((v: any) => v !== undefined);
+                }
+            } else {
+                // validIndices가 없으면 NaN 필터링
+                for (let i = 0; i < result.coordinates.length; i++) {
+                    const coord = result.coordinates[i];
+                    if (coord && coord.length >= 2 && !isNaN(coord[0]) && !isNaN(coord[1])) {
+                        validCoords.push(coord);
+                        // Label Column이 있는 경우에만 추가
+                        if (scoreLabelCol && actualValues[i] !== undefined && predictedValues[i] !== undefined) {
+                            validActuals.push(actualValues[i]);
+                            validPredicteds.push(predictedValues[i]);
+                        }
+                    }
+                }
+            }
+            
+            if (validCoords.length === 0) {
+                throw new Error('No valid data points after filtering');
+            }
+
+            setPcaData({
+                coordinates: validCoords,
+                explainedVariance: result.explainedVariance,
+                actualValues: scoreLabelCol ? validActuals : undefined,
+                predictedValues: scoreLabelCol ? validPredicteds : undefined,
+            });
+            setIsLoading(false);
+        } catch (err: any) {
+            console.error('PCA calculation error:', err);
+            setError(err.message || 'Failed to calculate PCA');
+            setIsLoading(false);
+        }
+    }, [rows, featureColumns, predictCol, scoreLabelCol, actualValues, predictedValues]);
+
+    if (!predictCol) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <p className="text-gray-500">Predict column not found in the data.</p>
+            </div>
+        );
+    }
+
+    if (featureColumns.length < 2) {
+        return (
+            <div className="flex items-center justify-center h-full">
+                <p className="text-gray-500">Need at least 2 numeric feature columns for PCA visualization.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="w-full h-full flex flex-col gap-3">
+            {/* Label Column 선택 (선택 사항) - Predict와 y만 표시 */}
+            {(yCol || predictCol) && (
+                <div className="flex-shrink-0 flex items-center gap-2 px-2">
+                    <label htmlFor="label-select" className="font-semibold text-gray-700 text-sm">
+                        Label Column (Optional):
+                    </label>
+                    <select
+                        id="label-select"
+                        value={scoreLabelCol || ''}
+                        onChange={e => setScoreLabelCol(e.target.value || null)}
+                        className="px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        {predictCol && (
+                            <option key={predictCol.name} value={predictCol.name}>
+                                {predictCol.name} (Predict)
+                            </option>
+                        )}
+                        {yCol && (
+                            <option key={yCol.name} value={yCol.name}>
+                                {yCol.name} (y)
+                            </option>
+                        )}
+                    </select>
+                    {scoreLabelCol && (
+                        <span className="text-xs text-gray-500">
+                            (Compare actual vs predicted values)
+                        </span>
+                    )}
+                </div>
+            )}
+            
+            {/* PCA 그래프 영역 */}
+            <div className="w-full flex-grow min-h-0 flex items-center justify-center overflow-auto">
+                {isLoading ? (
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600"></div>
+                        <p className="text-gray-500 font-medium">Calculating PCA...</p>
+                    </div>
+                ) : error ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-2">
+                        <p className="text-red-600 font-semibold">Error</p>
+                        <p className="text-red-500 text-sm">{error}</p>
+                    </div>
+                ) : pcaData ? (
+                    <PCAScatterPlot
+                        coordinates={pcaData.coordinates}
+                        actualValues={pcaData.actualValues}
+                        predictedValues={pcaData.predictedValues}
+                        modelType={scoreLabelCol ? modelType : undefined}
+                        explainedVariance={pcaData.explainedVariance}
+                        hasLabel={!!scoreLabelCol}
+                    />
+                ) : (
+                    <div className="flex items-center justify-center h-full">
+                        <p className="text-gray-500">Calculating PCA visualization...</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
     const sortedRows = useMemo(() => {
         try {
             if (!Array.isArray(rows)) return [];
-            let sortableItems = [...rows];
+        let sortableItems = [...rows];
             if (sortConfig !== null && sortConfig.key) {
-                sortableItems.sort((a, b) => {
-                    const valA = a[sortConfig.key];
-                    const valB = b[sortConfig.key];
-                    if (valA === null || valA === undefined) return 1;
-                    if (valB === null || valB === undefined) return -1;
-                    if (valA < valB) {
-                        return sortConfig.direction === 'ascending' ? -1 : 1;
-                    }
-                    if (valA > valB) {
-                        return sortConfig.direction === 'ascending' ? 1 : -1;
-                    }
-                    return 0;
-                });
-            }
-            return sortableItems;
+            sortableItems.sort((a, b) => {
+                const valA = a[sortConfig.key];
+                const valB = b[sortConfig.key];
+                if (valA === null || valA === undefined) return 1;
+                if (valB === null || valB === undefined) return -1;
+                if (valA < valB) {
+                    return sortConfig.direction === 'ascending' ? -1 : 1;
+                }
+                if (valA > valB) {
+                    return sortConfig.direction === 'ascending' ? 1 : -1;
+                }
+                return 0;
+            });
+        }
+        return sortableItems;
         } catch (error) {
             console.error('Error sorting rows:', error);
             return Array.isArray(rows) ? rows : [];
@@ -453,7 +968,7 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
                             >
-                                Visualization
+                                PCA Visualization
                             </button>
                         </nav>
                     </div>
@@ -505,53 +1020,53 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
                                     </div>
                                 ) : (
                                     <>
-                                        <div className={`overflow-auto border border-gray-200 rounded-lg ${selectedColumnData ? 'w-1/2' : 'w-full'}`}>
-                                            <table className="min-w-full text-sm text-left">
-                                                <thead className="bg-gray-50 sticky top-0">
-                                                    <tr>
-                                                        {columns.map(col => (
-                                                            <th 
-                                                                key={col.name} 
-                                                                className="py-2 px-3 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
-                                                                onClick={() => requestSort(col.name)}
-                                                            >
-                                                                <div className="flex items-center gap-1">
-                                                                    <span className="truncate" title={col.name}>{col.name}</span>
-                                                                    {sortConfig?.key === col.name && (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
-                                                                </div>
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {sortedRows.map((row, rowIndex) => (
-                                                        <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                            {columns.map(col => (
-                                                                <td 
-                                                                    key={col.name} 
-                                                                    className={`py-1.5 px-3 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'}`}
-                                                                    onClick={() => setSelectedColumn(col.name)}
-                                                                    title={String(row[col.name])}
-                                                                >
-                                                                    {row[col.name] === null ? <i className="text-gray-400">null</i> : String(row[col.name])}
-                                                                </td>
-                                                            ))}
-                                                        </tr>
+                                <div className={`overflow-auto border border-gray-200 rounded-lg ${selectedColumnData ? 'w-1/2' : 'w-full'}`}>
+                                    <table className="min-w-full text-sm text-left">
+                                        <thead className="bg-gray-50 sticky top-0">
+                                            <tr>
+                                                {columns.map(col => (
+                                                    <th 
+                                                        key={col.name} 
+                                                        className="py-2 px-3 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
+                                                        onClick={() => requestSort(col.name)}
+                                                    >
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="truncate" title={col.name}>{col.name}</span>
+                                                            {sortConfig?.key === col.name && (sortConfig.direction === 'ascending' ? <ChevronUpIcon className="w-3 h-3" /> : <ChevronDownIcon className="w-3 h-3" />)}
+                                                        </div>
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sortedRows.map((row, rowIndex) => (
+                                                <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
+                                                    {columns.map(col => (
+                                                        <td 
+                                                            key={col.name} 
+                                                            className={`py-1.5 px-3 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'}`}
+                                                            onClick={() => setSelectedColumn(col.name)}
+                                                            title={String(row[col.name])}
+                                                        >
+                                                            {row[col.name] === null ? <i className="text-gray-400">null</i> : String(row[col.name])}
+                                                        </td>
                                                     ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                        {selectedColumnData && (
-                                            <div className="w-1/2 flex flex-col gap-4">
-                                                {isSelectedColNumeric ? (
-                                                    <HistogramPlot rows={rows} column={selectedColumn!} />
-                                                ) : (
-                                                    <div className="w-full h-full p-4 flex flex-col border border-gray-200 rounded-lg items-center justify-center">
-                                                        <p className="text-gray-500">Plot is not available for non-numeric columns.</p>
-                                                    </div>
-                                                )}
-                                                <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {selectedColumnData && (
+                                    <div className="w-1/2 flex flex-col gap-4">
+                                        {isSelectedColNumeric ? (
+                                            <HistogramPlot rows={rows} column={selectedColumn!} />
+                                        ) : (
+                                            <div className="w-full h-full p-4 flex flex-col border border-gray-200 rounded-lg items-center justify-center">
+                                                <p className="text-gray-500">Plot is not available for non-numeric columns.</p>
                                             </div>
+                                        )}
+                                        <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                    </div>
                                         )}
                                     </>
                                 )}
@@ -561,81 +1076,53 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
 
                     {activeTab === 'visualization' && (
                         <div className="flex-grow flex flex-col items-center justify-start p-4 gap-4">
-                            {/* Score Model인 경우 y값과 predict 비교 */}
+                            {/* Score Model인 경우 PCA Visualization */}
                             {module.type === ModuleType.ScoreModel ? (
-                                <>
-                                    {!predictCol ? (
-                                        <div className="flex items-center justify-center h-full">
-                                            <p className="text-gray-500">Predict column not found in the data.</p>
-                                        </div>
-                                    ) : labelCols.length === 0 ? (
-                                        <div className="flex items-center justify-center h-full">
-                                            <p className="text-gray-500">No label column found for comparison.</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="flex-shrink-0 flex items-center gap-2 self-start">
-                                                <label htmlFor="label-select" className="font-semibold text-gray-700">Label Column (Y):</label>
-                                                <select
-                                                    id="label-select"
-                                                    value={scoreLabelCol || ''}
-                                                    onChange={e => setScoreLabelCol(e.target.value)}
-                                                    className="p-2 border border-gray-300 rounded-md"
-                                                >
-                                                    <option value="" disabled>Select a column</option>
-                                                    {labelCols.map(col => (
-                                                        <option key={col.name} value={col.name}>{col.name}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                            <div className="w-full flex-grow min-h-0">
-                                                {scoreLabelCol ? (
-                                                    <ScatterPlot rows={rows} xCol={predictCol.name} yCol={scoreLabelCol} />
-                                                ) : (
-                                                    <div className="flex items-center justify-center h-full">
-                                                        <p className="text-gray-500">Please select a label column to compare with predictions.</p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </>
-                                    )}
-                                </>
+                                <PCAScoreVisualization 
+                                    module={module}
+                                    rows={rows}
+                                    columns={columns}
+                                    predictCol={predictCol}
+                                    labelCols={labelCols}
+                                    scoreLabelCol={scoreLabelCol}
+                                    setScoreLabelCol={setScoreLabelCol}
+                                />
                             ) : (
                                 <>
-                                    {!selectedColumn ? (
-                                        <div className="flex items-center justify-center h-full">
-                                            <p className="text-gray-500">Select a column from the Data Table to use as the X-axis.</p>
+                            {!selectedColumn ? (
+                                <div className="flex items-center justify-center h-full">
+                                    <p className="text-gray-500">Select a column from the Data Table to use as the X-axis.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    {isSelectedColNumeric && numericCols.length > 1 && (
+                                        <div className="flex-shrink-0 flex items-center gap-2 self-start">
+                                            <label htmlFor="y-axis-select" className="font-semibold text-gray-700">Y-Axis:</label>
+                                            <select
+                                                id="y-axis-select"
+                                                value={yAxisCol || ''}
+                                                onChange={e => setYAxisCol(e.target.value)}
+                                                className="p-2 border border-gray-300 rounded-md"
+                                            >
+                                                <option value="" disabled>Select a column</option>
+                                                {numericCols.filter(c => c !== selectedColumn).map(col => (
+                                                    <option key={col} value={col}>{col}</option>
+                                                ))}
+                                            </select>
                                         </div>
-                                    ) : (
-                                        <>
-                                            {isSelectedColNumeric && numericCols.length > 1 && (
-                                                <div className="flex-shrink-0 flex items-center gap-2 self-start">
-                                                    <label htmlFor="y-axis-select" className="font-semibold text-gray-700">Y-Axis:</label>
-                                                    <select
-                                                        id="y-axis-select"
-                                                        value={yAxisCol || ''}
-                                                        onChange={e => setYAxisCol(e.target.value)}
-                                                        className="p-2 border border-gray-300 rounded-md"
-                                                    >
-                                                        <option value="" disabled>Select a column</option>
-                                                        {numericCols.filter(c => c !== selectedColumn).map(col => (
-                                                            <option key={col} value={col}>{col}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                            )}
+                                    )}
 
-                                            <div className="w-full flex-grow min-h-0">
-                                                {isSelectedColNumeric ? (
-                                                    yAxisCol ? (
-                                                        <ScatterPlot rows={rows} xCol={selectedColumn} yCol={yAxisCol} />
-                                                    ) : (
-                                                        <HistogramPlot rows={rows} column={selectedColumn} />
-                                                    )
-                                                ) : (
-                                                    <HistogramPlot rows={rows} column={selectedColumn} />
-                                                )}
-                                            </div>
+                                    <div className="w-full flex-grow min-h-0">
+                                        {isSelectedColNumeric ? (
+                                            yAxisCol ? (
+                                                <ScatterPlot rows={rows} xCol={selectedColumn} yCol={yAxisCol} />
+                                            ) : (
+                                                <HistogramPlot rows={rows} column={selectedColumn} />
+                                            )
+                                        ) : (
+                                            <HistogramPlot rows={rows} column={selectedColumn} />
+                                        )}
+                                    </div>
                                         </>
                                     )}
                                 </>
