@@ -1,5 +1,40 @@
 # Change History
 
+## 2025-12-14 19:00:00
+
+### fix(build): Add missing utility files to fix Vercel build error
+
+**Description:**
+- 누락된 유틸리티 파일 생성
+  - `utils/fileOperations.ts`: `savePipeline`, `loadPipeline` 함수 구현
+  - `utils/samples.ts`: `loadSampleFromFolder`, `loadFolderSamples` 함수 구현
+- App.tsx의 import 경로 수정
+  - `../shared/utils/fileOperations` → `./utils/fileOperations`
+  - `../shared/utils/samples` → `./utils/samples`
+- Vercel 빌드 오류 해결
+  - "Could not resolve '../shared/utils/fileOperations'" 오류 수정
+
+**Files Affected:**
+- `utils/fileOperations.ts` - 새로 생성 (파이프라인 저장/로드 기능)
+- `utils/samples.ts` - 새로 생성 (샘플 파일 로드 기능)
+- `App.tsx` - import 경로 수정
+
+**Reason:**
+- Vercel 배포 실패 원인 해결
+- 존재하지 않는 경로에서 파일을 import하던 문제 수정
+
+**Commit Hash:** 0dc5664
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard 0dc5664
+
+# Or direct recovery
+git reset --hard 0dc5664
+```
+
 ## 2025-12-14 18:40:00
 
 ### feat(dfa): Add CSV download functionality and simplify Python code snippets
