@@ -96,8 +96,8 @@ import { AIPipelineFromDataModal } from "./components/AIPipelineFromDataModal";
 import { AIPlanDisplayModal } from "./components/AIPlanDisplayModal";
 import { PipelineCodePanel } from "./components/PipelineCodePanel";
 import { GoogleGenAI, Type } from "@google/genai";
-import { savePipeline, loadPipeline } from "../shared/utils/fileOperations";
-import { loadSampleFromFolder, loadFolderSamples } from "../shared/utils/samples";
+import { savePipeline, loadPipeline } from "./utils/fileOperations";
+import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
 
 type TerminalLog = {
   id: number;
