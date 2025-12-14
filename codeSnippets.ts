@@ -417,43 +417,43 @@ if p_model_type == 'ElasticNet':
     DecisionTree: `
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 
-def create_decision_tree(model_purpose: str = 'classification', criterion: str = 'gini',
-                        max_depth: int = None, min_samples_split: int = 2, min_samples_leaf: int = 1):
-    """
-    의사결정나무 모델을 생성합니다.
-    """
-    print(f"의사결정나무 모델 생성 중 ({model_purpose})...")
-    
-    if model_purpose == 'classification':
-        model = DecisionTreeClassifier(
-            criterion=criterion.lower(),
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            random_state=42
-        )
-    else:
-        criterion_reg = 'squared_error' if criterion == 'mse' else 'absolute_error'
-        model = DecisionTreeRegressor(
-            criterion=criterion_reg,
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            random_state=42
-        )
-    
-    print("모델 생성 완료.")
-    return model
-
+# This module creates a decision tree model instance.
+# The model will be trained in the 'Train Model' module.
 # Parameters from UI
 p_model_purpose = {model_purpose}
 p_criterion = {criterion}
-p_max_depth = {max_depth}
+p_max_depth = {max_depth} if {max_depth} else None
 p_min_samples_split = {min_samples_split}
 p_min_samples_leaf = {min_samples_leaf}
 
-# Execution
-# decision_tree_model = create_decision_tree(p_model_purpose, p_criterion, p_max_depth, p_min_samples_split, p_min_samples_leaf)
+# Create model instance based on model purpose
+if p_model_purpose == 'classification':
+    criterion_clf = p_criterion.lower() if p_criterion else 'gini'
+        model = DecisionTreeClassifier(
+        criterion=criterion_clf,
+        max_depth=p_max_depth,
+        min_samples_split=p_min_samples_split,
+        min_samples_leaf=p_min_samples_leaf,
+            random_state=42
+        )
+    else:
+    criterion_reg = 'squared_error' if p_criterion == 'mse' else 'absolute_error'
+        model = DecisionTreeRegressor(
+            criterion=criterion_reg,
+        max_depth=p_max_depth,
+        min_samples_split=p_min_samples_split,
+        min_samples_leaf=p_min_samples_leaf,
+            random_state=42
+        )
+    
+print(f"Decision Tree model instance created successfully ({p_model_purpose}).")
+print(f"  Criterion: {p_criterion}")
+print(f"  Max Depth: {p_max_depth}")
+print(f"  Min Samples Split: {p_min_samples_split}")
+print(f"  Min Samples Leaf: {p_min_samples_leaf}")
+
+# Note: The model is not fitted here. It will be fitted in the 'Train Model' module.
+# model variable contains the model instance ready for training.
 `,
 
     LogisticTradition: `
@@ -1073,6 +1073,304 @@ p_metric = {metric}
 # This module defines the intent to use a scikit-learn KNeighborsClassifier/KNeighborsRegressor model.
 # The actual training happens when this model is connected to a 'Train Model' module.
 print(f"sklearn.neighbors.KNeighbors{'Classifier' if p_model_purpose == 'classification' else 'Regressor'} model configured.")
+`,
+
+    LoadClaimData: `
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
+
+# Parameters from UI
+p_start_year = {start_year}
+p_end_year = {end_year}
+p_claims_per_year = {claims_per_year}
+
+# 클레임 데이터 자동 생성
+categories = ["자동차보험", "화재보험", "상해보험", "배상책임보험", "건강보험"]
+accident_types = [
+    "교통사고", "화재사고", "낙상사고", "물건손상", "도난사고",
+    "상해사고", "질병", "재산손해", "배상책임", "기타사고"
+]
+
+rows = []
+for year in range(p_start_year, p_end_year + 1):
+    for i in range(p_claims_per_year):
+        month = random.randint(1, 12)
+        day = random.randint(1, 28)
+        date = datetime(year, month, day)
+        category = random.choice(categories)
+        base_amount = np.random.lognormal(mean=13.5, sigma=0.8)
+        claim_amount = max(100000, int(base_amount))
+        accident_content = random.choice(accident_types)
+        
+        rows.append({
+            "종목구분": category,
+            "날짜": date.strftime("%Y-%m-%d"),
+            "클레임 금액": claim_amount,
+            "기타": f"{accident_content} - {random.randint(1, 1000)}번 사고"
+        })
+
+dataframe = pd.DataFrame(rows)
+print(f"생성된 클레임 데이터: {len(dataframe)}건")
+print(dataframe.head())
+`,
+
+    ApplyInflation: `
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# Parameters from UI
+p_target_year = {target_year}
+p_inflation_rate = {inflation_rate}  # %
+p_amount_column = {amount_column}
+p_year_column = {year_column}
+
+# Assuming 'dataframe' is passed from previous step
+# Year Column을 숫자로 변환 (이미 연도인 경우)
+dataframe[p_year_column] = pd.to_numeric(dataframe[p_year_column], errors='coerce')
+
+# 인플레이션 적용: Amount Column * (1 + Inflation Rate) ^ (Target Year - Year Column)
+# 컬럼 이름: 기존 금액 컬럼명 + "_infl"
+inflation_factor = (1 + p_inflation_rate / 100.0) ** (p_target_year - dataframe[p_year_column])
+inflated_column_name = f"{p_amount_column}_infl"
+dataframe[inflated_column_name] = (dataframe[p_amount_column] * inflation_factor).astype(int)
+
+print(f"인플레이션 적용 완료 (목표 연도: {p_target_year}, 상승률: {p_inflation_rate}%)")
+print(dataframe.head())
+`,
+
+    FormatChange: `
+import pandas as pd
+from datetime import datetime
+
+def format_change(df: pd.DataFrame, date_column: str):
+    # 날짜 컬럼을 datetime으로 변환
+    df[date_column] = pd.to_datetime(df[date_column])
+    
+    # 연도 추출하여 새로운 컬럼 추가 (날짜 컬럼 옆에)
+    year_column = "연도"
+    df[year_column] = df[date_column].dt.year
+    
+    # 날짜 컬럼을 문자열로 변환 (원본 형식 유지)
+    df[date_column] = df[date_column].dt.strftime('%Y-%m-%d')
+    
+    # 컬럼 순서 재배치: 날짜 컬럼 다음에 연도 컬럼 배치
+    cols = df.columns.tolist()
+    date_idx = cols.index(date_column)
+    cols.remove(year_column)
+    cols.insert(date_idx + 1, year_column)
+    df = df[cols]
+    
+    return df
+
+# Execution
+# Assuming 'dataframe' is passed from the previous step
+formatted_dataframe = format_change(dataframe, {date_column})
+print("날짜 형식 변경 완료")
+print(formatted_dataframe.head())
+`,
+
+    SplitByThreshold: `
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# Parameters from UI
+p_threshold = {threshold}
+p_amount_column = {amount_column}
+p_date_column = {date_column}
+
+# Assuming 'dataframe' is passed from previous step
+# 날짜 컬럼을 datetime으로 변환
+dataframe[p_date_column] = pd.to_datetime(dataframe[p_date_column])
+dataframe['year'] = dataframe[p_date_column].dt.year
+
+# Threshold 기준으로 분리
+below_threshold_df = dataframe[dataframe[p_amount_column] < p_threshold].copy()
+above_threshold_df = dataframe[dataframe[p_amount_column] >= p_threshold].copy()
+
+# 첫 번째 출력: Threshold보다 작은 값, 연도별 합계만
+below_yearly = below_threshold_df.groupby('year')[p_amount_column].sum().reset_index()
+below_yearly.columns = ['year', 'total_amount']
+
+# 두 번째 출력: Threshold보다 크거나 같은 값, 원본 레이아웃 유지
+above_threshold_df = above_threshold_df.drop(columns=['year'])
+
+print(f"Threshold 분리 완료 (기준: {p_threshold:,}원)")
+print(f"Threshold 미만: {len(below_threshold_df)}건, 연도별 합계:")
+print(below_yearly)
+print(f"\\nThreshold 이상: {len(above_threshold_df)}건")
+print(above_threshold_df.head())
+`,
+
+    FitAggregateModel: `
+import pandas as pd
+import numpy as np
+from scipy import stats
+
+# 연도별 집계
+if '연도' in dataframe.columns:
+    year_col = '연도'
+elif 'year' in dataframe.columns:
+    year_col = 'year'
+else:
+    year_col = None
+
+if year_col:
+    yearly_agg = dataframe.groupby(year_col)[{amount_column}].sum().reset_index()
+    amounts = yearly_agg[year_col].values
+else:
+    amounts = np.array([dataframe[{amount_column}].sum()])
+
+# 분포 적합
+if "{distribution_type}" == "Lognormal":
+    params = stats.lognorm.fit(amounts[amounts > 0], floc=0)
+elif "{distribution_type}" == "Exponential":
+    params = stats.expon.fit(amounts, floc=0)
+elif "{distribution_type}" == "Pareto":
+    params = stats.pareto.fit(amounts, floc=0)
+elif "{distribution_type}" == "Gamma":
+    params = stats.gamma.fit(amounts, floc=0)
+`,
+
+    SimulateAggDist: `
+import numpy as np
+from scipy import stats
+
+# 분포 객체 생성 및 시뮬레이션
+if "{distribution_type}" == "Lognormal":
+    dist = stats.lognorm(s={parameters}["shape"], scale={parameters}["scale"], loc={parameters}["loc"])
+elif "{distribution_type}" == "Exponential":
+    dist = stats.expon(scale={parameters}["scale"], loc={parameters}["loc"])
+elif "{distribution_type}" == "Pareto":
+    dist = stats.pareto(b={parameters}["shape"], scale={parameters}["scale"], loc={parameters}["loc"])
+elif "{distribution_type}" == "Gamma":
+    dist = stats.gamma(a={parameters}["shape"], scale={parameters}["scale"], loc={parameters}["loc"])
+
+np.random.seed(42)
+simulated_amounts = dist.rvs(size={n_simulations})
+`,
+    SelectDist: `
+# Parameters from UI
+p_distribution_type = {distribution_type}
+
+# Assuming 'aggregate_model_output' is passed from FitAggregateModel
+# 선택된 분포의 결과 추출
+selected_result = None
+for result in aggregate_model_output.results:
+    if result.distribution_type == p_distribution_type:
+        selected_result = result
+        break
+
+if selected_result is None:
+    raise ValueError(f"Distribution '{p_distribution_type}' not found in results")
+
+print(f"=== Selected Distribution: {p_distribution_type} ===")
+print(f"Parameters:")
+for key, value in selected_result.parameters.items():
+    print(f"  {key}: {value:.6f}")
+
+print(f"\\nFit Statistics:")
+print(f"  AIC: {selected_result.fit_statistics.get('aic', 'N/A')}")
+print(f"  BIC: {selected_result.fit_statistics.get('bic', 'N/A')}")
+print(f"  Log Likelihood: {selected_result.fit_statistics.get('log_likelihood', 'N/A')}")
+`,
+
+    FitFrequencySeverityModel: `
+import pandas as pd
+import numpy as np
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+
+# Parameters from UI
+p_frequency_type = {frequency_type}
+p_severity_type = {severity_type}
+p_amount_column = {amount_column}
+p_date_column = {date_column}
+
+# Assuming 'dataframe' is passed from previous step
+# 날짜 컬럼을 datetime으로 변환
+dataframe[p_date_column] = pd.to_datetime(dataframe[p_date_column])
+dataframe['year'] = dataframe[p_date_column].dt.year
+
+# 빈도 모델: 연도별 클레임 건수
+yearly_counts = dataframe.groupby('year').size().reset_index(name='count')
+counts = yearly_counts['count'].values
+
+# 빈도 분포 적합
+if p_frequency_type == "Poisson":
+    lambda_param = np.mean(counts)
+    freq_params = {"lambda": lambda_param}
+    freq_dist = stats.poisson(lambda_param)
+    freq_log_likelihood = np.sum(freq_dist.logpmf(counts))
+elif p_frequency_type == "NegativeBinomial":
+    mean_count = np.mean(counts)
+    var_count = np.var(counts)
+    if var_count > mean_count:
+        r = mean_count ** 2 / (var_count - mean_count)
+        p = mean_count / var_count
+    else:
+        r = 10.0
+        p = mean_count / (mean_count + r)
+    freq_params = {"n": r, "p": p}
+    freq_dist = stats.nbinom(r, p)
+    freq_log_likelihood = np.sum(freq_dist.logpmf(counts))
+
+print(f"=== 빈도 모델 ({p_frequency_type}) 적합 결과 ===")
+for key, value in freq_params.items():
+    print(f"{key}: {value:.6f}")
+print(f"Log Likelihood: {freq_log_likelihood:.6f}")
+
+# 심도 모델: 개별 클레임 금액
+amounts = dataframe[p_amount_column].values
+amounts = amounts[amounts > 0]
+
+# 심도 분포 적합
+if p_severity_type == "Normal":
+    params = stats.norm.fit(amounts)
+    sev_dist = stats.norm
+elif p_severity_type == "Lognormal":
+    log_amounts = np.log(amounts)
+    params = stats.norm.fit(log_amounts)
+    sev_dist = stats.lognorm
+    params = (params[1], np.exp(params[0]), 0)
+elif p_severity_type == "Pareto":
+    params, _ = stats.pareto.fit(amounts, floc=0)
+    sev_dist = stats.pareto
+elif p_severity_type == "Gamma":
+    params = stats.gamma.fit(amounts, floc=0)
+    sev_dist = stats.gamma
+elif p_severity_type == "Exponential":
+    params = stats.expon.fit(amounts, floc=0)
+    sev_dist = stats.expon
+elif p_severity_type == "Weibull":
+    params = stats.weibull_min.fit(amounts, floc=0)
+    sev_dist = stats.weibull_min
+
+print(f"\\n=== 심도 모델 ({p_severity_type}) 적합 결과 ===")
+print(f"파라미터: {params}")
+
+# 집계 분포 계산
+if p_frequency_type == "Poisson":
+    E_N = lambda_param
+    Var_N = lambda_param
+else:
+    E_N = r * (1 - p) / p
+    Var_N = r * (1 - p) / (p ** 2)
+
+E_X = np.mean(amounts)
+Var_X = np.var(amounts)
+
+E_Total = E_N * E_X
+Var_Total = E_N * Var_X + Var_N * (E_X ** 2)
+Std_Total = np.sqrt(Var_Total)
+
+print(f"\\n=== 집계 분포 ===")
+print(f"기대값: {E_Total:,.2f}")
+print(f"표준편차: {Std_Total:,.2f}")
 `,
 };
 

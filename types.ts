@@ -58,6 +58,15 @@ export enum ModuleType {
   CalculateCededLoss = "CalculateCededLoss",
   PriceXolContract = "PriceXolContract",
 
+  // DFA Modules
+  LoadClaimData = "LoadClaimData",
+  ApplyInflation = "ApplyInflation",
+  FormatChange = "FormatChange",
+  SplitByThreshold = "SplitByThreshold",
+  FitAggregateModel = "FitAggregateModel",
+  SimulateAggDist = "SimulateAggDist",
+  FitFrequencySeverityModel = "FitFrequencySeverityModel",
+
   // Deprecating these
   LogisticTradition = "LogisticTradition",
 
@@ -374,6 +383,103 @@ export interface NormalizerOutput {
   >;
 }
 
+// --- DFA Module Outputs ---
+export interface ClaimDataOutput {
+  type: "ClaimDataOutput";
+  data: DataPreview;
+}
+
+export interface InflatedDataOutput {
+  type: "InflatedDataOutput";
+  data: DataPreview;
+  targetYear: number;
+  inflationRate: number;
+}
+
+export interface FormatChangeOutput {
+  type: "FormatChangeOutput";
+  data: DataPreview;
+}
+
+export interface ThresholdSplitOutput {
+  type: "ThresholdSplitOutput";
+  belowThreshold: DataPreview; // 연도별 합계만
+  aboveThreshold: DataPreview; // 원본 레이아웃 유지
+  threshold: number;
+}
+
+export interface AggregateModelFitResult {
+  distributionType: "Lognormal" | "Exponential" | "Gamma" | "Pareto";
+  parameters: Record<string, number>;
+  fitStatistics: {
+    aic?: number;
+    bic?: number;
+    logLikelihood?: number;
+    ksStatistic?: number;
+    ksPValue?: number;
+  };
+}
+
+export interface AggregateModelOutput {
+  type: "AggregateModelOutput";
+  results: AggregateModelFitResult[]; // 여러 분포의 적합 결과
+  selectedDistribution?: "Lognormal" | "Exponential" | "Gamma" | "Pareto"; // 사용자가 선택한 분포
+  yearlyAggregates: Array<{
+    year: number;
+    totalAmount: number;
+  }>;
+}
+
+export interface SimulateAggDistOutput {
+  type: "SimulateAggDistOutput";
+  simulationCount: number;
+  results: Array<{
+    count: number;
+    amount: number;
+  }>;
+  statistics: {
+    mean: number;
+    std: number;
+    min: number;
+    max: number;
+    percentile5: number;
+    percentile25: number;
+    percentile50: number;
+    percentile75: number;
+    percentile95: number;
+    percentile99: number;
+  };
+}
+
+export interface FrequencySeverityModelOutput {
+  type: "FrequencySeverityModelOutput";
+  frequencyModel: {
+    type: "Poisson" | "NegativeBinomial";
+    parameters: Record<string, number>;
+    fitStatistics: {
+      aic?: number;
+      bic?: number;
+      logLikelihood?: number;
+    };
+  };
+  severityModel: {
+    type: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
+    parameters: Record<string, number>;
+    fitStatistics: {
+      aic?: number;
+      bic?: number;
+      logLikelihood?: number;
+      ksStatistic?: number;
+      ksPValue?: number;
+    };
+  };
+  aggregateDistribution: {
+    mean: number;
+    stdDev: number;
+    percentiles: Record<string, number>;
+  };
+}
+
 export interface CanvasModule {
   id: string;
   name: string;
@@ -404,7 +510,14 @@ export interface CanvasModule {
     | DBSCANOutput
     | MissingHandlerOutput
     | EncoderOutput
-    | NormalizerOutput;
+    | NormalizerOutput
+    | ClaimDataOutput
+    | InflatedDataOutput
+    | FormatChangeOutput
+    | ThresholdSplitOutput
+    | AggregateModelOutput
+    | SimulateAggDistOutput
+    | FrequencySeverityModelOutput;
   // Shape-specific properties
   shapeData?: {
     // For TextBox

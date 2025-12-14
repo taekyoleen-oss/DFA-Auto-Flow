@@ -27,10 +27,10 @@ import {
 export const TOOLBOX_MODULES = [
   // Data Preprocess
   {
-    type: ModuleType.LoadData,
-    name: "Load Data",
+    type: ModuleType.LoadClaimData,
+    name: "Load Claim Data",
     icon: DatabaseIcon,
-    description: "Loads a dataset from a CSV file.",
+    description: "Loads claim data from a CSV file for DFA analysis.",
   },
   {
     type: ModuleType.Statistics,
@@ -318,15 +318,53 @@ export const TOOLBOX_MODULES = [
     icon: PriceTagIcon,
     description: "Prices an XoL contract using the burning cost method.",
   },
+
+  // DFA Modules
+  {
+    type: ModuleType.ApplyInflation,
+    name: "Apply Inflation",
+    icon: ChartCurveIcon,
+    description: "Applies annual inflation rate to project claim amounts to target year.",
+  },
+  {
+    type: ModuleType.FormatChange,
+    name: "Format Change",
+    icon: TableCellsIcon,
+    description: "Extracts year from date column and adds it as a new column.",
+  },
+  {
+    type: ModuleType.SplitByThreshold,
+    name: "Split By Threshold",
+    icon: FilterIcon,
+    description: "Splits claims data by threshold amount into two outputs.",
+  },
+  {
+    type: ModuleType.FitAggregateModel,
+    name: "Fit Agg Model",
+    icon: BellCurveIcon,
+    description: "Fits statistical distribution to aggregate claim amounts.",
+  },
+  {
+    type: ModuleType.SimulateAggDist,
+    name: "Simulate Agg Dist",
+    icon: PresentationChartLineIcon,
+    description: "Performs Monte Carlo simulation using the selected distribution.",
+  },
+  {
+    type: ModuleType.FitFrequencySeverityModel,
+    name: "Fit Frequency-Severity Model",
+    icon: BeakerIcon,
+    description: "Fits frequency and severity models for claim analysis.",
+  },
 ];
 
 // fix: Replaced all instances of status: 'Pending' with status: ModuleStatus.Pending to conform to the ModuleStatus enum type.
 export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
   [
     {
-      type: ModuleType.LoadData,
+      type: ModuleType.LoadClaimData,
       status: ModuleStatus.Pending,
-      parameters: { source: "your-data-source.csv" },
+      parameters: { source: "claim_data.csv" },
       inputs: [],
       outputs: [{ name: "data_out", type: "data" }],
     },
@@ -764,6 +802,71 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         { name: "contract_in", type: "contract" },
       ],
       outputs: [{ name: "price_out", type: "evaluation" }],
+    },
+    // DFA Modules
+    {
+      type: ModuleType.LoadClaimData,
+      status: ModuleStatus.Pending,
+      parameters: { source: "claim_data.csv" },
+      inputs: [],
+      outputs: [{ name: "data_out", type: "data" }],
+    },
+    {
+      type: ModuleType.ApplyInflation,
+      status: ModuleStatus.Pending,
+      parameters: {
+        target_year: 2026,
+        inflation_rate: 5.0,
+        amount_column: "클레임 금액",
+        year_column: "날짜",
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [{ name: "data_out", type: "data" }],
+    },
+    {
+      type: ModuleType.FormatChange,
+      status: ModuleStatus.Pending,
+      parameters: {
+        date_column: "날짜",
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [{ name: "data_out", type: "data" }],
+    },
+    {
+      type: ModuleType.SplitByThreshold,
+      status: ModuleStatus.Pending,
+      parameters: {
+        threshold: 1000000,
+        amount_column: "클레임 금액",
+        date_column: "날짜",
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [
+        { name: "below_threshold_out", type: "data" },
+        { name: "above_threshold_out", type: "data" },
+      ],
+    },
+    {
+      type: ModuleType.FitAggregateModel,
+      status: ModuleStatus.Pending,
+      parameters: {
+        selected_distributions: ["Lognormal", "Exponential", "Gamma", "Pareto"],
+        amount_column: "total_amount",
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [{ name: "model_out", type: "evaluation" }],
+    },
+    {
+      type: ModuleType.FitFrequencySeverityModel,
+      status: ModuleStatus.Pending,
+      parameters: {
+        frequency_type: "Poisson",
+        severity_type: "Lognormal",
+        amount_column: "클레임 금액",
+        date_column: "날짜",
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [{ name: "model_out", type: "evaluation" }],
     },
   ];
 

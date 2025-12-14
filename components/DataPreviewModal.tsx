@@ -5,6 +5,7 @@ import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
 // import { calculatePCAForScoreVisualization } from '../utils/pyodideRunner'; // Python 기반 (주석 처리)
 import { calculatePCA } from '../utils/pcaCalculator'; // JavaScript 기반 (ml-pca 사용)
+import { DataTable } from './SplitDataPreviewModal';
 
 interface DataPreviewModalProps {
     module: CanvasModule;
@@ -77,6 +78,165 @@ const HistogramPlot: React.FC<{ rows: Record<string, any>[]; column: string; }> 
                     </div>
                 </div>
              </div>
+        </div>
+    );
+};
+
+// 연도별 금액을 표시하는 Bar Plot 컴포넌트
+const YearlyAmountBarPlot: React.FC<{ rows: Record<string, any>[]; yearColumn: string; amountColumn: string }> = ({ rows, yearColumn, amountColumn }) => {
+    const data = useMemo(() => {
+        return rows.map(row => ({
+            year: row[yearColumn],
+            amount: parseFloat(row[amountColumn]) || 0
+        })).filter(d => !isNaN(d.amount));
+    }, [rows, yearColumn, amountColumn]);
+
+    if (data.length === 0) {
+        return <div className="flex items-center justify-center h-full text-gray-400 text-sm">No data available to plot.</div>;
+    }
+
+    const maxAmount = Math.max(...data.map(d => d.amount), 0);
+    const sortedData = [...data].sort((a, b) => a.year - b.year);
+
+    return (
+        <div className="w-full h-full p-4 flex flex-col border border-gray-200 rounded-lg">
+            <div className="flex-grow flex items-center gap-2 overflow-hidden">
+                {/* Y-axis Label */}
+                <div className="flex items-center justify-center h-full">
+                    <p className="text-sm text-gray-600 font-semibold transform -rotate-90 whitespace-nowrap">
+                        Amount
+                    </p>
+                </div>
+                
+                {/* Plot area */}
+                <div className="flex-grow h-full flex flex-col">
+                    <div className="flex-grow flex items-end justify-around gap-2 pt-4">
+                        {sortedData.map((d, index) => {
+                            const heightPercentage = maxAmount > 0 ? (d.amount / maxAmount) * 100 : 0;
+                            return (
+                                <div key={index} className="flex-1 h-full flex flex-col justify-end items-center group relative" title={`Year: ${d.year}, Amount: ${d.amount.toLocaleString()}`}>
+                                    <span className="absolute -top-5 text-xs bg-gray-800 text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                                        {d.amount.toLocaleString()}
+                                    </span>
+                                    <div 
+                                        className="w-full bg-green-500 hover:bg-green-600 transition-colors"
+                                        style={{ height: `${heightPercentage}%` }}
+                                    >
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    {/* X-axis Labels */}
+                    <div className="w-full flex justify-around gap-2 text-center text-xs text-gray-600 font-semibold mt-2 border-t pt-1">
+                        {sortedData.map((d, index) => (
+                            <div key={index} className="flex-1">
+                                {d.year}
+                            </div>
+                        ))}
+                    </div>
+                    {/* X-axis Label */}
+                    <div className="w-full text-center text-sm text-gray-600 font-semibold mt-1">
+                        {yearColumn}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const ClaimAmountHistogramTable: React.FC<{ rows: Record<string, any>[]; column?: string }> = ({ rows, column = '클레임 금액' }) => {
+    const claimAmounts = useMemo(() => {
+        return rows.map(r => parseFloat(r[column])).filter(v => !isNaN(v));
+    }, [rows, column]);
+
+    const { bins, binRanges } = useMemo(() => {
+        if (claimAmounts.length === 0) return { bins: [], binRanges: [] };
+        
+        const min = Math.min(...claimAmounts);
+        const max = Math.max(...claimAmounts);
+        const numBins = 10;
+        const binSize = (max - min) / numBins;
+        const bins = Array(numBins).fill(0);
+        const binRanges: Array<{ min: number; max: number }> = [];
+
+        for (let i = 0; i < numBins; i++) {
+            binRanges.push({
+                min: min + i * binSize,
+                max: min + (i + 1) * binSize
+            });
+        }
+
+        for (const value of claimAmounts) {
+            let binIndex = binSize > 0 ? Math.floor((value - min) / binSize) : 0;
+            if (binIndex === numBins) binIndex--;
+            if (binIndex >= 0 && binIndex < numBins) {
+                bins[binIndex]++;
+            }
+        }
+
+        return { bins, binRanges };
+    }, [claimAmounts]);
+
+    const total = claimAmounts.length;
+    const mean = claimAmounts.reduce((a, b) => a + b, 0) / total;
+    const sorted = [...claimAmounts].sort((a, b) => a - b);
+    const median = sorted.length % 2 === 0 
+        ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+        : sorted[Math.floor(sorted.length / 2)];
+    const stdDev = Math.sqrt(claimAmounts.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / total);
+
+    return (
+        <div className="bg-gray-50 rounded-lg p-4">
+            <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                    <thead className="bg-gray-100">
+                        <tr>
+                            <th className="px-4 py-2 text-left font-semibold text-gray-700">Bin Range</th>
+                            <th className="px-4 py-2 text-center font-semibold text-gray-700">Frequency</th>
+                            <th className="px-4 py-2 text-center font-semibold text-gray-700">Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {bins.map((count, index) => (
+                            <tr key={index} className="border-b border-gray-200">
+                                <td className="px-4 py-2 text-gray-600">
+                                    {binRanges[index].min.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} - {binRanges[index].max.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
+                                </td>
+                                <td className="px-4 py-2 text-center text-gray-700">{count}</td>
+                                <td className="px-4 py-2 text-center text-gray-700">
+                                    {total > 0 ? ((count / total) * 100).toFixed(2) : 0}%
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                    <tfoot className="bg-gray-100 font-semibold">
+                        <tr>
+                            <td className="px-4 py-2 text-gray-700">Total</td>
+                            <td className="px-4 py-2 text-center text-gray-700">{total}</td>
+                            <td className="px-4 py-2 text-center text-gray-700">100.00%</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white p-3 rounded border border-gray-200">
+                    <div className="text-xs text-gray-500">Mean</div>
+                    <div className="text-lg font-semibold text-gray-800">{mean.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</div>
+                </div>
+                <div className="bg-white p-3 rounded border border-gray-200">
+                    <div className="text-xs text-gray-500">Median</div>
+                    <div className="text-lg font-semibold text-gray-800">{median.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</div>
+                </div>
+                <div className="bg-white p-3 rounded border border-gray-200">
+                    <div className="text-xs text-gray-500">Std Dev</div>
+                    <div className="text-lg font-semibold text-gray-800">{stdDev.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}</div>
+                </div>
+                <div className="bg-white p-3 rounded border border-gray-200">
+                    <div className="text-xs text-gray-500">Total Claims</div>
+                    <div className="text-lg font-semibold text-gray-800">{total}</div>
+                </div>
+            </div>
         </div>
     );
 };
@@ -541,11 +701,22 @@ const ColumnStatistics: React.FC<{ data: (string | number | null)[]; columnName:
 
 
 export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, projectName, onClose }) => {
+    // ThresholdSplitOutput의 경우 별도 처리
+    const thresholdOutput = module?.outputData?.type === 'ThresholdSplitOutput' 
+        ? (module.outputData as any) 
+        : null;
+    
+    const [activeThresholdTab, setActiveThresholdTab] = useState<'below' | 'above'>('below');
+    const [activeTab, setActiveTab] = useState<'table' | 'visualization'>('table');
+    
     // 안전한 데이터 가져오기
     const getPreviewData = (): DataPreview | null => {
         try {
             if (!module || !module.outputData) return null;
         if (module.outputData.type === 'DataPreview') return module.outputData;
+        if (module.outputData.type === 'ClaimDataOutput') return module.outputData.data || null;
+        if (module.outputData.type === 'InflatedDataOutput') return module.outputData.data || null;
+        if (module.outputData.type === 'FormatChangeOutput') return module.outputData.data || null;
         if (module.outputData.type === 'KMeansOutput' || module.outputData.type === 'HierarchicalClusteringOutput' || module.outputData.type === 'DBSCANOutput') {
                 return module.outputData.clusterAssignments || null;
         }
@@ -564,8 +735,26 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     const rows = Array.isArray(data?.rows) ? data.rows : [];
     
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
-    const [selectedColumn, setSelectedColumn] = useState<string | null>(columns[0]?.name || null);
-    const [activeTab, setActiveTab] = useState<'table' | 'visualization'>('table');
+    // LoadClaimData/ApplyInflation/FormatChange/SelectData 모듈의 경우 적절한 컬럼을 기본 선택
+    const defaultSelectedColumn = useMemo(() => {
+        if (module.type === ModuleType.LoadClaimData || module.type === ModuleType.FormatChange) {
+            const claimAmountCol = columns.find(c => c.name === '클레임 금액');
+            return claimAmountCol?.name || columns[0]?.name || null;
+        } else if (module.type === ModuleType.ApplyInflation) {
+            // ApplyInflation: amount_column 파라미터에서 컬럼명 가져와서 "_infl" 붙인 컬럼 찾기
+            const amountColumn = (module.parameters?.amount_column as string) || '클레임 금액';
+            const inflatedColumnName = `${amountColumn}_infl`;
+            const inflatedCol = columns.find(c => c.name === inflatedColumnName);
+            return inflatedCol?.name || columns.find(c => c.name.endsWith('_infl'))?.name || columns[0]?.name || null;
+        } else if (module.type === ModuleType.SelectData) {
+            // SelectData: 첫 번째 숫자 컬럼을 찾거나, "클레임 금액" 또는 "_infl"로 끝나는 컬럼을 찾음
+            const numericCols = columns.filter(c => c.type === 'number').map(c => c.name);
+            const claimAmountCol = columns.find(c => c.name === '클레임 금액' || c.name.endsWith('_infl'))?.name;
+            return claimAmountCol || numericCols[0] || columns[0]?.name || null;
+        }
+        return columns[0]?.name || null;
+    }, [module.type, module.parameters, columns]);
+    const [selectedColumn, setSelectedColumn] = useState<string | null>(defaultSelectedColumn);
     const [yAxisCol, setYAxisCol] = useState<string | null>(null);
 
     // Score Model용 label column state
@@ -918,6 +1107,179 @@ const PCAScoreVisualization: React.FC<{
         }
     }, [isSelectedColNumeric, selectedColumn, numericCols]);
 
+    // ThresholdSplitOutput의 경우 별도 처리
+    if (thresholdOutput) {
+        const threshold = thresholdOutput.threshold || 0;
+        const belowData = thresholdOutput.belowThreshold;
+        const aboveData = thresholdOutput.aboveThreshold;
+        
+        // belowData에서 연도와 금액 컬럼 찾기
+        const belowColumns = belowData?.columns || [];
+        const yearColumn = belowColumns.find((c: ColumnInfo) => c.name === '연도' || c.name === 'year' || c.name.toLowerCase().includes('year'))?.name || belowColumns[0]?.name;
+        const amountColumn = belowColumns.find((c: ColumnInfo) => c.name.includes('금액') || c.name.includes('amount') || c.name.includes('_infl'))?.name || belowColumns.find((c: ColumnInfo) => c.type === 'number')?.name;
+        
+        // aboveData에서 금액 컬럼 찾기
+        const aboveColumns = aboveData?.columns || [];
+        const aboveAmountColumn = aboveColumns.find((c: ColumnInfo) => c.name.includes('금액') || c.name.includes('amount') || c.name.includes('_infl'))?.name || aboveColumns.find((c: ColumnInfo) => c.type === 'number')?.name;
+        
+        const belowRows = belowData?.rows || [];
+        const aboveRows = aboveData?.rows || [];
+        
+        // belowData의 금액 컬럼 데이터 추출 (통계량용)
+        const belowAmountData = yearColumn && amountColumn ? belowRows.map((r: any) => r[amountColumn]).filter((v: any) => v !== null && v !== undefined) : [];
+        const belowAmountColumnInfo = belowColumns.find((c: ColumnInfo) => c.name === amountColumn);
+        const isBelowAmountNumeric = belowAmountColumnInfo?.type === 'number';
+        
+        // aboveData의 금액 컬럼 데이터 추출 (통계량용)
+        const aboveAmountData = aboveAmountColumn ? aboveRows.map((r: any) => r[aboveAmountColumn]).filter((v: any) => v !== null && v !== undefined) : [];
+        const aboveAmountColumnInfo = aboveColumns.find((c: ColumnInfo) => c.name === aboveAmountColumn);
+        const isAboveAmountNumeric = aboveAmountColumnInfo?.type === 'number';
+        
+        return (
+            <div 
+                className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                onClick={onClose}
+            >
+                <div 
+                    className="bg-white text-gray-900 rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
+                        <h2 className="text-xl font-bold text-gray-800">Data Preview: {module.name}</h2>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => {
+                                    const currentData = activeThresholdTab === 'below' ? belowData : aboveData;
+                                    if (!currentData || !currentData.rows || currentData.rows.length === 0) return;
+                                    const csvContent = [
+                                        currentData.columns.map(c => c.name).join(','),
+                                        ...currentData.rows.map(row => 
+                                            currentData.columns.map(col => {
+                                                const val = row[col.name];
+                                                if (val === null || val === undefined) return '';
+                                                const str = String(val);
+                                                return str.includes(',') || str.includes('"') || str.includes('\n') 
+                                                    ? `"${str.replace(/"/g, '""')}"` 
+                                                    : str;
+                                            }).join(',')
+                                        )
+                                    ].join('\n');
+                                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                    const link = document.createElement('a');
+                                    link.href = URL.createObjectURL(blob);
+                                    link.download = `${module.name}_${activeThresholdTab === 'below' ? 'below_threshold' : 'above_threshold'}.csv`;
+                                    link.click();
+                                }}
+                                className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                Download CSV
+                            </button>
+                            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                                <XCircleIcon className="w-6 h-6" />
+                            </button>
+                        </div>
+                    </header>
+                    <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
+                        <div className="flex-shrink-0 border-b border-gray-200">
+                            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                                <button
+                                    onClick={() => setActiveThresholdTab('below')}
+                                    className={`${
+                                        activeThresholdTab === 'below'
+                                            ? 'border-indigo-500 text-indigo-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                >
+                                    Threshold &lt; {threshold.toLocaleString()}
+                                </button>
+                                <button
+                                    onClick={() => setActiveThresholdTab('above')}
+                                    className={`${
+                                        activeThresholdTab === 'above'
+                                            ? 'border-indigo-500 text-indigo-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                >
+                                    Threshold &gt;= {threshold.toLocaleString()}
+                                </button>
+                            </nav>
+                        </div>
+                        
+                        {activeThresholdTab === 'below' && belowData && (
+                            <div className="flex-grow flex gap-4 overflow-hidden">
+                                {/* 왼쪽: 테이블 */}
+                                <div className="w-1/2 overflow-auto border border-gray-200 rounded-lg">
+                                    <DataTable title={`Threshold < ${threshold.toLocaleString()}`} data={belowData} />
+                                </div>
+                                
+                                {/* 오른쪽: 그래프와 통계량 */}
+                                <div className="w-1/2 flex flex-col gap-4">
+                                    {/* 오른쪽 상단: 연도별 금액 그래프 */}
+                                    {yearColumn && amountColumn && (
+                                        <div className="flex-grow min-h-0 border border-gray-200 rounded-lg">
+                                            <YearlyAmountBarPlot 
+                                                rows={belowRows} 
+                                                yearColumn={yearColumn} 
+                                                amountColumn={amountColumn} 
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* 오른쪽 하단: 통계량 */}
+                                    {amountColumn && (
+                                        <div className="flex-shrink-0">
+                                            <ColumnStatistics 
+                                                data={belowAmountData} 
+                                                columnName={amountColumn} 
+                                                isNumeric={isBelowAmountNumeric} 
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {activeThresholdTab === 'above' && aboveData && (
+                            <div className="flex-grow flex gap-4 overflow-hidden">
+                                {/* 왼쪽: 테이블 */}
+                                <div className="w-1/2 overflow-auto border border-gray-200 rounded-lg">
+                                    <DataTable title={`Threshold >= ${threshold.toLocaleString()}`} data={aboveData} />
+                                </div>
+                                
+                                {/* 오른쪽: 그래프와 통계량 */}
+                                <div className="w-1/2 flex flex-col gap-4">
+                                    {/* 오른쪽 상단: 금액에 대한 건수 그래프 */}
+                                    {aboveAmountColumn && (
+                                        <div className="flex-grow min-h-0 border border-gray-200 rounded-lg">
+                                            <HistogramPlot 
+                                                rows={aboveRows} 
+                                                column={aboveAmountColumn} 
+                                            />
+                                        </div>
+                                    )}
+                                    
+                                    {/* 오른쪽 하단: 통계량 */}
+                                    {aboveAmountColumn && (
+                                        <div className="flex-shrink-0">
+                                            <ColumnStatistics 
+                                                data={aboveAmountData} 
+                                                columnName={aboveAmountColumn} 
+                                                isNumeric={isAboveAmountNumeric} 
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            </div>
+        );
+    }
+    
     if (!data) {
         console.warn('DataPreviewModal: No data available for module', module.id, module.type, module.outputData);
         return (
@@ -943,9 +1305,39 @@ const PCAScoreVisualization: React.FC<{
             >
                 <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                     <h2 className="text-xl font-bold text-gray-800">Data Preview: {module.name}</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-                        <XCircleIcon className="w-6 h-6" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                const csvContent = [
+                                    columns.map(c => c.name).join(','),
+                                    ...rows.map(row => 
+                                        columns.map(col => {
+                                            const val = row[col.name];
+                                            if (val === null || val === undefined) return '';
+                                            const str = String(val);
+                                            return str.includes(',') || str.includes('"') || str.includes('\n') 
+                                                ? `"${str.replace(/"/g, '""')}"` 
+                                                : str;
+                                        }).join(',')
+                                    )
+                                ].join('\n');
+                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                const link = document.createElement('a');
+                                link.href = URL.createObjectURL(blob);
+                                link.download = `${module.name}_data.csv`;
+                                link.click();
+                            }}
+                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download CSV
+                        </button>
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                            <XCircleIcon className="w-6 h-6" />
+                        </button>
+                    </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
                     <div className="flex-shrink-0 border-b border-gray-200">
@@ -968,7 +1360,7 @@ const PCAScoreVisualization: React.FC<{
                                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                 } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
                             >
-                                PCA Visualization
+                                {(module.type === ModuleType.LoadClaimData || module.type === ModuleType.ApplyInflation || module.type === ModuleType.FormatChange || module.type === ModuleType.SelectData) ? 'Claim Amount Histogram' : 'PCA Visualization'}
                             </button>
                         </nav>
                     </div>
@@ -1004,15 +1396,38 @@ const PCAScoreVisualization: React.FC<{
                                             <tbody>
                                                 {sortedRows.map((row, rowIndex) => (
                                                     <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                        {columns.map(col => (
-                                                            <td 
-                                                                key={col.name} 
-                                                                className="py-1.5 px-3 font-mono truncate hover:bg-gray-50"
-                                                                title={String(row[col.name])}
-                                                            >
-                                                                {row[col.name] === null ? <i className="text-gray-400">null</i> : String(row[col.name])}
-                                                            </td>
-                                                        ))}
+                                                        {columns.map(col => {
+                                                            const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                            const isNumeric = col.type === 'number' && !isYearColumn;
+                                                            const value = row[col.name];
+                                                            
+                                                            let displayValue: string;
+                                                            if (value === null || value === undefined || value === '') {
+                                                                displayValue = '';
+                                                            } else if (isNumeric) {
+                                                                const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                                if (!isNaN(numValue)) {
+                                                                    displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                        maximumFractionDigits: 2,
+                                                                        minimumFractionDigits: 0
+                                                                    });
+                                                                } else {
+                                                                    displayValue = String(value);
+                                                                }
+                                                            } else {
+                                                                displayValue = String(value);
+                                                            }
+                                                            
+                                                            return (
+                                                                <td 
+                                                                    key={col.name} 
+                                                                    className={`py-1.5 px-3 font-mono truncate hover:bg-gray-50 ${isNumeric ? 'text-right' : 'text-left'}`}
+                                                                    title={String(row[col.name])}
+                                                                >
+                                                                    {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                                </td>
+                                                            );
+                                                        })}
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1020,7 +1435,7 @@ const PCAScoreVisualization: React.FC<{
                                     </div>
                                 ) : (
                                     <>
-                                <div className={`overflow-auto border border-gray-200 rounded-lg ${selectedColumnData ? 'w-1/2' : 'w-full'}`}>
+                                <div className={`overflow-auto border border-gray-200 rounded-lg ${selectedColumn ? 'w-1/2' : 'w-full'}`}>
                                     <table className="min-w-full text-sm text-left">
                                         <thead className="bg-gray-50 sticky top-0">
                                             <tr>
@@ -1041,33 +1456,73 @@ const PCAScoreVisualization: React.FC<{
                                         <tbody>
                                             {sortedRows.map((row, rowIndex) => (
                                                 <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                    {columns.map(col => (
-                                                        <td 
-                                                            key={col.name} 
-                                                            className={`py-1.5 px-3 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'}`}
-                                                            onClick={() => setSelectedColumn(col.name)}
-                                                            title={String(row[col.name])}
-                                                        >
-                                                            {row[col.name] === null ? <i className="text-gray-400">null</i> : String(row[col.name])}
-                                                        </td>
-                                                    ))}
+                                                    {columns.map(col => {
+                                                        const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                        const isNumeric = col.type === 'number' && !isYearColumn;
+                                                        const value = row[col.name];
+                                                        
+                                                        let displayValue: string;
+                                                        if (value === null || value === undefined || value === '') {
+                                                            displayValue = '';
+                                                        } else if (isNumeric) {
+                                                            const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                            if (!isNaN(numValue)) {
+                                                                displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                    maximumFractionDigits: 2,
+                                                                    minimumFractionDigits: 0
+                                                                });
+                                                            } else {
+                                                                displayValue = String(value);
+                                                            }
+                                                        } else {
+                                                            displayValue = String(value);
+                                                        }
+                                                        
+                                                        return (
+                                                            <td 
+                                                                key={col.name} 
+                                                                className={`py-1.5 px-3 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
+                                                                onClick={() => setSelectedColumn(col.name)}
+                                                                title={String(row[col.name])}
+                                                            >
+                                                                {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                            </td>
+                                                        );
+                                                    })}
                                                 </tr>
                                             ))}
                                         </tbody>
                                     </table>
                                 </div>
-                                {selectedColumnData && (
-                                    <div className="w-1/2 flex flex-col gap-4">
-                                        {isSelectedColNumeric ? (
-                                            <HistogramPlot rows={rows} column={selectedColumn!} />
+                                {selectedColumn && (
+                                    <div className="w-1/2">
+                                        {(module.type === ModuleType.LoadClaimData || 
+                                          module.type === ModuleType.ApplyInflation || 
+                                          module.type === ModuleType.FormatChange || 
+                                          module.type === ModuleType.SelectData) ? (
+                                            // 4개 모듈: 통계량만 표시 (그래프 제거)
+                                            <div className="h-full border border-gray-200 rounded-lg p-4 overflow-auto">
+                                                <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                            </div>
                                         ) : (
-                                            <div className="w-full h-full p-4 flex flex-col border border-gray-200 rounded-lg items-center justify-center">
-                                                <p className="text-gray-500">Plot is not available for non-numeric columns.</p>
+                                            // 다른 모듈: 기존 레이아웃 유지 (그래프 + 통계량)
+                                            <div className="w-full flex flex-col gap-4">
+                                                <div className="flex-grow min-h-0 border border-gray-200 rounded-lg p-4">
+                                                    {isSelectedColNumeric ? (
+                                                        <HistogramPlot rows={rows} column={selectedColumn} />
+                                                    ) : (
+                                                        <div className="w-full h-full flex flex-col items-center justify-center">
+                                                            <p className="text-gray-500">Plot is not available for non-numeric columns.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4">
+                                                    <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                                </div>
                                             </div>
                                         )}
-                                        <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
                                     </div>
-                                        )}
+                                )}
                                     </>
                                 )}
                             </div>
@@ -1087,6 +1542,57 @@ const PCAScoreVisualization: React.FC<{
                                     scoreLabelCol={scoreLabelCol}
                                     setScoreLabelCol={setScoreLabelCol}
                                 />
+                            ) : (module.type === ModuleType.LoadClaimData || module.type === ModuleType.ApplyInflation || module.type === ModuleType.FormatChange || module.type === ModuleType.SelectData) ? (
+                                <>
+                                    {/* LoadClaimData/ApplyInflation/FormatChange/SelectData: 클레임 금액 히스토그램 */}
+                                    <div className="w-full">
+                                        <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                                            {(() => {
+                                                if (module.type === ModuleType.ApplyInflation) {
+                                                    return "Inflated Claim Amount Distribution";
+                                                } else {
+                                                    // LoadClaimData, FormatChange, SelectData는 동일하게 표시
+                                                    return "Claim Amount Distribution";
+                                                }
+                                            })()}
+                                        </h3>
+                                        <div className="w-full h-96 mb-6">
+                                            <HistogramPlot 
+                                                rows={rows} 
+                                                column={(() => {
+                                                    if (module.type === ModuleType.ApplyInflation) {
+                                                        const amountColumn = (module.parameters?.amount_column as string) || '클레임 금액';
+                                                        const inflatedColumnName = `${amountColumn}_infl`;
+                                                        return columns.find(c => c.name === inflatedColumnName)?.name || columns.find(c => c.name.endsWith('_infl'))?.name || '클레임 금액';
+                                                    } else {
+                                                        // LoadClaimData, FormatChange, SelectData는 "클레임 금액" 또는 "_infl"로 끝나는 컬럼 사용
+                                                        const claimAmountCol = columns.find(c => c.name === '클레임 금액' || c.name.endsWith('_infl'))?.name;
+                                                        return claimAmountCol || '클레임 금액';
+                                                    }
+                                                })()} 
+                                            />
+                                        </div>
+                                        
+                                        {/* 히스토그램 통계 표 */}
+                                        <div className="mt-6">
+                                            <h4 className="text-md font-semibold text-gray-700 mb-3">Histogram Statistics</h4>
+                                            <ClaimAmountHistogramTable 
+                                                rows={rows} 
+                                                column={(() => {
+                                                    if (module.type === ModuleType.ApplyInflation) {
+                                                        const amountColumn = (module.parameters?.amount_column as string) || '클레임 금액';
+                                                        const inflatedColumnName = `${amountColumn}_infl`;
+                                                        return columns.find(c => c.name === inflatedColumnName)?.name || columns.find(c => c.name.endsWith('_infl'))?.name || '클레임 금액';
+                                                    } else {
+                                                        // LoadClaimData, FormatChange, SelectData는 "클레임 금액" 또는 "_infl"로 끝나는 컬럼 사용
+                                                        const claimAmountCol = columns.find(c => c.name === '클레임 금액' || c.name.endsWith('_infl'))?.name;
+                                                        return claimAmountCol || '클레임 금액';
+                                                    }
+                                                })()}
+                                            />
+                                        </div>
+                                    </div>
+                                </>
                             ) : (
                                 <>
                             {!selectedColumn ? (

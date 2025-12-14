@@ -140,7 +140,7 @@ const StatsTable: React.FC<{ title: string; data: DataPreview }> = ({ title, dat
 };
 
 // A component to display data rows in a table
-const DataTable: React.FC<{ title: string; data: DataPreview }> = ({ title, data }) => {
+export const DataTable: React.FC<{ title: string; data: DataPreview }> = ({ title, data }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
     const [maxRows, setMaxRows] = useState(100); // 표시할 최대 행 수
     const allColumns = useMemo(() => data.columns, [data]);
@@ -233,23 +233,36 @@ const DataTable: React.FC<{ title: string; data: DataPreview }> = ({ title, data
                                     >
                                         {allColumns.map(col => {
                                             const value = row[col.name];
+                                            const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                            const isNumeric = col.type === 'number' && !isYearColumn;
+                                            
                                             let displayValue: string;
                                             if (value === null || value === undefined || value === '') {
                                                 displayValue = '';
-                                            } else if (col.type === 'number') {
-                                                const numValue = Number(value);
-                                                displayValue = isNaN(numValue) ? String(value) : numValue.toFixed(4);
+                                            } else if (isNumeric) {
+                                                const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                if (!isNaN(numValue)) {
+                                                    displayValue = numValue.toLocaleString('ko-KR', { 
+                                                        maximumFractionDigits: 2,
+                                                        minimumFractionDigits: 0
+                                                    });
+                                                } else {
+                                                    displayValue = String(value);
+                                                }
                                             } else {
                                                 displayValue = String(value);
                                             }
+                                            
                                             return (
                                                 <td
                                                     key={`${rowIndex}-${col.name}`}
-                                                    className={`py-2 px-3 ${
-                                                        col.type === 'number' ? 'font-mono text-right' : 'text-left'
-                                                    } text-gray-700`}
+                                                    className={`py-2 px-3 font-mono text-gray-700 ${
+                                                        isNumeric ? 'text-right' : 'text-left'
+                                                    }`}
                                                 >
-                                                    {displayValue}
+                                                    {displayValue === '' 
+                                                        ? <i className="text-gray-400">null</i> 
+                                                        : displayValue}
                                                 </td>
                                             );
                                         })}

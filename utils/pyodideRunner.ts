@@ -1283,6 +1283,809 @@ except Exception as e:
 }
 
 /**
+ * Decision Tree 모델을 Python으로 실행합니다
+ * 타임아웃: 60초
+ */
+export async function fitDecisionTreePython(
+  X: number[][],
+  y: number[],
+  modelPurpose: string = "classification",
+  criterion: string = "gini",
+  maxDepth: number | null = null,
+  minSamplesSplit: number = 2,
+  minSamplesLeaf: number = 1,
+  featureColumns?: string[],
+  timeoutMs: number = 60000
+): Promise<{
+  metrics: Record<string, number>;
+}> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      if (featureColumns) {
+        featureColumns.forEach((col, idx) => {
+          row[col] = X[i][idx];
+        });
+      } else {
+        X[i].forEach((val, idx) => {
+          row[`x${idx}`] = val;
+        });
+      }
+      row["y"] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set(
+      "js_feature_columns",
+      featureColumns || X[0].map((_, idx) => `x${idx}`)
+    );
+    py.globals.set("js_label_column", "y");
+
+    // Python 코드 실행
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, mean_squared_error, r2_score, mean_absolute_error
+
+try:
+    # 데이터 준비
+    dataframe = pd.DataFrame(js_data.to_py())
+    p_feature_columns = js_feature_columns.to_py()
+    p_label_column = str(js_label_column)
+    
+    # 데이터 검증
+    if dataframe.empty:
+        raise ValueError("DataFrame is empty")
+    if len(p_feature_columns) == 0:
+        raise ValueError("No feature columns specified")
+    if p_label_column not in dataframe.columns:
+        raise ValueError(f"Label column '{p_label_column}' not found in DataFrame")
+    
+    X_train = dataframe[p_feature_columns]
+    y_train = dataframe[p_label_column]
+    
+    # 데이터 검증
+    if X_train.empty:
+        raise ValueError("X_train is empty")
+    if y_train.empty:
+        raise ValueError("y_train is empty")
+    if len(X_train) != len(y_train):
+        raise ValueError(f"X_train and y_train must have same number of samples: X_train.shape[0]={len(X_train)}, y_train.shape[0]={len(y_train)}")
+    if len(X_train) < 1:
+        raise ValueError(f"Need at least 1 sample, got {len(X_train)}")
+    
+    # 모델 생성
+    p_model_purpose = '${modelPurpose}'
+    p_criterion = '${criterion}'
+    p_max_depth = ${maxDepth !== null ? maxDepth : "None"}
+    p_min_samples_split = ${minSamplesSplit}
+    p_min_samples_leaf = ${minSamplesLeaf}
+    
+    if p_model_purpose == 'classification':
+        model = DecisionTreeClassifier(
+            criterion=p_criterion.lower(),
+            max_depth=p_max_depth,
+            min_samples_split=p_min_samples_split,
+            min_samples_leaf=p_min_samples_leaf,
+            random_state=42
+        )
+    else:
+        criterion_reg = 'squared_error' if p_criterion == 'mse' else 'absolute_error'
+        model = DecisionTreeRegressor(
+            criterion=criterion_reg,
+            max_depth=p_max_depth,
+            min_samples_split=p_min_samples_split,
+            min_samples_leaf=p_min_samples_leaf,
+            random_state=42
+        )
+    
+    # 모델 훈련
+    model.fit(X_train, y_train)
+    
+    # 예측
+    y_pred = model.predict(X_train)
+    
+    # 메트릭 계산
+    if p_model_purpose == 'classification':
+        accuracy = float(accuracy_score(y_train, y_pred))
+        precision = float(precision_score(y_train, y_pred, average='binary', zero_division=0))
+        recall = float(recall_score(y_train, y_pred, average='binary', zero_division=0))
+        f1 = float(f1_score(y_train, y_pred, average='binary', zero_division=0))
+        
+        metrics_dict = {
+            'Accuracy': accuracy,
+            'Precision': precision,
+            'Recall': recall,
+            'F1-Score': f1
+        }
+        
+        # ROC-AUC 계산 (이진 분류인 경우)
+        try:
+            if len(np.unique(y_train)) == 2:
+                y_pred_proba = model.predict_proba(X_train)[:, 1]
+                roc_auc = float(roc_auc_score(y_train, y_pred_proba))
+                metrics_dict['ROC-AUC'] = roc_auc
+        except Exception:
+            pass
+    else:
+        mse = float(mean_squared_error(y_train, y_pred))
+        rmse = float(np.sqrt(mse))
+        mae = float(mean_absolute_error(y_train, y_pred))
+        r2 = float(r2_score(y_train, y_pred))
+        
+        metrics_dict = {
+            'R-squared': r2,
+            'Mean Squared Error': mse,
+            'Root Mean Squared Error': rmse,
+            'Mean Absolute Error': mae
+        }
+    
+    result = {
+        'metrics': metrics_dict,
+        'feature_columns': p_feature_columns
+    }
+    
+    # 전역 변수에 저장
+    js_result = result
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    error_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+    # 전역 변수에 저장
+    js_result = error_result
+`;
+
+    // Python 코드 실행
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python Decision Tree 실행 타임아웃 (60초 초과)"
+    );
+
+    // 전역 변수에서 결과 가져오기
+    const resultPyObj = py.globals.get("js_result");
+
+    // 결과 객체 검증
+    if (!resultPyObj) {
+      throw new Error(
+        `Python Decision Tree error: Python code returned None or undefined.`
+      );
+    }
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 에러가 발생한 경우 처리
+    if (result.__error__) {
+      throw new Error(
+        `Python Decision Tree error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    // 필수 속성 검증
+    if (!result.metrics || typeof result.metrics !== "object") {
+      throw new Error(
+        `Python Decision Tree error: Missing or invalid 'metrics' in result.`
+      );
+    }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_result");
+
+    return {
+      metrics: result.metrics,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python Decision Tree error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * SVM 모델을 Python으로 실행합니다
+ * 타임아웃: 60초
+ */
+export async function fitSVMPython(
+  X: number[][],
+  y: number[],
+  modelPurpose: string = "classification",
+  kernel: string = "rbf",
+  C: number = 1.0,
+  gamma: string | number = "scale",
+  degree: number = 3,
+  featureColumns?: string[],
+  timeoutMs: number = 60000
+): Promise<{
+  metrics: Record<string, number>;
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      if (featureColumns) {
+        featureColumns.forEach((col, idx) => {
+          row[col] = X[i][idx];
+        });
+      } else {
+        X[i].forEach((val, idx) => {
+          row[`x${idx}`] = val;
+        });
+      }
+      row["y"] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set(
+      "js_feature_columns",
+      featureColumns || X[0].map((_, idx) => `x${idx}`)
+    );
+    py.globals.set("js_label_column", "y");
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.svm import SVC, SVR
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, mean_squared_error, r2_score, mean_absolute_error
+
+try:
+    dataframe = pd.DataFrame(js_data.to_py())
+    p_feature_columns = js_feature_columns.to_py()
+    p_label_column = str(js_label_column)
+    
+    if dataframe.empty:
+        raise ValueError("DataFrame is empty")
+    if len(p_feature_columns) == 0:
+        raise ValueError("No feature columns specified")
+    if p_label_column not in dataframe.columns:
+        raise ValueError(f"Label column '{p_label_column}' not found in DataFrame")
+    
+    X_train = dataframe[p_feature_columns]
+    y_train = dataframe[p_label_column]
+    
+    if X_train.empty or y_train.empty:
+        raise ValueError("X_train or y_train is empty")
+    if len(X_train) != len(y_train):
+        raise ValueError(f"X_train and y_train must have same number of samples")
+    if len(X_train) < 1:
+        raise ValueError(f"Need at least 1 sample, got {len(X_train)}")
+    
+    p_model_purpose = '${modelPurpose}'
+    p_kernel = '${kernel}'
+    p_C = ${C}
+    ${typeof gamma === "string" ? `p_gamma = '${gamma}'` : `p_gamma = ${gamma}`}
+    p_degree = ${degree}
+    
+    if p_model_purpose == 'classification':
+        model = SVC(
+            kernel=p_kernel,
+            C=p_C,
+            gamma=p_gamma,
+            degree=p_degree,
+            random_state=42
+        )
+    else:
+        model = SVR(
+            kernel=p_kernel,
+            C=p_C,
+            gamma=p_gamma,
+            degree=p_degree
+        )
+    
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_train)
+    
+    if p_model_purpose == 'classification':
+        accuracy = float(accuracy_score(y_train, y_pred))
+        precision = float(precision_score(y_train, y_pred, average='binary', zero_division=0))
+        recall = float(recall_score(y_train, y_pred, average='binary', zero_division=0))
+        f1 = float(f1_score(y_train, y_pred, average='binary', zero_division=0))
+        
+        metrics_dict = {
+            'Accuracy': accuracy,
+            'Precision': precision,
+            'Recall': recall,
+            'F1-Score': f1
+        }
+        
+        try:
+            if len(np.unique(y_train)) == 2:
+                y_pred_proba = model.predict_proba(X_train)[:, 1]
+                roc_auc = float(roc_auc_score(y_train, y_pred_proba))
+                metrics_dict['ROC-AUC'] = roc_auc
+        except Exception:
+            pass
+    else:
+        mse = float(mean_squared_error(y_train, y_pred))
+        rmse = float(np.sqrt(mse))
+        mae = float(mean_absolute_error(y_train, y_pred))
+        r2 = float(r2_score(y_train, y_pred))
+        
+        metrics_dict = {
+            'R-squared': r2,
+            'Mean Squared Error': mse,
+            'Root Mean Squared Error': rmse,
+            'Mean Absolute Error': mae
+        }
+    
+    result = {
+        'metrics': metrics_dict,
+        'feature_columns': p_feature_columns
+    }
+    
+    js_result = result
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    error_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+    js_result = error_result
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python SVM 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error(
+        `Python SVM error: Python code returned None or undefined.`
+      );
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (result.__error__) {
+      throw new Error(
+        `Python SVM error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    if (!result.metrics || typeof result.metrics !== "object") {
+      throw new Error(
+        `Python SVM error: Missing or invalid 'metrics' in result.`
+      );
+    }
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_result");
+
+    return {
+      metrics: result.metrics,
+    };
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python SVM error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * Linear Discriminant Analysis 모델을 Python으로 실행합니다
+ * 타임아웃: 60초
+ */
+export async function fitLDAPython(
+  X: number[][],
+  y: number[],
+  solver: string = "svd",
+  shrinkage: number | null = null,
+  nComponents: number | null = null,
+  featureColumns?: string[],
+  timeoutMs: number = 60000
+): Promise<{
+  metrics: Record<string, number>;
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      if (featureColumns) {
+        featureColumns.forEach((col, idx) => {
+          row[col] = X[i][idx];
+        });
+      } else {
+        X[i].forEach((val, idx) => {
+          row[`x${idx}`] = val;
+        });
+      }
+      row["y"] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set(
+      "js_feature_columns",
+      featureColumns || X[0].map((_, idx) => `x${idx}`)
+    );
+    py.globals.set("js_label_column", "y");
+
+    const shrinkageStr = shrinkage !== null ? String(shrinkage) : "None";
+    const nComponentsStr = nComponents !== null ? String(nComponents) : "None";
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+try:
+    dataframe = pd.DataFrame(js_data.to_py())
+    p_feature_columns = js_feature_columns.to_py()
+    p_label_column = str(js_label_column)
+    
+    if dataframe.empty:
+        raise ValueError("DataFrame is empty")
+    if len(p_feature_columns) == 0:
+        raise ValueError("No feature columns specified")
+    if p_label_column not in dataframe.columns:
+        raise ValueError(f"Label column '{p_label_column}' not found in DataFrame")
+    
+    X_train = dataframe[p_feature_columns]
+    y_train = dataframe[p_label_column]
+    
+    if X_train.empty or y_train.empty:
+        raise ValueError("X_train or y_train is empty")
+    if len(X_train) != len(y_train):
+        raise ValueError(f"X_train and y_train must have same number of samples")
+    if len(X_train) < 1:
+        raise ValueError(f"Need at least 1 sample, got {len(X_train)}")
+    
+    p_solver = '${solver}'
+    p_shrinkage = ${shrinkageStr} if ${shrinkageStr} != 'None' else None
+    p_n_components = ${nComponentsStr} if ${nComponentsStr} != 'None' else None
+    
+    model = LinearDiscriminantAnalysis(
+        solver=p_solver,
+        shrinkage=p_shrinkage,
+        n_components=p_n_components
+    )
+    
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_train)
+    
+    accuracy = float(accuracy_score(y_train, y_pred))
+    precision = float(precision_score(y_train, y_pred, average='binary', zero_division=0))
+    recall = float(recall_score(y_train, y_pred, average='binary', zero_division=0))
+    f1 = float(f1_score(y_train, y_pred, average='binary', zero_division=0))
+    
+    metrics_dict = {
+        'Accuracy': accuracy,
+        'Precision': precision,
+        'Recall': recall,
+        'F1-Score': f1
+    }
+    
+    try:
+        if len(np.unique(y_train)) == 2:
+            y_pred_proba = model.predict_proba(X_train)[:, 1]
+            roc_auc = float(roc_auc_score(y_train, y_pred_proba))
+            metrics_dict['ROC-AUC'] = roc_auc
+    except Exception:
+        pass
+    
+    result = {
+        'metrics': metrics_dict,
+        'feature_columns': p_feature_columns
+    }
+    
+    js_result = result
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    error_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+    js_result = error_result
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python LDA 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error(
+        `Python LDA error: Python code returned None or undefined.`
+      );
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (result.__error__) {
+      throw new Error(
+        `Python LDA error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    if (!result.metrics || typeof result.metrics !== "object") {
+      throw new Error(
+        `Python LDA error: Missing or invalid 'metrics' in result.`
+      );
+    }
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_result");
+
+    return {
+      metrics: result.metrics,
+    };
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python LDA error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * Naive Bayes 모델을 Python으로 실행합니다
+ * 타임아웃: 60초
+ */
+export async function fitNaiveBayesPython(
+  X: number[][],
+  y: number[],
+  modelType: string = "Gaussian",
+  alpha: number = 1.0,
+  featureColumns?: string[],
+  timeoutMs: number = 60000
+): Promise<{
+  metrics: Record<string, number>;
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    const dataRows: any[] = [];
+    for (let i = 0; i < X.length; i++) {
+      const row: any = {};
+      if (featureColumns) {
+        featureColumns.forEach((col, idx) => {
+          row[col] = X[i][idx];
+        });
+      } else {
+        X[i].forEach((val, idx) => {
+          row[`x${idx}`] = val;
+        });
+      }
+      row["y"] = y[i];
+      dataRows.push(row);
+    }
+
+    py.globals.set("js_data", dataRows);
+    py.globals.set(
+      "js_feature_columns",
+      featureColumns || X[0].map((_, idx) => `x${idx}`)
+    );
+    py.globals.set("js_label_column", "y");
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB, ComplementNB
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+
+try:
+    dataframe = pd.DataFrame(js_data.to_py())
+    p_feature_columns = js_feature_columns.to_py()
+    p_label_column = str(js_label_column)
+    
+    if dataframe.empty:
+        raise ValueError("DataFrame is empty")
+    if len(p_feature_columns) == 0:
+        raise ValueError("No feature columns specified")
+    if p_label_column not in dataframe.columns:
+        raise ValueError(f"Label column '{p_label_column}' not found in DataFrame")
+    
+    X_train = dataframe[p_feature_columns]
+    y_train = dataframe[p_label_column]
+    
+    if X_train.empty or y_train.empty:
+        raise ValueError("X_train or y_train is empty")
+    if len(X_train) != len(y_train):
+        raise ValueError(f"X_train and y_train must have same number of samples")
+    if len(X_train) < 1:
+        raise ValueError(f"Need at least 1 sample, got {len(X_train)}")
+    
+    p_model_type = '${modelType}'
+    p_alpha = ${alpha}
+    
+    if p_model_type == 'Gaussian':
+        model = GaussianNB()
+    elif p_model_type == 'Multinomial':
+        model = MultinomialNB(alpha=p_alpha)
+    elif p_model_type == 'Bernoulli':
+        model = BernoulliNB(alpha=p_alpha)
+    elif p_model_type == 'Complement':
+        model = ComplementNB(alpha=p_alpha)
+    else:
+        model = GaussianNB()
+    
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_train)
+    
+    accuracy = float(accuracy_score(y_train, y_pred))
+    precision = float(precision_score(y_train, y_pred, average='binary', zero_division=0))
+    recall = float(recall_score(y_train, y_pred, average='binary', zero_division=0))
+    f1 = float(f1_score(y_train, y_pred, average='binary', zero_division=0))
+    
+    metrics_dict = {
+        'Accuracy': accuracy,
+        'Precision': precision,
+        'Recall': recall,
+        'F1-Score': f1
+    }
+    
+    try:
+        if len(np.unique(y_train)) == 2:
+            y_pred_proba = model.predict_proba(X_train)[:, 1]
+            roc_auc = float(roc_auc_score(y_train, y_pred_proba))
+            metrics_dict['ROC-AUC'] = roc_auc
+    except Exception:
+        pass
+    
+    result = {
+        'metrics': metrics_dict,
+        'feature_columns': p_feature_columns
+    }
+    
+    js_result = result
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    error_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+    js_result = error_result
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python Naive Bayes 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error(
+        `Python Naive Bayes error: Python code returned None or undefined.`
+      );
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (result.__error__) {
+      throw new Error(
+        `Python Naive Bayes error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    if (!result.metrics || typeof result.metrics !== "object") {
+      throw new Error(
+        `Python Naive Bayes error: Missing or invalid 'metrics' in result.`
+      );
+    }
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_result");
+
+    return {
+      metrics: result.metrics,
+    };
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python Naive Bayes error:\n${errorMessage}`);
+  }
+}
+
+/**
  * Count Regression (Poisson, Negative Binomial, Quasi-Poisson)을 statsmodels로 실행합니다
  * 타임아웃: 60초
  */
@@ -3258,6 +4061,330 @@ result
 }
 
 /**
+ * ScoreModel 결과에 PCA를 적용하여 시각화용 차원 축소를 수행합니다
+ * 타임아웃: 60초
+ */
+export async function calculatePCAForScoreVisualization(
+  data: any[],
+  featureColumns: string[],
+  nComponents: number = 2,
+  timeoutMs: number = 60000
+): Promise<{
+  coordinates: number[][]; // [n_samples, n_components]
+  explainedVarianceRatio: number[];
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달 (다른 함수들과 동일한 방식)
+    // 데이터 검증
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      throw new Error(`PCA: Input data is invalid. Type: ${typeof data}, IsArray: ${Array.isArray(data)}, Length: ${data?.length || 0}`);
+    }
+    if (!featureColumns || !Array.isArray(featureColumns) || featureColumns.length === 0) {
+      throw new Error(`PCA: Feature columns are invalid. Type: ${typeof featureColumns}, IsArray: ${Array.isArray(featureColumns)}, Length: ${featureColumns?.length || 0}`);
+    }
+    
+    // Pyodide에 데이터 설정 (동기적으로 설정)
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_n_components", nComponents);
+    
+    // 설정 직후 확인 (디버깅용 - 동기적으로 확인)
+    const verifyData = py.globals.get("js_data");
+    const verifyCols = py.globals.get("js_feature_columns");
+    if (!verifyData) {
+      throw new Error(`PCA: Failed to set js_data immediately after setting. Original data length: ${data.length}`);
+    }
+    if (!verifyCols) {
+      throw new Error(`PCA: Failed to set js_feature_columns immediately after setting. Original columns: ${featureColumns.join(', ')}`);
+    }
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+try:
+    # 데이터 준비
+    # 디버깅: js_data 상태 확인 (Python 코드 실행 시점)
+    import sys
+    debug_info = {
+        'js_data_is_none': js_data is None,
+        'js_data_type': str(type(js_data)) if js_data is not None else 'None',
+        'js_data_has_to_py': hasattr(js_data, 'to_py') if js_data is not None else False,
+        'js_data_repr': repr(js_data)[:100] if js_data is not None else 'None'
+    }
+    
+    if js_data is None:
+        # js_data가 None인 경우, 전역 변수에서 직접 확인 시도
+        try:
+            import pyodide
+            if hasattr(pyodide, 'globals'):
+                globals_check = pyodide.globals.get('js_data')
+                debug_info['globals_js_data'] = 'exists' if globals_check is not None else 'missing'
+        except:
+            pass
+        raise ValueError(f"js_data is None at Python execution time. Debug info: {debug_info}")
+    
+    # Pyodide에서 JavaScript 객체를 Python으로 변환
+    # js_data는 Pyodide Proxy 객체이므로 to_py() 메서드 사용
+    try:
+        # 먼저 js_data의 타입과 속성 확인
+        if hasattr(js_data, 'to_py'):
+            data_list = js_data.to_py()
+        elif isinstance(js_data, list):
+            # 이미 Python 리스트인 경우
+            data_list = js_data
+        elif hasattr(js_data, '__iter__'):
+            # iterable인 경우
+            data_list = list(js_data)
+        else:
+            # 단일 객체인 경우 리스트로 감싸기
+            data_list = [js_data]
+    except Exception as e:
+        raise ValueError(f"Failed to convert js_data to Python: {str(e)}. Debug info: {debug_info}")
+    
+    if not data_list or len(data_list) == 0:
+        raise ValueError(f"Input data is empty. Data type: {type(data_list)}, Length: {len(data_list) if data_list else 0}")
+    
+    dataframe = pd.DataFrame(data_list)
+    
+    if dataframe.empty:
+        raise ValueError("DataFrame is empty after conversion")
+    
+    if js_feature_columns is None:
+        raise ValueError("js_feature_columns is None. Check if feature columns were passed correctly.")
+    
+    try:
+        if hasattr(js_feature_columns, 'to_py'):
+            p_feature_columns = js_feature_columns.to_py()
+        elif isinstance(js_feature_columns, list):
+            # 이미 Python 리스트인 경우
+            p_feature_columns = js_feature_columns
+        else:
+            # 다른 타입인 경우 시도
+            p_feature_columns = list(js_feature_columns) if hasattr(js_feature_columns, '__iter__') else [js_feature_columns]
+    except Exception as e:
+        raise ValueError(f"Failed to convert js_feature_columns to Python: {str(e)}. Type: {type(js_feature_columns)}, has to_py: {hasattr(js_feature_columns, 'to_py')}")
+    
+    if not p_feature_columns or len(p_feature_columns) == 0:
+        raise ValueError(f"Feature columns list is empty. Columns type: {type(p_feature_columns)}, Length: {len(p_feature_columns) if p_feature_columns else 0}")
+    
+    p_n_components = int(js_n_components)
+    
+    # 데이터 검증
+    if dataframe.empty:
+        raise ValueError("DataFrame is empty")
+    if len(p_feature_columns) == 0:
+        raise ValueError("No feature columns specified")
+    
+    # feature columns가 존재하는지 확인
+    missing_cols = [col for col in p_feature_columns if col not in dataframe.columns]
+    if missing_cols:
+        raise ValueError(f"Feature columns not found in DataFrame: {missing_cols}")
+    
+    # Feature 데이터 추출
+    X = dataframe[p_feature_columns].select_dtypes(include=[np.number])
+    
+    # 숫자형이 아닌 컬럼 제거
+    if X.empty:
+        raise ValueError("No numeric feature columns found")
+    
+    # 결측치가 있는 행 찾기
+    valid_mask = ~X.isnull().any(axis=1)
+    X_clean = X[valid_mask].copy()
+    
+    if len(X_clean) < 2:
+        raise ValueError(f"Need at least 2 valid samples for PCA, got {len(X_clean)}")
+    
+    if X_clean.shape[1] < p_n_components:
+        raise ValueError(f"Number of features ({X_clean.shape[1]}) must be >= n_components ({p_n_components})")
+    
+    # 표준화
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_clean)
+    
+    # PCA 적용
+    pca = PCA(n_components=p_n_components)
+    X_pca = pca.fit_transform(X_scaled)
+    
+    # 결과 준비 (유효한 데이터만 반환)
+    coordinates = X_pca.tolist()
+    explained_variance_ratio = pca.explained_variance_ratio_.tolist()
+    
+    # 유효한 인덱스 정보도 함께 반환 (필터링에 사용)
+    valid_indices = X_clean.index.tolist()
+    
+    result = {
+        'coordinates': coordinates,
+        'explained_variance_ratio': explained_variance_ratio,
+        'valid_indices': valid_indices
+    }
+    
+    js_result = result
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    error_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+    js_result = error_result
+except:
+    # 예상치 못한 에러
+    error_result = {
+        '__error__': True,
+        'error_type': 'UnknownError',
+        'error_message': 'Unexpected error occurred: ' + str(sys.exc_info()[1]),
+        'error_traceback': str(sys.exc_info())
+    }
+    js_result = error_result
+`;
+
+    // Python 코드 실행 (다른 함수들과 동일한 방식)
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python PCA 계산 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      // 디버깅: 데이터 상태 확인
+      let debugInfo: any = {};
+      try {
+        const dataCheck = py.globals.get("js_data");
+        const colsCheck = py.globals.get("js_feature_columns");
+        const nCompCheck = py.globals.get("js_n_components");
+        
+        // Python 코드 실행 후에도 데이터가 있는지 확인
+        let dataInfo: any = {};
+        let colsInfo: any = {};
+        
+        if (dataCheck) {
+          try {
+            if (typeof dataCheck.to_py === 'function') {
+              const pyData = dataCheck.to_py();
+              dataInfo = {
+                exists: true,
+                type: typeof pyData,
+                isArray: Array.isArray(pyData),
+                length: Array.isArray(pyData) ? pyData.length : 'not_array'
+              };
+            } else {
+              dataInfo = { exists: true, hasToPy: false, type: typeof dataCheck };
+            }
+          } catch (e) {
+            dataInfo = { exists: true, error: String(e) };
+          }
+        } else {
+          dataInfo = { exists: false };
+        }
+        
+        if (colsCheck) {
+          try {
+            if (typeof colsCheck.to_py === 'function') {
+              const pyCols = colsCheck.to_py();
+              colsInfo = {
+                exists: true,
+                type: typeof pyCols,
+                isArray: Array.isArray(pyCols),
+                length: Array.isArray(pyCols) ? pyCols.length : 'not_array',
+                values: Array.isArray(pyCols) ? pyCols : 'not_array'
+              };
+            } else {
+              colsInfo = { exists: true, hasToPy: false, type: typeof colsCheck };
+            }
+          } catch (e) {
+            colsInfo = { exists: true, error: String(e) };
+          }
+        } else {
+          colsInfo = { exists: false };
+        }
+        
+        debugInfo = {
+          afterExecution: {
+            js_data: dataInfo,
+            js_feature_columns: colsInfo,
+            js_n_components: nCompCheck
+          },
+          original: {
+            dataLength: data.length,
+            columns: featureColumns,
+            nComponents: nComponents
+          }
+        };
+      } catch (e) {
+        debugInfo = { error: String(e), stack: (e as Error).stack };
+      }
+      throw new Error(
+        `Python PCA error: Python code returned None or undefined. Debug info: ${JSON.stringify(debugInfo, null, 2)}`
+      );
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (result.__error__) {
+      throw new Error(
+        `Python PCA error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    if (!result.coordinates || !Array.isArray(result.coordinates)) {
+      throw new Error(
+        `Python PCA error: Missing or invalid 'coordinates' in result.`
+      );
+    }
+
+    if (!result.explained_variance_ratio || !Array.isArray(result.explained_variance_ratio)) {
+      throw new Error(
+        `Python PCA error: Missing or invalid 'explained_variance_ratio' in result.`
+      );
+    }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_n_components");
+    py.globals.delete("js_result");
+    try {
+      py.globals.delete("python_error");
+    } catch {}
+
+    return {
+      coordinates: result.coordinates,
+      explainedVarianceRatio: result.explained_variance_ratio,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_n_components");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python PCA error:\n${errorMessage}`);
+  }
+}
+
+/**
  * HandleMissingValues를 Python으로 실행합니다 (결측치 처리 통계 계산)
  * 타임아웃: 60초
  */
@@ -4058,5 +5185,1379 @@ except Exception as e:
 
     const errorMessage = error.message || String(error);
     throw new Error(`Python Diversion Checker error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * LoadClaimData: 5년간의 클레임 데이터를 자동 생성합니다
+ */
+export async function loadClaimDataPython(
+  startYear: number,
+  endYear: number,
+  claimsPerYear: number,
+  timeoutMs: number = 60000
+): Promise<{
+  rows: any[];
+  columns: Array<{ name: string; type: string }>;
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy"]),
+      60000,
+      "패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    py.globals.set("js_start_year", startYear);
+    py.globals.set("js_end_year", endYear);
+    py.globals.set("js_claims_per_year", claimsPerYear);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+import random
+
+try:
+    start_year = int(js_start_year)
+    end_year = int(js_end_year)
+    claims_per_year = int(js_claims_per_year)
+    
+    # 종목구분 리스트
+    categories = ["자동차보험", "화재보험", "상해보험", "배상책임보험", "건강보험"]
+    
+    # 사고내용 리스트
+    accident_types = [
+        "교통사고", "화재사고", "낙상사고", "물건손상", "도난사고",
+        "상해사고", "질병", "재산손해", "배상책임", "기타사고"
+    ]
+    
+    rows = []
+    
+    for year in range(start_year, end_year + 1):
+        for i in range(claims_per_year):
+            # 날짜 생성 (연도 내 랜덤)
+            month = random.randint(1, 12)
+            day = random.randint(1, 28)
+            date = datetime(year, month, day)
+            
+            # 종목구분 랜덤 선택
+            category = random.choice(categories)
+            
+            # 클레임 금액 생성 (로그정규분포 기반)
+            # 평균 500만원, 표준편차 300만원 정도
+            base_amount = np.random.lognormal(mean=13.5, sigma=0.8)
+            claim_amount = max(100000, int(base_amount))  # 최소 10만원
+            
+            # 사고내용 랜덤 선택
+            accident_content = random.choice(accident_types)
+            
+            rows.append({
+                "종목구분": category,
+                "날짜": date.strftime("%Y-%m-%d"),
+                "클레임 금액": claim_amount,
+                "기타": f"{accident_content} - {random.randint(1, 1000)}번 사고"
+            })
+    
+    df = pd.DataFrame(rows)
+    
+    # 컬럼 정보 생성
+    columns = [
+        {"name": "종목구분", "type": "string"},
+        {"name": "날짜", "type": "string"},
+        {"name": "클레임 금액", "type": "number"},
+        {"name": "기타", "type": "string"}
+    ]
+    
+    result = {
+        "rows": df.to_dict('records'),
+        "columns": columns
+    }
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+`;
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "LoadClaimData 실행 타임아웃 (60초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    if (result.__error__) {
+      throw new Error(
+        `Python LoadClaimData error: ${result.error_message}\n${result.error_traceback}`
+      );
+    }
+
+    py.globals.delete("js_start_year");
+    py.globals.delete("js_end_year");
+    py.globals.delete("js_claims_per_year");
+
+    return {
+      rows: result.rows || [],
+      columns: result.columns || [],
+    };
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_start_year");
+        pyodide.globals.delete("js_end_year");
+        pyodide.globals.delete("js_claims_per_year");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python LoadClaimData error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * ApplyInflation: 연간 상승률을 적용하여 목표 연도까지 보험금을 증가시킵니다
+ */
+export async function applyInflationPython(
+  rows: Record<string, any>[],
+  targetYear: number,
+  inflationRate: number,
+  amountColumn: string,
+  yearColumn: string,
+  timeoutMs: number = 60000
+): Promise<{
+  rows: any[];
+  columns: Array<{ name: string; type: string }>;
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy"]),
+      60000,
+      "패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    py.globals.set("js_rows", rows);
+    py.globals.set("js_target_year", targetYear);
+    py.globals.set("js_inflation_rate", inflationRate);
+    py.globals.set("js_amount_column", amountColumn);
+    py.globals.set("js_year_column", yearColumn);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+try:
+    rows = js_rows.to_py()
+    target_year = int(js_target_year)
+    inflation_rate = float(js_inflation_rate) / 100.0  # %를 소수로 변환
+    amount_column = str(js_amount_column)
+    year_column = str(js_year_column)
+    
+    # rows가 비어있는지 확인
+    if not rows or len(rows) == 0:
+        raise ValueError(f"No data rows provided. Rows length: {len(rows) if rows else 0}")
+    
+    df = pd.DataFrame(rows)
+    
+    # DataFrame이 비어있는지 확인
+    if df.empty:
+        raise ValueError(f"DataFrame is empty after conversion. Rows provided: {len(rows)}")
+    
+    # 컬럼 존재 여부 확인
+    if amount_column not in df.columns:
+        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
+    if year_column not in df.columns:
+        raise ValueError(f"Year column '{year_column}' not found in data. Available columns: {list(df.columns)}")
+    
+    # Year Column이 날짜 형식인 경우 연도 추출
+    if df[year_column].dtype == 'object':
+        # 문자열인 경우 datetime으로 변환 시도
+        try:
+            df[year_column] = pd.to_datetime(df[year_column])
+            df[year_column] = df[year_column].dt.year
+        except:
+            # datetime 변환 실패 시 숫자로 변환 시도
+            df[year_column] = pd.to_numeric(df[year_column], errors='coerce')
+    else:
+        # 이미 숫자인 경우 그대로 사용
+        df[year_column] = pd.to_numeric(df[year_column], errors='coerce')
+    
+    # NaN 값 확인
+    if df[year_column].isna().any():
+        raise ValueError(f"Year column '{year_column}' contains invalid values. Please check the data.")
+    
+    # 인플레이션 적용: Amount Column * (1 + Inflation Rate) ^ (Target Year - Year Column)
+    # 컬럼 이름: 기존 금액 컬럼명 + "_infl"
+    inflated_column_name = f"{amount_column}_infl"
+    df[inflated_column_name] = (df[amount_column] * ((1 + inflation_rate) ** (target_year - df[year_column]))).astype(int)
+    
+    # 컬럼 정보 생성
+    columns = []
+    for col in df.columns:
+        col_type = "number" if pd.api.types.is_numeric_dtype(df[col]) else "string"
+        columns.append({"name": col, "type": col_type})
+    
+    js_result = {
+        "rows": df.to_dict('records'),
+        "columns": columns
+    }
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    js_result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "ApplyInflation 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    
+    if (!resultPyObj) {
+      throw new Error("Python ApplyInflation error: No result returned from Python code");
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (!result) {
+      throw new Error("Python ApplyInflation error: Failed to convert Python result to JavaScript");
+    }
+
+    if (result.__error__) {
+      throw new Error(
+        `Python ApplyInflation error: ${result.error_message}\n${result.error_traceback}`
+      );
+    }
+
+    const finalResult = {
+      rows: result.rows || [],
+      columns: result.columns || [],
+    };
+
+    py.globals.delete("js_rows");
+    py.globals.delete("js_target_year");
+    py.globals.delete("js_inflation_rate");
+    py.globals.delete("js_amount_column");
+    py.globals.delete("js_year_column");
+    py.globals.delete("js_result");
+
+    return finalResult;
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_rows");
+        pyodide.globals.delete("js_target_year");
+        pyodide.globals.delete("js_inflation_rate");
+        pyodide.globals.delete("js_amount_column");
+        pyodide.globals.delete("js_year_column");
+        pyodide.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python ApplyInflation error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * FormatChange: 날짜 열에서 연도를 추출하여 새로운 열로 추가합니다
+ */
+export async function formatChangePython(
+  rows: Record<string, any>[],
+  dateColumn: string,
+  timeoutMs: number = 60000
+): Promise<{
+  rows: any[];
+  columns: Array<{ name: string; type: string }>;
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy"]),
+      60000,
+      "패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    py.globals.set("js_rows", rows);
+    py.globals.set("js_date_column", dateColumn);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+try:
+    rows = js_rows.to_py()
+    date_column = str(js_date_column)
+    
+    df = pd.DataFrame(rows)
+    
+    # 날짜 컬럼을 datetime으로 변환
+    df[date_column] = pd.to_datetime(df[date_column])
+    
+    # 연도 추출하여 새로운 컬럼 추가 (날짜 컬럼 옆에)
+    year_column = "연도"
+    df[year_column] = df[date_column].dt.year
+    
+    # 날짜 컬럼을 문자열로 변환 (원본 형식 유지)
+    df[date_column] = df[date_column].dt.strftime('%Y-%m-%d')
+    
+    # 컬럼 순서 재배치: 날짜 컬럼 다음에 연도 컬럼 배치
+    cols = df.columns.tolist()
+    date_idx = cols.index(date_column)
+    # 연도 컬럼을 날짜 컬럼 다음으로 이동
+    cols.remove(year_column)
+    cols.insert(date_idx + 1, year_column)
+    df = df[cols]
+    
+    # 컬럼 정보 생성
+    columns = []
+    for col in df.columns:
+        col_type = "number" if pd.api.types.is_numeric_dtype(df[col]) else "string"
+        columns.append({"name": col, "type": col_type})
+    
+    js_result = {
+        "rows": df.to_dict('records'),
+        "columns": columns
+    }
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    js_result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "FormatChange 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    
+    if (!resultPyObj) {
+      throw new Error("Python FormatChange error: No result returned from Python code");
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (!result) {
+      throw new Error("Python FormatChange error: Failed to convert Python result to JavaScript");
+    }
+
+    if (result.__error__) {
+      throw new Error(
+        `Python FormatChange error: ${result.error_message}\n${result.error_traceback}`
+      );
+    }
+
+    const finalResult = {
+      rows: result.rows || [],
+      columns: result.columns || [],
+    };
+
+    py.globals.delete("js_rows");
+    py.globals.delete("js_date_column");
+    py.globals.delete("js_result");
+
+    return finalResult;
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_rows");
+        pyodide.globals.delete("js_date_column");
+        pyodide.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python FormatChange error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * SplitByThreshold: Threshold 기준으로 데이터를 분리합니다
+ */
+export async function splitByThresholdPython(
+  rows: Record<string, any>[],
+  threshold: number,
+  amountColumn: string,
+  dateColumn: string,
+  timeoutMs: number = 60000
+): Promise<{
+  belowThreshold: { rows: any[]; columns: Array<{ name: string; type: string }> };
+  aboveThreshold: { rows: any[]; columns: Array<{ name: string; type: string }> };
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy"]),
+      60000,
+      "패키지 설치 타임아웃 (60초 초과)"
+    );
+
+    py.globals.set("js_rows", rows);
+    py.globals.set("js_threshold", threshold);
+    py.globals.set("js_amount_column", amountColumn);
+    py.globals.set("js_date_column", dateColumn);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+try:
+    rows = js_rows.to_py()
+    threshold = float(js_threshold)
+    amount_column = str(js_amount_column)
+    date_column = str(js_date_column) if js_date_column else None
+    
+    df = pd.DataFrame(rows)
+    
+    # amount_column이 존재하는지 확인
+    if amount_column not in df.columns:
+        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
+    
+    # amount_column을 숫자로 변환
+    df[amount_column] = pd.to_numeric(df[amount_column], errors='coerce')
+    
+    # NaN 값이 있는지 확인
+    if df[amount_column].isna().any():
+        raise ValueError(f"Amount column '{amount_column}' contains non-numeric values. Please check the data.")
+    
+    # date_column이 제공된 경우에만 연도 추출
+    if date_column and date_column in df.columns:
+        # 날짜 컬럼을 datetime으로 변환
+        df[date_column] = pd.to_datetime(df[date_column])
+        df['year'] = df[date_column].dt.year
+        use_year = True
+    else:
+        # date_column이 없으면 연도 컬럼을 찾거나 생성
+        if '연도' in df.columns:
+            df['year'] = pd.to_numeric(df['연도'], errors='coerce')
+            use_year = True
+        elif 'year' in df.columns:
+            df['year'] = pd.to_numeric(df['year'], errors='coerce')
+            use_year = True
+        else:
+            # 연도 컬럼이 없으면 모든 데이터를 하나의 그룹으로 처리
+            df['year'] = 1
+            use_year = False
+    
+    # Threshold 기준으로 분리
+    below_df = df[df[amount_column] < threshold].copy()
+    above_df = df[df[amount_column] >= threshold].copy()
+    
+    # 첫 번째 출력: Threshold보다 작은 값, 연도별 합계만
+    if use_year:
+        below_yearly = below_df.groupby('year')[amount_column].sum().reset_index()
+        below_yearly.columns = ['year', 'total_amount']
+    else:
+        # 연도가 없으면 전체 합계만
+        total_sum = below_df[amount_column].sum()
+        below_yearly = pd.DataFrame({'year': [1], 'total_amount': [total_sum]})
+    
+    below_columns = [
+        {"name": "year", "type": "number"},
+        {"name": "total_amount", "type": "number"}
+    ]
+    
+    # 두 번째 출력: Threshold보다 크거나 같은 값, 원본 레이아웃 유지
+    if 'year' in above_df.columns:
+        above_df = above_df.drop(columns=['year'])
+    above_columns = []
+    for col in above_df.columns:
+        col_type = "number" if pd.api.types.is_numeric_dtype(above_df[col]) else "string"
+        above_columns.append({"name": col, "type": col_type})
+    
+    js_result = {
+        "below_threshold": {
+            "rows": below_yearly.to_dict('records'),
+            "columns": below_columns
+        },
+        "above_threshold": {
+            "rows": above_df.to_dict('records'),
+            "columns": above_columns
+        }
+    }
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    js_result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "SplitByThreshold 실행 타임아웃 (60초 초과)"
+    );
+
+    // Get result from Python global variable
+    const jsResultPyObj = py.globals.get("js_result");
+    if (!jsResultPyObj) {
+      throw new Error("Python SplitByThreshold error: No result returned from Python code.");
+    }
+
+    const result = fromPython(jsResultPyObj);
+
+    if (result && result.__error__) {
+      throw new Error(
+        `Python SplitByThreshold error: ${result.error_message || "Unknown error"}\n${result.error_traceback || ""}`
+      );
+    }
+
+    if (!result || !result.below_threshold || !result.above_threshold) {
+      throw new Error("Python SplitByThreshold error: Invalid result structure.");
+    }
+
+    py.globals.delete("js_rows");
+    py.globals.delete("js_threshold");
+    py.globals.delete("js_amount_column");
+    py.globals.delete("js_date_column");
+    py.globals.delete("js_result");
+
+    return {
+      belowThreshold: result.below_threshold,
+      aboveThreshold: result.above_threshold,
+    };
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_rows");
+        pyodide.globals.delete("js_threshold");
+        pyodide.globals.delete("js_amount_column");
+        pyodide.globals.delete("js_date_column");
+        pyodide.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python SplitByThreshold error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * FitAggregateModel: 집합 금액에 통계 분포를 적합시킵니다
+ */
+export async function fitAggregateModelPython(
+  rows: Record<string, any>[],
+  distributionType: "Lognormal" | "Exponential" | "Pareto" | "Gamma",
+  amountColumn: string,
+  timeoutMs: number = 120000
+): Promise<{
+  distributionType: string;
+  parameters: Record<string, number>;
+  fitStatistics: {
+    aic?: number;
+    bic?: number;
+    logLikelihood?: number;
+    ksStatistic?: number;
+    ksPValue?: number;
+  };
+  yearlyAggregates: Array<{ year: number; totalAmount: number }>;
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy", "scipy", "statsmodels"]),
+      120000,
+      "패키지 설치 타임아웃 (120초 초과)"
+    );
+
+    py.globals.set("js_rows", rows);
+    py.globals.set("js_distribution_type", distributionType);
+    py.globals.set("js_amount_column", amountColumn);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from scipy import stats
+from scipy.optimize import minimize
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    rows = js_rows.to_py()
+    distribution_type = str(js_distribution_type)
+    amount_column = str(js_amount_column)
+    
+    df = pd.DataFrame(rows)
+    
+    # 데이터 검증
+    if df.empty:
+        raise ValueError("Input data is empty")
+    
+    if amount_column not in df.columns:
+        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
+    
+    # 연도별 집계 (year 컬럼이 있으면 연도별로, 없으면 전체 합계)
+    if '연도' in df.columns:
+        year_col = '연도'
+    elif 'year' in df.columns:
+        year_col = 'year'
+    else:
+        year_col = None
+    
+    if year_col:
+        yearly_agg = df.groupby(year_col)[amount_column].sum().reset_index()
+        yearly_agg.columns = ['year', 'total_amount']
+        amounts = yearly_agg['total_amount'].values
+    else:
+        # 연도 컬럼이 없으면 전체 합계만 사용
+        total_amount = df[amount_column].sum()
+        yearly_agg = pd.DataFrame([{'year': 0, 'total_amount': total_amount}])
+        amounts = np.array([total_amount])
+    
+    # 양수 값만 사용
+    amounts = amounts[amounts > 0]
+    if len(amounts) == 0:
+        raise ValueError("No positive values found in data after filtering")
+    
+    # 분포 적합
+    if distribution_type == "Lognormal":
+        # 로그 변환 후 정규분포 적합
+        log_amounts = np.log(amounts)
+        if len(log_amounts) == 0:
+            raise ValueError("No positive values found for Lognormal distribution")
+        mu, sigma = stats.norm.fit(log_amounts)
+        dist = stats.lognorm
+        param_names = ["shape", "scale", "loc"]
+        # lognorm은 s, scale, loc 형태 (s=sigma, scale=exp(mu), loc=0)
+        s = sigma
+        scale = np.exp(mu)
+        loc = 0
+        params = (s, scale, loc)
+        
+    elif distribution_type == "Exponential":
+        # Exponential 분포 적합
+        params = stats.expon.fit(amounts, floc=0)
+        dist = stats.expon
+        param_names = ["scale", "loc"]
+        
+    elif distribution_type == "Pareto":
+        # Pareto 분포 적합 - 여러 형태 시도
+        # 먼저 기본 Pareto (Type I) 시도
+        try:
+            params = stats.pareto.fit(amounts, floc=0)
+            dist = stats.pareto
+            param_names = ["shape", "scale", "loc"]
+            # 파라미터 유효성 검사
+            if params[0] <= 0 or params[1] <= 0:
+                raise ValueError("Invalid Pareto parameters")
+        except:
+            # Pareto 실패 시 Lomax (Pareto Type II) 시도
+            try:
+                params = stats.lomax.fit(amounts, floc=0)
+                dist = stats.lomax
+                param_names = ["shape", "scale", "loc"]
+                if params[0] <= 0 or params[1] <= 0:
+                    raise ValueError("Invalid Lomax parameters")
+            except:
+                # Generalized Pareto 시도
+                try:
+                    params = stats.genpareto.fit(amounts, floc=0)
+                    dist = stats.genpareto
+                    param_names = ["shape", "scale", "loc"]
+                except:
+                    raise ValueError("Failed to fit Pareto distribution in all forms")
+        
+    elif distribution_type == "Gamma":
+        params = stats.gamma.fit(amounts, floc=0)
+        dist = stats.gamma
+        param_names = ["shape", "scale", "loc"]
+        # 파라미터 유효성 검사
+        if params[0] <= 0 or params[1] <= 0:
+            raise ValueError("Invalid Gamma parameters")
+        
+    else:
+        raise ValueError(f"Unknown distribution type: {distribution_type}")
+    
+    # 파라미터 딕셔너리 생성
+    param_dict = {}
+    for i, name in enumerate(param_names):
+        if i < len(params):
+            param_dict[name] = float(params[i])
+    
+    # 적합 통계량 계산
+    # Log Likelihood 계산 - 분포 적합 후 바로 계산
+    n_obs = len(amounts)
+    log_likelihood = None
+    
+    # 직접 logpdf를 사용하여 Log Likelihood 계산
+    try:
+        # 모든 분포에 대해 직접 계산 시도
+        log_pdf_sum = np.sum(dist.logpdf(amounts, *params))
+        if np.isfinite(log_pdf_sum):
+            log_likelihood = float(log_pdf_sum)
+    except:
+        # logpdf 실패 시 개별 값으로 계산
+        try:
+            log_pdf_values = []
+            for x in amounts:
+                try:
+                    log_pdf = dist.logpdf(x, *params)
+                    if np.isfinite(log_pdf):
+                        log_pdf_values.append(log_pdf)
+                except:
+                    continue
+            if len(log_pdf_values) > 0:
+                log_likelihood = float(np.sum(log_pdf_values))
+        except:
+            pass
+    
+    # Log Likelihood가 여전히 None이면 근사값 사용
+    if log_likelihood is None or not np.isfinite(log_likelihood):
+        # 정규분포 근사 사용
+        mean_amount = np.mean(amounts)
+        std_amount = np.std(amounts)
+        if mean_amount > 0 and std_amount > 0:
+            # 정규분포 근사: log L = -n/2 * (log(2*pi*sigma^2) + 1)
+            log_likelihood = -0.5 * n_obs * (np.log(2 * np.pi * std_amount**2 + 1e-10) + 1)
+        else:
+            # 매우 간단한 근사
+            log_likelihood = -n_obs * np.log(mean_amount + 1e-10) if mean_amount > 0 else -1e10
+    
+    # 최종 보장: log_likelihood는 반드시 유한한 값이어야 함
+    if not np.isfinite(log_likelihood):
+        log_likelihood = -1e10
+    
+    # AIC, BIC - Log Likelihood가 항상 있으므로 계산 가능
+    n_params = len(params)
+    aic = 2 * n_params - 2 * log_likelihood
+    bic = n_params * np.log(n_obs) - 2 * log_likelihood
+    
+    # Kolmogorov-Smirnov 검정
+    try:
+        ks_stat, ks_pvalue = stats.kstest(amounts, lambda x: dist.cdf(x, *params))
+    except:
+        ks_stat = None
+        ks_pvalue = None
+    
+    # Log Likelihood 최종 검증 - 반드시 값이 있어야 함
+    if log_likelihood is None:
+        # 최후의 수단: 간단한 근사
+        mean_amount = np.mean(amounts)
+        log_likelihood = -n_obs * np.log(mean_amount + 1e-10) if mean_amount > 0 else -1e10
+    
+    # 유한성 검증
+    if not np.isfinite(log_likelihood):
+        log_likelihood = -1e10
+    
+    result = {
+        "distribution_type": distribution_type,
+        "parameters": param_dict,
+        "fit_statistics": {
+            "aic": float(aic),
+            "bic": float(bic),
+            "log_likelihood": float(log_likelihood),
+            "ks_statistic": float(ks_stat) if ks_stat is not None else None,
+            "ks_p_value": float(ks_pvalue) if ks_pvalue is not None else None
+        },
+        "yearly_aggregates": yearly_agg.to_dict('records')
+    }
+    
+    js_result = result
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+    js_result = result
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "FitAggregateModel 실행 타임아웃 (120초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error("Python FitAggregateModel error: No result returned");
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (result && result.__error__) {
+      throw new Error(
+        `Python FitAggregateModel error: ${result.error_message}\n${result.error_traceback}`
+      );
+    }
+
+    py.globals.delete("js_rows");
+    py.globals.delete("js_distribution_type");
+    py.globals.delete("js_amount_column");
+
+    return {
+      distributionType: result.distribution_type,
+      parameters: result.parameters,
+      fitStatistics: result.fit_statistics,
+      yearlyAggregates: result.yearly_aggregates,
+    };
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_rows");
+        pyodide.globals.delete("js_distribution_type");
+        pyodide.globals.delete("js_amount_column");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python FitAggregateModel error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * FitFrequencySeverityModel: 빈도-심도 모델을 적합시킵니다
+ */
+export async function fitFrequencySeverityModelPython(
+  rows: Record<string, any>[],
+  frequencyType: "Poisson" | "NegativeBinomial",
+  severityType: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull",
+  amountColumn: string,
+  dateColumn: string,
+  timeoutMs: number = 120000
+): Promise<{
+  frequencyModel: {
+    type: string;
+    parameters: Record<string, number>;
+    fitStatistics: {
+      aic?: number;
+      bic?: number;
+      logLikelihood?: number;
+    };
+  };
+  severityModel: {
+    type: string;
+    parameters: Record<string, number>;
+    fitStatistics: {
+      aic?: number;
+      bic?: number;
+      logLikelihood?: number;
+      ksStatistic?: number;
+      ksPValue?: number;
+    };
+  };
+  aggregateDistribution: {
+    mean: number;
+    stdDev: number;
+    percentiles: Record<string, number>;
+  };
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy", "scipy", "statsmodels"]),
+      120000,
+      "패키지 설치 타임아웃 (120초 초과)"
+    );
+
+    py.globals.set("js_rows", rows);
+    py.globals.set("js_frequency_type", frequencyType);
+    py.globals.set("js_severity_type", severityType);
+    py.globals.set("js_amount_column", amountColumn);
+    py.globals.set("js_date_column", dateColumn);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from scipy import stats
+from scipy.optimize import minimize
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    rows = js_rows.to_py()
+    frequency_type = str(js_frequency_type)
+    severity_type = str(js_severity_type)
+    amount_column = str(js_amount_column)
+    date_column = str(js_date_column)
+    
+    df = pd.DataFrame(rows)
+    
+    # 날짜 컬럼을 datetime으로 변환
+    df[date_column] = pd.to_datetime(df[date_column])
+    df['year'] = df[date_column].dt.year
+    
+    # 빈도 모델: 연도별 클레임 건수
+    yearly_counts = df.groupby('year').size().reset_index(name='count')
+    counts = yearly_counts['count'].values
+    
+    # 빈도 분포 적합
+    if frequency_type == "Poisson":
+        lambda_param = np.mean(counts)
+        freq_params = {"lambda": float(lambda_param)}
+        freq_dist = stats.poisson(lambda_param)
+        freq_log_likelihood = np.sum(freq_dist.logpmf(counts))
+        
+    elif frequency_type == "NegativeBinomial":
+        # Negative Binomial 적합
+        mean_count = np.mean(counts)
+        var_count = np.var(counts)
+        if var_count > mean_count:
+            r = mean_count ** 2 / (var_count - mean_count)
+            p = mean_count / var_count
+        else:
+            r = 10.0
+            p = mean_count / (mean_count + r)
+        freq_params = {"n": float(r), "p": float(p)}
+        freq_dist = stats.nbinom(r, p)
+        freq_log_likelihood = np.sum(freq_dist.logpmf(counts))
+        
+    else:
+        raise ValueError(f"Unknown frequency type: {frequency_type}")
+    
+    # 빈도 모델 통계량
+    n_freq_params = len(freq_params)
+    n_freq_obs = len(counts)
+    freq_aic = 2 * n_freq_params - 2 * freq_log_likelihood
+    freq_bic = n_freq_params * np.log(n_freq_obs) - 2 * freq_log_likelihood
+    
+    # 심도 모델: 개별 클레임 금액
+    amounts = df[amount_column].values
+    amounts = amounts[amounts > 0]  # 양수만
+    
+    # 심도 분포 적합
+    if severity_type == "Normal":
+        params = stats.norm.fit(amounts)
+        sev_dist = stats.norm
+        param_names = ["mean", "std"]
+        
+    elif severity_type == "Lognormal":
+        log_amounts = np.log(amounts)
+        params = stats.norm.fit(log_amounts)
+        sev_dist = stats.lognorm
+        param_names = ["shape", "scale", "loc"]
+        params = (params[1], np.exp(params[0]), 0)
+        
+    elif severity_type == "Pareto":
+        params, _ = stats.pareto.fit(amounts, floc=0)
+        sev_dist = stats.pareto
+        param_names = ["shape", "scale", "loc"]
+        
+    elif severity_type == "Gamma":
+        params = stats.gamma.fit(amounts, floc=0)
+        sev_dist = stats.gamma
+        param_names = ["shape", "scale", "loc"]
+        
+    elif severity_type == "Exponential":
+        params = stats.expon.fit(amounts, floc=0)
+        sev_dist = stats.expon
+        param_names = ["scale", "loc"]
+        
+    elif severity_type == "Weibull":
+        params = stats.weibull_min.fit(amounts, floc=0)
+        sev_dist = stats.weibull_min
+        param_names = ["shape", "scale", "loc"]
+        
+    else:
+        raise ValueError(f"Unknown severity type: {severity_type}")
+    
+    # 심도 파라미터 딕셔너리
+    sev_param_dict = {}
+    for i, name in enumerate(param_names):
+        if i < len(params):
+            sev_param_dict[name] = float(params[i])
+    
+    # 심도 모델 통계량
+    try:
+        sev_log_likelihood = np.sum(sev_dist.logpdf(amounts, *params))
+    except:
+        sev_log_likelihood = None
+    
+    n_sev_params = len(params)
+    n_sev_obs = len(amounts)
+    sev_aic = None
+    sev_bic = None
+    if sev_log_likelihood is not None:
+        sev_aic = 2 * n_sev_params - 2 * sev_log_likelihood
+        sev_bic = n_sev_params * np.log(n_sev_obs) - 2 * sev_log_likelihood
+    
+    # Kolmogorov-Smirnov 검정
+    try:
+        sev_ks_stat, sev_ks_pvalue = stats.kstest(amounts, lambda x: sev_dist.cdf(x, *params))
+    except:
+        sev_ks_stat = None
+        sev_ks_pvalue = None
+    
+    # 집계 분포: 빈도 * 심도의 기대값과 분산
+    # E[Total] = E[N] * E[X]
+    # Var[Total] = E[N] * Var[X] + Var[N] * E[X]^2
+    if frequency_type == "Poisson":
+        E_N = lambda_param
+        Var_N = lambda_param
+    else:  # NegativeBinomial
+        E_N = r * (1 - p) / p
+        Var_N = r * (1 - p) / (p ** 2)
+    
+    # 심도 기대값과 분산
+    if severity_type == "Normal":
+        E_X = params[0]
+        Var_X = params[1] ** 2
+    elif severity_type == "Lognormal":
+        E_X = np.exp(params[0] + params[1]**2 / 2)
+        Var_X = (np.exp(params[1]**2) - 1) * np.exp(2 * params[0] + params[1]**2)
+    else:
+        # 근사값 사용
+        E_X = np.mean(amounts)
+        Var_X = np.var(amounts)
+    
+    E_Total = E_N * E_X
+    Var_Total = E_N * Var_X + Var_N * (E_X ** 2)
+    Std_Total = np.sqrt(Var_Total)
+    
+    # 백분위수 계산 (시뮬레이션 기반)
+    np.random.seed(42)
+    n_sim = 10000
+    simulated_totals = []
+    for _ in range(n_sim):
+        n_claims = freq_dist.rvs()
+        if n_claims > 0:
+            claim_amounts = sev_dist.rvs(n_claims, *params)
+            total = np.sum(claim_amounts)
+        else:
+            total = 0
+        simulated_totals.append(total)
+    
+    percentiles = {
+        "5": float(np.percentile(simulated_totals, 5)),
+        "25": float(np.percentile(simulated_totals, 25)),
+        "50": float(np.percentile(simulated_totals, 50)),
+        "75": float(np.percentile(simulated_totals, 75)),
+        "95": float(np.percentile(simulated_totals, 95)),
+        "99": float(np.percentile(simulated_totals, 99))
+    }
+    
+    result = {
+        "frequency_model": {
+            "type": frequency_type,
+            "parameters": freq_params,
+            "fit_statistics": {
+                "aic": float(freq_aic),
+                "bic": float(freq_bic),
+                "log_likelihood": float(freq_log_likelihood)
+            }
+        },
+        "severity_model": {
+            "type": severity_type,
+            "parameters": sev_param_dict,
+            "fit_statistics": {
+                "aic": float(sev_aic) if sev_aic is not None else None,
+                "bic": float(sev_bic) if sev_bic is not None else None,
+                "log_likelihood": float(sev_log_likelihood) if sev_log_likelihood is not None else None,
+                "ks_statistic": float(sev_ks_stat) if sev_ks_stat is not None else None,
+                "ks_p_value": float(sev_ks_pvalue) if sev_ks_pvalue is not None else None
+            }
+        },
+        "aggregate_distribution": {
+            "mean": float(E_Total),
+            "std_dev": float(Std_Total),
+            "percentiles": percentiles
+        }
+    }
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+`;
+
+    const resultPyObj = await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "FitFrequencySeverityModel 실행 타임아웃 (120초 초과)"
+    );
+
+    const result = fromPython(resultPyObj);
+
+    if (result.__error__) {
+      throw new Error(
+        `Python FitFrequencySeverityModel error: ${result.error_message}\n${result.error_traceback}`
+      );
+    }
+
+    py.globals.delete("js_rows");
+    py.globals.delete("js_frequency_type");
+    py.globals.delete("js_severity_type");
+    py.globals.delete("js_amount_column");
+    py.globals.delete("js_date_column");
+
+    return {
+      frequencyModel: result.frequency_model,
+      severityModel: result.severity_model,
+      aggregateDistribution: result.aggregate_distribution,
+    };
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_rows");
+        pyodide.globals.delete("js_frequency_type");
+        pyodide.globals.delete("js_severity_type");
+        pyodide.globals.delete("js_amount_column");
+        pyodide.globals.delete("js_date_column");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python FitFrequencySeverityModel error:\n${errorMessage}`);
+  }
+}
+
+/**
+ * SimulateAggDist: 선택된 분포를 사용하여 몬테카를로 시뮬레이션을 수행합니다
+ */
+export async function simulateAggDistPython(
+  distributionType: "Lognormal" | "Exponential" | "Pareto" | "Gamma",
+  parameters: Record<string, number>,
+  nSimulations: number,
+  timeoutMs: number = 120000
+): Promise<{
+  results: Array<{ count: number; amount: number }>;
+  statistics: {
+    mean: number;
+    std: number;
+    min: number;
+    max: number;
+    percentile5: number;
+    percentile25: number;
+    percentile50: number;
+    percentile75: number;
+    percentile95: number;
+    percentile99: number;
+  };
+}> {
+  try {
+    const py = await loadPyodide(30000);
+
+    await withTimeout(
+      py.loadPackage(["pandas", "numpy", "scipy"]),
+      120000,
+      "패키지 설치 타임아웃 (120초 초과)"
+    );
+
+    py.globals.set("js_distribution_type", distributionType);
+    py.globals.set("js_parameters", parameters);
+    py.globals.set("js_n_simulations", nSimulations);
+
+    const code = `
+import json
+import pandas as pd
+import numpy as np
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    distribution_type = str(js_distribution_type)
+    parameters = js_parameters.to_py()
+    n_simulations = int(js_n_simulations)
+    
+    # 파라미터 유효성 검사 및 정규화 함수
+    def safe_get(param_dict, key, default, min_val=None, max_val=None):
+        """안전하게 파라미터를 가져오고 유효성 검사"""
+        value = param_dict.get(key, default)
+        if value is None:
+            value = default
+        try:
+            value = float(value)
+            if np.isnan(value) or np.isinf(value):
+                value = default
+        except (TypeError, ValueError):
+            value = default
+        if min_val is not None and value < min_val:
+            value = max(min_val, default)
+        if max_val is not None and value > max_val:
+            value = min(max_val, default)
+        return value
+    
+    # 분포 객체 생성 - 파라미터 유효성 검사 강화
+    if distribution_type == "Lognormal":
+        s = safe_get(parameters, "shape", 1.0, min_val=1e-6)
+        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
+        loc = safe_get(parameters, "loc", 0.0)
+        # 파라미터 검증
+        if s <= 0 or scale <= 0:
+            raise ValueError(f"Invalid Lognormal parameters: shape={s}, scale={scale}. Both must be positive.")
+        dist = stats.lognorm(s=s, scale=scale, loc=loc)
+    elif distribution_type == "Exponential":
+        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
+        loc = safe_get(parameters, "loc", 0.0)
+        # 파라미터 검증
+        if scale <= 0:
+            raise ValueError(f"Invalid Exponential parameter: scale={scale}. Must be positive.")
+        dist = stats.expon(scale=scale, loc=loc)
+    elif distribution_type == "Pareto":
+        shape = safe_get(parameters, "shape", 1.0, min_val=1e-6)
+        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
+        loc = safe_get(parameters, "loc", 0.0)
+        # 파라미터 검증
+        if shape <= 0 or scale <= 0:
+            raise ValueError(f"Invalid Pareto parameters: shape={shape}, scale={scale}. Both must be positive.")
+        dist = stats.pareto(b=shape, scale=scale, loc=loc)
+    elif distribution_type == "Gamma":
+        shape = safe_get(parameters, "shape", 1.0, min_val=1e-6)
+        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
+        loc = safe_get(parameters, "loc", 0.0)
+        # 파라미터 검증
+        if shape <= 0 or scale <= 0:
+            raise ValueError(f"Invalid Gamma parameters: shape={shape}, scale={scale}. Both must be positive.")
+        dist = stats.gamma(a=shape, scale=scale, loc=loc)
+    else:
+        raise ValueError(f"Unknown distribution type: {distribution_type}")
+    
+    # 몬테카를로 시뮬레이션
+    np.random.seed(42)  # 재현성을 위한 시드 설정
+    simulated_amounts = dist.rvs(size=n_simulations)
+    
+    # 결과를 count와 amount로 변환 (히스토그램 형태)
+    # 금액을 구간별로 그룹화
+    min_amount = float(np.min(simulated_amounts))
+    max_amount = float(np.max(simulated_amounts))
+    
+    # 구간 수 결정 (적절한 수의 구간)
+    n_bins = min(100, max(10, int(np.sqrt(n_simulations))))
+    bins = np.linspace(min_amount, max_amount, n_bins + 1)
+    
+    # 히스토그램 계산
+    counts, bin_edges = np.histogram(simulated_amounts, bins=bins)
+    
+    # 결과 생성: 각 구간의 중간값과 빈도
+    results = []
+    for i in range(len(counts)):
+        if counts[i] > 0:
+            bin_center = (bin_edges[i] + bin_edges[i + 1]) / 2
+            results.append({
+                "count": int(counts[i]),
+                "amount": float(bin_center)
+            })
+    
+    # 통계량 계산
+    mean_amount = float(np.mean(simulated_amounts))
+    std_amount = float(np.std(simulated_amounts))
+    min_amount = float(np.min(simulated_amounts))
+    max_amount = float(np.max(simulated_amounts))
+    
+    percentiles = np.percentile(simulated_amounts, [5, 25, 50, 75, 95, 99])
+    
+    statistics = {
+        "mean": mean_amount,
+        "std": std_amount,
+        "min": min_amount,
+        "max": max_amount,
+        "percentile5": float(percentiles[0]),
+        "percentile25": float(percentiles[1]),
+        "percentile50": float(percentiles[2]),
+        "percentile75": float(percentiles[3]),
+        "percentile95": float(percentiles[4]),
+        "percentile99": float(percentiles[5])
+    }
+    
+    result = {
+        "results": results,
+        "statistics": statistics
+    }
+    
+    js_result = result
+    
+except Exception as e:
+    import traceback
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    result = {
+        "__error__": True,
+        "error_type": type(e).__name__,
+        "error_message": str(e),
+        "error_traceback": error_traceback
+    }
+    js_result = result
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "SimulateAggDist 실행 타임아웃 (120초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error("Python SimulateAggDist error: No result returned");
+    }
+
+    const result = fromPython(resultPyObj);
+
+    if (result && result.__error__) {
+      throw new Error(
+        `Python SimulateAggDist error: ${result.error_message}\n${result.error_traceback}`
+      );
+    }
+
+    py.globals.delete("js_distribution_type");
+    py.globals.delete("js_parameters");
+    py.globals.delete("js_n_simulations");
+
+    return {
+      results: result.results,
+      statistics: result.statistics,
+    };
+  } catch (error: any) {
+    try {
+      if (pyodide) {
+        pyodide.globals.delete("js_distribution_type");
+        pyodide.globals.delete("js_parameters");
+        pyodide.globals.delete("js_n_simulations");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python SimulateAggDist error:\n${errorMessage}`);
   }
 }

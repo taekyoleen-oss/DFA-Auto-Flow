@@ -17,7 +17,7 @@ interface ToolboxProps {
 }
 
 const preprocessTypes = [
-  ModuleType.LoadData,
+  ModuleType.LoadClaimData,
   ModuleType.Statistics,
   ModuleType.SelectData,
   ModuleType.HandleMissingValues,
@@ -26,44 +26,6 @@ const preprocessTypes = [
   ModuleType.NormalizeData,
   ModuleType.TransitionData,
   ModuleType.ResampleData,
-];
-
-const analysisOpTypes = [
-  ModuleType.SplitData,
-  ModuleType.TrainModel,
-  ModuleType.ScoreModel,
-  ModuleType.EvaluateModel,
-];
-
-const supervisedLearningTypes = [
-  ModuleType.LinearRegression,
-  ModuleType.LogisticRegression,
-  ModuleType.DecisionTree,
-  ModuleType.RandomForest,
-  ModuleType.SVM,
-  ModuleType.LinearDiscriminantAnalysis,
-  ModuleType.NaiveBayes,
-  ModuleType.KNN,
-];
-
-const unsupervisedModelTypes = [
-  ModuleType.KMeans,
-  ModuleType.HierarchicalClustering,
-  ModuleType.DBSCAN,
-  ModuleType.PrincipalComponentAnalysis,
-];
-
-const traditionAnalysisTypes = [
-  ModuleType.OLSModel,
-  ModuleType.LogisticModel,
-  ModuleType.PoissonModel,
-  ModuleType.QuasiPoissonModel,
-  ModuleType.NegativeBinomialModel,
-  ModuleType.DiversionChecker,
-  ModuleType.StatModels,
-  ModuleType.ResultModel,
-  ModuleType.PredictModel,
-  ModuleType.EvaluateStat,
 ];
 
 const reinsuranceTypes = [
@@ -80,39 +42,30 @@ const xolPricingTypes = [
   ModuleType.PriceXolContract,
 ];
 
+const dfaTypes = [
+  ModuleType.ApplyInflation,
+  ModuleType.FormatChange,
+  ModuleType.SplitByThreshold,
+  ModuleType.FitAggregateModel,
+  ModuleType.FitFrequencySeverityModel,
+];
+
 const categorizedModules = [
   {
     name: "Data Preprocess",
     modules: TOOLBOX_MODULES.filter((m) => preprocessTypes.includes(m.type)),
   },
   {
+    name: "DFA Analysis",
+    modules: TOOLBOX_MODULES.filter((m) => dfaTypes.includes(m.type)),
+  },
+  {
     name: "Data Analysis",
-    subCategories: [
-      {
-        name: "Operations",
-        modules: TOOLBOX_MODULES.filter((m) =>
-          analysisOpTypes.includes(m.type)
-        ),
-      },
-      {
-        name: "Supervised Learning",
-        modules: TOOLBOX_MODULES.filter((m) =>
-          supervisedLearningTypes.includes(m.type)
-        ),
-      },
-      {
-        name: "Unsupervised Learning",
-        modules: TOOLBOX_MODULES.filter((m) =>
-          unsupervisedModelTypes.includes(m.type)
-        ),
-      },
-    ],
+    modules: [],
   },
   {
     name: "Tradition Analysis",
-    modules: TOOLBOX_MODULES.filter((m) =>
-      traditionAnalysisTypes.includes(m.type)
-    ),
+    modules: [],
   },
   {
     name: "Reinsurance Analysis",
@@ -170,13 +123,11 @@ export const Toolbox: React.FC<ToolboxProps> = ({
     Record<string, boolean>
   >({
     "Data Preprocess": true,
+    "DFA Analysis": true,
     "Data Analysis": true,
     "Tradition Analysis": true,
     "Reinsurance Analysis": true,
     "XoL Reinsurance Pricing": true,
-    Operations: true,
-    "Supervised Learning": true,
-    "Unsupervised Learning": true,
   });
 
   const [lastTapInfo, setLastTapInfo] = useState<{

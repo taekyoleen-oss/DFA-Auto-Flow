@@ -24,6 +24,7 @@ import {
   MissingHandlerOutput,
   EncoderOutput,
   NormalizerOutput,
+  AggregateModelOutput,
 } from "../types";
 import {
   PlayIcon,
@@ -438,7 +439,7 @@ const getConnectedDataSourceHelper = (
   allModules: CanvasModule[],
   allConnections: Connection[],
   portNameToFind?: string
-): DataPreview | undefined => {
+): DataPreview | AggregateModelOutput | undefined => {
   const portName = portNameToFind || "data_in";
   let inputConnection = allConnections.find(
     (c) => c.to.moduleId === moduleId && c.to.portName === portName
@@ -446,14 +447,14 @@ const getConnectedDataSourceHelper = (
 
   // Only perform fallback if no specific port was requested and the initial attempt failed
   if (!inputConnection && !portNameToFind) {
-    // A safer fallback: find the first connection to any 'data' type port.
+    // A safer fallback: find the first connection to any 'data' or 'evaluation' type port.
     inputConnection = allConnections.find((c) => {
       if (c.to.moduleId === moduleId) {
         const targetModule = allModules.find((m) => m.id === moduleId);
         const targetPort = targetModule?.inputs.find(
           (p) => p.name === c.to.portName
         );
-        return targetPort?.type === "data";
+        return targetPort?.type === "data" || targetPort?.type === "evaluation";
       }
       return false;
     });
@@ -473,6 +474,14 @@ const getConnectedDataSourceHelper = (
     return fromPortName === "train_data_out"
       ? sourceModule.outputData.train
       : sourceModule.outputData.test;
+  } else if (
+    sourceModule.outputData.type === "FormatChangeOutput" ||
+    sourceModule.outputData.type === "InflatedDataOutput" ||
+    sourceModule.outputData.type === "ClaimDataOutput"
+  ) {
+    return (sourceModule.outputData as any).data;
+  } else if (sourceModule.outputData.type === "AggregateModelOutput") {
+    return sourceModule.outputData as AggregateModelOutput;
   }
   return undefined;
 };
@@ -500,7 +509,8 @@ const renderParameters = (
   switch (module.type) {
     // ... [Previous cases remain unchanged: LoadData, SelectData, HandleMissingValues, TransformData, EncodeCategorical, NormalizeData, TransitionData, ResampleData, SplitData] ...
     case ModuleType.LoadData:
-    case ModuleType.XolLoading: {
+    case ModuleType.XolLoading:
+    case ModuleType.LoadClaimData: {
       const handleBrowseClick = async () => {
         if (folderHandle && (window as any).showOpenFilePicker) {
           try {
@@ -577,7 +587,15 @@ const renderParameters = (
     }
     case ModuleType.SelectData: {
       const sourceData = getConnectedDataSource(module.id);
-      const inputColumns = sourceData?.columns || [];
+      // Handle different output types (InflatedDataOutput, FormatChangeOutput, ClaimDataOutput, etc.)
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
       const availableDataTypes = [
         "string",
         "number",
@@ -649,8 +667,10 @@ const renderParameters = (
               <span className="text-xs font-bold text-gray-400">Data Type</span>
             </div>
             {inputColumns.map((col) => {
+              // Default to false if not explicitly configured
+              // Only show as selected if explicitly set to true in selections
               const selection = currentSelections[col.name] || {
-                selected: true,
+                selected: false,
                 type: col.type,
               };
               return (
@@ -2189,6 +2209,274 @@ const renderParameters = (
           options={["Gamma", "Tweedie"]}
         />
       );
+    case ModuleType.ApplyInflation: {
+      const sourceData = getConnectedDataSource(module.id);
+      // FormatChangeOutput, InflatedDataOutput 등의 경우 data 속성에서 컬럼 가져오기
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "FormatChangeOutput" || sourceData.type === "InflatedDataOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
+      const allColumns = inputColumns.map(col => col.name);
+      
+      // 기본 옵션 추가 (컬럼이 없을 때도 선택 가능하도록)
+      const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액"];
+      const yearOptions = allColumns.length > 0 ? allColumns : ["연도", "날짜"];
+      
+      return (
+        <div className="space-y-4">
+          <PropertyInput
+            label="Target Year"
+            value={module.parameters.target_year || 2026}
+            type="number"
+            onChange={(v) => onParamChange("target_year", Number(v))}
+          />
+          <PropertyInput
+            label="Inflation Rate (%)"
+            value={module.parameters.inflation_rate || 5.0}
+            type="number"
+            onChange={(v) => onParamChange("inflation_rate", Number(v))}
+          />
+          <PropertySelect
+            label="Amount Column"
+            value={module.parameters.amount_column || "클레임 금액"}
+            onChange={(v) => onParamChange("amount_column", v)}
+            options={amountOptions}
+          />
+          <PropertySelect
+            label="Year Column"
+            value={module.parameters.year_column || "연도"}
+            onChange={(v) => onParamChange("year_column", v)}
+            options={yearOptions}
+          />
+        </div>
+      );
+    }
+    case ModuleType.FormatChange: {
+      const sourceData = getConnectedDataSource(module.id);
+      const inputColumns = sourceData?.columns || [];
+      const dateColumns = inputColumns.filter(col => col.type === "string" || col.name.includes("날짜") || col.name.includes("date")).map(col => col.name);
+      
+      return (
+        <div className="space-y-4">
+          <PropertySelect
+            label="Date Column"
+            value={module.parameters.date_column || "날짜"}
+            onChange={(v) => onParamChange("date_column", v)}
+            options={dateColumns.length > 0 ? dateColumns : ["날짜"]}
+          />
+        </div>
+      );
+    }
+    case ModuleType.SplitByThreshold: {
+      const sourceData = getConnectedDataSource(module.id);
+      // Handle different output types (InflatedDataOutput, FormatChangeOutput, ClaimDataOutput, etc.)
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
+      const allColumns = inputColumns.map(col => col.name);
+      const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액"];
+      
+      return (
+        <div className="space-y-4">
+          <PropertyInput
+            label="Threshold"
+            value={module.parameters.threshold || 1000000}
+            type="number"
+            onChange={(v) => onParamChange("threshold", Number(v))}
+          />
+          <PropertySelect
+            label="Amount Column"
+            value={module.parameters.amount_column || "클레임 금액"}
+            onChange={(v) => onParamChange("amount_column", v)}
+            options={amountOptions}
+          />
+        </div>
+      );
+    }
+    case ModuleType.FitAggregateModel: {
+      const sourceData = getConnectedDataSource(module.id);
+      // Handle different output types (ThresholdSplitOutput, DataPreview, etc.)
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "ThresholdSplitOutput") {
+          inputColumns = sourceData.belowThreshold?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        } else if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        }
+      }
+      
+      const allDistributionTypes = ["Lognormal", "Exponential", "Gamma", "Pareto"];
+      const selectedDistributions = (module.parameters.selected_distributions as string[]) || ["Lognormal"];
+      const amountColumns = inputColumns.map(col => col.name);
+      
+      const handleDistributionToggle = (distType: string) => {
+        const current = selectedDistributions.includes(distType);
+        if (current) {
+          onParamChange("selected_distributions", selectedDistributions.filter(d => d !== distType));
+        } else {
+          onParamChange("selected_distributions", [...selectedDistributions, distType]);
+        }
+      };
+      
+      const handleSelectAllDistributions = (selectAll: boolean) => {
+        if (selectAll) {
+          onParamChange("selected_distributions", allDistributionTypes);
+        } else {
+          onParamChange("selected_distributions", []);
+        }
+      };
+      
+      return (
+        <>
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-300">Distribution Types</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSelectAllDistributions(true)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => handleSelectAllDistributions(false)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
+              {allDistributionTypes.map((distType) => (
+                <label
+                  key={distType}
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedDistributions.includes(distType)}
+                    onChange={() => handleDistributionToggle(distType)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-gray-200">{distType}</span>
+                </label>
+              ))}
+            </div>
+            {selectedDistributions.length === 0 && (
+              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
+            )}
+          </div>
+          {amountColumns.length > 0 ? (
+            <PropertySelect
+              label="Amount Column"
+              value={module.parameters.amount_column || amountColumns[0]}
+              onChange={(v) => onParamChange("amount_column", v)}
+              options={amountColumns}
+            />
+          ) : (
+            <p className="text-sm text-gray-500">
+              Connect a data source module to configure columns.
+            </p>
+          )}
+        </>
+      );
+    }
+    case ModuleType.SimulateAggDist: {
+      const sourceData = getConnectedDataSource(module.id);
+      let availableDistributions: string[] = [];
+      let selectedDistribution: string | undefined;
+      
+      if (sourceData && sourceData.type === "AggregateModelOutput") {
+        availableDistributions = sourceData.results?.map(r => r.distributionType) || [];
+        selectedDistribution = sourceData.selectedDistribution || 
+          (availableDistributions.length > 0 ? availableDistributions[0] : undefined);
+      }
+      
+      const simulationCountOptions = [
+        { value: 100, label: "100" },
+        { value: 1000, label: "1,000" },
+        { value: 10000, label: "10,000" },
+        { value: 100000, label: "100,000" },
+        { value: 1000000, label: "1,000,000" },
+      ];
+      
+      const currentCount = module.parameters.simulation_count as number || 10000;
+      const customCount = module.parameters.custom_count as string || "";
+      
+      return (
+        <>
+          {availableDistributions.length > 0 ? (
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Selected Distribution
+              </label>
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  {selectedDistribution || "Not selected"}
+                </p>
+                {selectedDistribution && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    This distribution will be used for simulation
+                  </p>
+                )}
+              </div>
+              {availableDistributions.length > 1 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  Available: {availableDistributions.join(", ")}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect a Fit Agg Model module to see available distributions.
+              </p>
+            </div>
+          )}
+          <PropertySelect
+            label="Simulation Count"
+            value={currentCount}
+            onChange={(v) => {
+              const numValue = typeof v === 'string' ? parseInt(v, 10) : v;
+              onParamChange("simulation_count", numValue === 0 ? 0 : numValue);
+              if (numValue !== 0) {
+                onParamChange("custom_count", "");
+              }
+            }}
+            options={[
+              ...simulationCountOptions.map(opt => ({ value: opt.value, label: opt.label })),
+              { value: 0, label: "Custom" }
+            ]}
+          />
+          {currentCount === 0 && (
+            <div className="mt-2">
+              <label className="block text-sm font-semibold text-gray-300 mb-1">
+                Custom Count
+              </label>
+              <input
+                type="number"
+                value={customCount}
+                onChange={(e) => onParamChange("custom_count", e.target.value)}
+                placeholder="Enter custom count"
+                min="1"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+        </>
+      );
+    }
     default:
       const hasParams = Object.keys(module.parameters).length > 0;
       if (!hasParams) {
@@ -2842,6 +3130,11 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       "HierarchicalClusteringOutput",
       "PCAOutput",
       "DBSCANOutput",
+      "ClaimDataOutput",
+      "InflatedDataOutput",
+      "FormatChangeOutput",
+      "AggregateModelOutput",
+      "SimulateAggDistOutput",
     ];
 
     const canVisualize = () => {
@@ -2852,6 +3145,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           "KMeansOutput",
           "HierarchicalClusteringOutput",
           "DBSCANOutput",
+          "ClaimDataOutput",
+          "InflatedDataOutput",
+          "FormatChangeOutput",
         ].includes(module.outputData.type)
       )
         return true;
@@ -2865,13 +3161,18 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     const previewContent = (() => {
       switch (module.type) {
         case ModuleType.LoadData:
-          if (outputData.type === "DataPreview") {
+        case ModuleType.LoadClaimData:
+        case ModuleType.ApplyInflation:
+          if (outputData.type === "DataPreview" || outputData.type === "ClaimDataOutput" || outputData.type === "InflatedDataOutput") {
+            const actualData = outputData.type === "ClaimDataOutput" || outputData.type === "InflatedDataOutput" 
+              ? (outputData as any).data 
+              : outputData;
             return (
               <>
                 <h3 className="text-md font-semibold mb-2 text-gray-300">
                   Column Structure
                 </h3>
-                <ColumnInfoTable columns={outputData.columns} />
+                <ColumnInfoTable columns={actualData.columns} />
               </>
             );
           }
