@@ -36,7 +36,7 @@
 - 코드 스니펫을 더 간결하고 이해하기 쉽게 만들기 위해
 - 파라미터 오류를 방지하고 자동으로 보정하기 위해
 
-**Commit Hash:** (커밋 후 업데이트 예정)
+**Commit Hash:** b81aaba8f2fbc0b1da83fa79dd09998aa65bfb15
 
 **Recovery Command:**
 ```bash
