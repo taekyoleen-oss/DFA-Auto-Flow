@@ -1,5 +1,38 @@
 # Change History
 
+## 2025-01-16 00:00:00
+
+### fix(modules): Update module names and fix Select Data module behavior
+
+**Description:**
+- Simulate Freq-Sev Table 모듈 이름 변경 반영
+  - 에러 메시지에서 "Simulate Freq-Sev Table"로 명확히 표시
+  - Properties Panel에서 모듈 이름 및 입력 타입 확인 로직 수정
+- Select Data 모듈 동작 수정
+  - 열을 선택하지 않으면 빈 결과 반환 (모든 열이 선택 해제된 경우)
+  - 기본값이 모든 열을 선택한 상태로 설정
+  - 열을 선택해도 원본 데이터 타입(number, string 등)이 그대로 유지되도록 수정
+
+**Files Affected:**
+- `App.tsx` - Select Data 모듈 로직 수정, Simulate Freq-Sev Table 에러 메시지 업데이트
+- `components/PropertiesPanel.tsx` - Select Data 기본값 수정, Simulate Freq-Sev Table 이름 반영
+
+**Reason:**
+- Select Data 모듈의 예상치 못한 동작 수정
+- 모듈 이름 변경에 따른 일관성 유지
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
 ## 2025-12-14 19:00:00
 
 ### fix(build): Add missing utility files to fix Vercel build error

@@ -2,12 +2,12 @@ import React, { useMemo } from 'react';
 import { CanvasModule, SimulateAggDistOutput } from '../types';
 import { XCircleIcon } from './icons';
 
-interface SimulateAggDistPreviewModalProps {
+interface SimulateFreqServPreviewModalProps {
   module: CanvasModule;
   onClose: () => void;
 }
 
-export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalProps> = ({ 
+export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModalProps> = ({ 
   module, 
   onClose 
 }) => {
@@ -248,7 +248,7 @@ export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalPr
                     {/* 배경 그리드 */}
                     <defs>
                       <pattern
-                        id="grid"
+                        id="grid-freq-serv"
                         width="40"
                         height="40"
                         patternUnits="userSpaceOnUse"
@@ -264,7 +264,7 @@ export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalPr
                     <rect
                       width={histogramChartData.width}
                       height={histogramChartData.height}
-                      fill="url(#grid)"
+                      fill="url(#grid-freq-serv)"
                     />
 
                     {/* Y축 라인 */}

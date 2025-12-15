@@ -236,7 +236,7 @@ const ClaimAmountHistogramTable: React.FC<{ rows: Record<string, any>[]; column?
                     <div className="text-xs text-gray-500">Total Claims</div>
                     <div className="text-lg font-semibold text-gray-800">{total}</div>
                 </div>
-            </div>
+             </div>
         </div>
     );
 };
@@ -1279,7 +1279,7 @@ const PCAScoreVisualization: React.FC<{
             </div>
         );
     }
-    
+
     if (!data) {
         console.warn('DataPreviewModal: No data available for module', module.id, module.type, module.outputData);
         return (
@@ -1334,9 +1334,9 @@ const PCAScoreVisualization: React.FC<{
                             </svg>
                             Download CSV
                         </button>
-                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-                            <XCircleIcon className="w-6 h-6" />
-                        </button>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                        <XCircleIcon className="w-6 h-6" />
+                    </button>
                     </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
@@ -1419,13 +1419,13 @@ const PCAScoreVisualization: React.FC<{
                                                             }
                                                             
                                                             return (
-                                                                <td 
-                                                                    key={col.name} 
+                                                            <td 
+                                                                key={col.name} 
                                                                     className={`py-1.5 px-3 font-mono truncate hover:bg-gray-50 ${isNumeric ? 'text-right' : 'text-left'}`}
-                                                                    title={String(row[col.name])}
-                                                                >
+                                                                title={String(row[col.name])}
+                                                            >
                                                                     {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                                </td>
+                                                            </td>
                                                             );
                                                         })}
                                                     </tr>
@@ -1479,14 +1479,14 @@ const PCAScoreVisualization: React.FC<{
                                                         }
                                                         
                                                         return (
-                                                            <td 
-                                                                key={col.name} 
+                                                        <td 
+                                                            key={col.name} 
                                                                 className={`py-1.5 px-3 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
-                                                                onClick={() => setSelectedColumn(col.name)}
-                                                                title={String(row[col.name])}
-                                                            >
+                                                            onClick={() => setSelectedColumn(col.name)}
+                                                            title={String(row[col.name])}
+                                                        >
                                                                 {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                            </td>
+                                                        </td>
                                                         );
                                                     })}
                                                 </tr>
@@ -1508,21 +1508,21 @@ const PCAScoreVisualization: React.FC<{
                                             // 다른 모듈: 기존 레이아웃 유지 (그래프 + 통계량)
                                             <div className="w-full flex flex-col gap-4">
                                                 <div className="flex-grow min-h-0 border border-gray-200 rounded-lg p-4">
-                                                    {isSelectedColNumeric ? (
+                                        {isSelectedColNumeric ? (
                                                         <HistogramPlot rows={rows} column={selectedColumn} />
-                                                    ) : (
+                                        ) : (
                                                         <div className="w-full h-full flex flex-col items-center justify-center">
-                                                            <p className="text-gray-500">Plot is not available for non-numeric columns.</p>
-                                                        </div>
-                                                    )}
+                                                <p className="text-gray-500">Plot is not available for non-numeric columns.</p>
+                                            </div>
+                                        )}
                                                 </div>
                                                 <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4">
-                                                    <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                        <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
                                                 </div>
                                             </div>
                                         )}
                                     </div>
-                                )}
+                                        )}
                                     </>
                                 )}
                             </div>

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { CanvasModule, AggregateModelOutput, AggregateModelFitResult } from '../types';
 import { XCircleIcon } from './icons';
+import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
 
 interface AggregateModelPreviewModalProps {
   module: CanvasModule;
@@ -95,6 +96,9 @@ export const AggregateModelPreviewModal: React.FC<AggregateModelPreviewModalProp
       onSelectDistribution(module.id, distType);
     }
   };
+
+  const viewDetailsRef = useRef<HTMLDivElement>(null);
+  useCopyOnCtrlC(viewDetailsRef);
 
   // AIC 기준으로 정렬 (낮을수록 좋음)
   const sortedResults = [...results].sort((a, b) => {
@@ -338,6 +342,690 @@ export const AggregateModelPreviewModal: React.FC<AggregateModelPreviewModalProp
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+
+            {/* View Details Section */}
+            {sortedResults.length > 0 && sortedResults[0] && !(sortedResults[0] as any).error && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4" ref={viewDetailsRef}>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">View Details (Ctrl+C to copy)</h3>
+                <div className="space-y-4">
+                  {/* Cumulative Distribution Chart (누적 막대그래프 + 각 분포 선 그래프) */}
+                  {(() => {
+                    // 실제 데이터의 누적 분포 (첫 번째 결과에서 가져옴)
+                    const firstResult = sortedResults.find(r => r.cumulativeDistribution);
+                    const cumulativeData = firstResult?.cumulativeDistribution;
+
+                    // 각 분포의 이론적 누적 확률별 금액
+                    const distributionLines = sortedResults
+                      .filter(r => r.theoreticalCumulative && !r.error)
+                      .map(r => ({
+                        distributionType: r.distributionType,
+                        data: r.theoreticalCumulative!,
+                        color: r.distributionType === "Lognormal" ? "#3b82f6" :
+                               r.distributionType === "Exponential" ? "#10b981" :
+                               r.distributionType === "Gamma" ? "#f59e0b" :
+                               r.distributionType === "Pareto" ? "#ef4444" : "#6b7280"
+                      }));
+
+                    if (!cumulativeData) {
+                      return null;
+                    }
+
+                    const CumulativeChart: React.FC = () => {
+                      const margin = { top: 20, right: 150, bottom: 60, left: 80 };
+                      const width = 800;
+                      const height = 400;
+                      const chartWidth = width - margin.left - margin.right;
+                      const chartHeight = height - margin.top - margin.bottom;
+
+                      // 실제 데이터에서 5개 포인트 선택 (균등하게 샘플링)
+                      const select5Points = <T,>(arr: T[]): T[] => {
+                        if (arr.length <= 5) return arr;
+                        const indices = [
+                          Math.floor(arr.length * 0.0),
+                          Math.floor(arr.length * 0.25),
+                          Math.floor(arr.length * 0.5),
+                          Math.floor(arr.length * 0.75),
+                          arr.length - 1
+                        ];
+                        return indices.map(i => arr[i]);
+                      };
+
+                      // 실제 데이터의 5개 금액 값 선택
+                      const sortedAmounts = [...cumulativeData.amounts].filter(a => isFinite(a) && a >= 0).sort((a, b) => a - b);
+                      const selectedAmounts = select5Points(sortedAmounts);
+                      const actualDataPoints = selectedAmounts.map((amount, i) => ({
+                        amount,
+                        probability: (i + 1) / 5 // 0.2, 0.4, 0.6, 0.8, 1.0
+                      }));
+
+                      // 각 분포에 대해 같은 금액 값들에 대한 CDF 계산
+                      const distributionPoints = distributionLines.map(line => {
+                        const points = actualDataPoints.map(actualPoint => {
+                          // theoreticalCumulative에서 선형 보간을 사용하여 정확한 확률 계산
+                          let probability = 0;
+                          
+                          // 정확히 일치하는 값 찾기
+                          const exactIndex = line.data.amounts.findIndex(a => Math.abs(a - actualPoint.amount) < 1e-10);
+                          if (exactIndex >= 0) {
+                            probability = line.data.probabilities[exactIndex];
+                          } else {
+                            // 선형 보간
+                            let lowerIndex = -1;
+                            let upperIndex = -1;
+                            
+                            for (let i = 0; i < line.data.amounts.length - 1; i++) {
+                              if (line.data.amounts[i] <= actualPoint.amount && actualPoint.amount <= line.data.amounts[i + 1]) {
+                                lowerIndex = i;
+                                upperIndex = i + 1;
+                                break;
+                              }
+                            }
+                            
+                            if (lowerIndex >= 0 && upperIndex >= 0) {
+                              // 선형 보간
+                              const lowerAmount = line.data.amounts[lowerIndex];
+                              const upperAmount = line.data.amounts[upperIndex];
+                              const lowerProb = line.data.probabilities[lowerIndex];
+                              const upperProb = line.data.probabilities[upperIndex];
+                              
+                              const ratio = (actualPoint.amount - lowerAmount) / (upperAmount - lowerAmount);
+                              probability = lowerProb + ratio * (upperProb - lowerProb);
+                            } else {
+                              // 범위 밖이면 가장 가까운 값 사용
+                              let closestProb = 0;
+                              let minDiff = Infinity;
+                              
+                              for (let i = 0; i < line.data.amounts.length; i++) {
+                                const diff = Math.abs(line.data.amounts[i] - actualPoint.amount);
+                                if (diff < minDiff) {
+                                  minDiff = diff;
+                                  closestProb = line.data.probabilities[i];
+                                }
+                              }
+                              probability = closestProb;
+                            }
+                          }
+                          
+                          return {
+                            amount: actualPoint.amount,
+                            probability: Math.max(0, Math.min(1, probability)) // 0과 1 사이로 제한
+                          };
+                        });
+                        
+                        return {
+                          distributionType: line.distributionType,
+                          color: line.color,
+                          points
+                        };
+                      });
+
+                      // 데이터 범위 계산
+                      const allAmounts = [
+                        ...actualDataPoints.map(p => p.amount),
+                        ...distributionPoints.flatMap(d => d.points.map(p => p.amount))
+                      ].filter(a => isFinite(a) && a >= 0);
+                      
+                      const maxAmount = Math.max(...allAmounts);
+                      const minAmount = Math.min(...allAmounts);
+
+                      // 가로축: 금액, 세로축: 확률
+                      const xScale = (amount: number) => margin.left + ((amount - minAmount) / (maxAmount - minAmount || 1)) * chartWidth;
+                      const yScale = (probability: number) => height - margin.bottom - (probability * chartHeight);
+
+                      const getTicks = (min: number, max: number, count: number) => {
+                        if (min === max) return [min];
+                        const ticks = [];
+                        const step = (max - min) / (count - 1);
+                        for (let i = 0; i < count; i++) {
+                          ticks.push(min + i * step);
+                        }
+                        return ticks;
+                      };
+
+                      const xTicks = getTicks(minAmount, maxAmount, 5);
+                      const yTicks = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+
+                      return (
+                        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+                          <h4 className="text-md font-semibold text-gray-700 mb-3">Cumulative Distribution: Data vs Theoretical Distributions</h4>
+                          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto max-w-full">
+                            {/* 그리드 */}
+                            <defs>
+                              <pattern id="cumulative-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+                              </pattern>
+                            </defs>
+                            <rect width={width} height={height} fill="url(#cumulative-grid)" />
+
+                            {/* 축 */}
+                            <line x1={margin.left} y1={height - margin.bottom} x2={width - margin.right} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+                            <line x1={margin.left} y1={margin.top} x2={margin.left} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+
+                            {/* 실제 데이터 포인트 (막대 그래프) - 5개만 표시 */}
+                            {actualDataPoints.map((point, i) => {
+                              const barWidth = (maxAmount - minAmount) / 20; // 적절한 막대 너비
+                              const barHeight = yScale(0) - yScale(point.probability);
+                              const barX = xScale(point.amount) - barWidth / 2;
+                              const barY = yScale(point.probability);
+
+                              return (
+                                <rect
+                                  key={i}
+                                  x={barX}
+                                  y={barY}
+                                  width={barWidth}
+                                  height={Math.max(barHeight, 1)}
+                                  fill="#6b7280"
+                                  opacity="0.5"
+                                />
+                              );
+                            })}
+
+                            {/* 각 분포의 선 그래프 - 5개 포인트만 표시 */}
+                            {distributionPoints.map((dist, lineIdx) => {
+                              if (dist.points.length === 0) return null;
+
+                              const pathData = dist.points
+                                .map((p, i) => {
+                                  const x = xScale(p.amount);
+                                  const y = yScale(p.probability);
+                                  return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+                                })
+                                .join(' ');
+
+                              return (
+                                <g key={lineIdx}>
+                                  <path
+                                    d={pathData}
+                                    fill="none"
+                                    stroke={dist.color}
+                                    strokeWidth="2"
+                                    opacity="0.8"
+                                  />
+                                  {/* 데이터 포인트 표시 */}
+                                  {dist.points.map((p, i) => (
+                                    <circle
+                                      key={i}
+                                      cx={xScale(p.amount)}
+                                      cy={yScale(p.probability)}
+                                      r="3"
+                                      fill={dist.color}
+                                      opacity="0.9"
+                                    />
+                                  ))}
+                                </g>
+                              );
+                            })}
+
+                            {/* 범례 */}
+                            <g>
+                              {/* 실제 데이터 범례 */}
+                              <rect
+                                x={width - margin.right + 10}
+                                y={margin.top + 10}
+                                width="12"
+                                height="12"
+                                fill="#6b7280"
+                                opacity="0.5"
+                              />
+                              <text
+                                x={width - margin.right + 28}
+                                y={margin.top + 20}
+                                fontSize="11"
+                                fill="#374151"
+                                fontWeight="bold"
+                              >
+                                Actual Data
+                              </text>
+                              
+                              {/* 각 분포 범례 */}
+                              {distributionPoints.map((dist, lineIdx) => (
+                                <g key={lineIdx}>
+                                  <line
+                                    x1={width - margin.right + 10}
+                                    y1={margin.top + 35 + (lineIdx * 20)}
+                                    x2={width - margin.right + 22}
+                                    y2={margin.top + 35 + (lineIdx * 20)}
+                                    stroke={dist.color}
+                                    strokeWidth="2"
+                                    opacity="0.8"
+                                  />
+                                  <circle
+                                    cx={width - margin.right + 16}
+                                    cy={margin.top + 35 + (lineIdx * 20)}
+                                    r="3"
+                                    fill={dist.color}
+                                    opacity="0.9"
+                                  />
+                                  <text
+                                    x={width - margin.right + 28}
+                                    y={margin.top + 38 + (lineIdx * 20)}
+                                    fontSize="11"
+                                    fill={dist.color}
+                                    fontWeight="bold"
+                                  >
+                                    {dist.distributionType}
+                                  </text>
+                                </g>
+                              ))}
+                            </g>
+
+                            {/* X축 눈금 및 라벨 (금액) */}
+                            {xTicks.map((tick) => (
+                              <g key={tick}>
+                                <line
+                                  x1={xScale(tick)}
+                                  y1={height - margin.bottom}
+                                  x2={xScale(tick)}
+                                  y2={height - margin.bottom + 5}
+                                  stroke="#6b7280"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={xScale(tick)}
+                                  y={height - margin.bottom + 20}
+                                  textAnchor="middle"
+                                  fontSize="10"
+                                  fill="#6b7280"
+                                >
+                                  {tick.toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
+                                </text>
+                              </g>
+                            ))}
+
+                            {/* Y축 눈금 및 라벨 (확률) */}
+                            {yTicks.map((tick) => (
+                              <g key={tick}>
+                                <line
+                                  x1={margin.left}
+                                  y1={yScale(tick)}
+                                  x2={margin.left - 5}
+                                  y2={yScale(tick)}
+                                  stroke="#6b7280"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={margin.left - 10}
+                                  y={yScale(tick) + 4}
+                                  textAnchor="end"
+                                  fontSize="10"
+                                  fill="#6b7280"
+                                >
+                                  {(tick * 100).toFixed(0)}%
+                                </text>
+                              </g>
+                            ))}
+
+                            {/* X축 라벨 (금액) */}
+                            <text
+                              x={width / 2}
+                              y={height - 10}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fill="#374151"
+                              fontWeight="bold"
+                            >
+                              Amount
+                            </text>
+
+                            {/* Y축 라벨 (확률) */}
+                            <text
+                              x={20}
+                              y={height / 2}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fill="#374151"
+                              fontWeight="bold"
+                              transform={`rotate(-90 20 ${height / 2})`}
+                            >
+                              Cumulative Probability
+                            </text>
+                          </svg>
+                        </div>
+                      );
+                    };
+
+                    return <CumulativeChart />;
+                  })()}
+
+                  {/* Q-Q Plot and P-P Plot Charts */}
+                  {(() => {
+                    const selectedResult = sortedResults.find(r => r.distributionType === localSelected);
+                    const qqPlot = selectedResult?.qqPlot;
+                    const ppPlot = selectedResult?.ppPlot;
+
+                    // Q-Q Plot 컴포넌트
+                    const QQPlotChart: React.FC<{ data: { theoreticalQuantiles: number[]; sampleQuantiles: number[] } }> = ({ data }) => {
+                      const { theoreticalQuantiles, sampleQuantiles } = data;
+                      if (!theoreticalQuantiles || !sampleQuantiles || theoreticalQuantiles.length === 0) {
+                        return <div className="text-gray-500 text-sm">Q-Q Plot 데이터가 없습니다.</div>;
+                      }
+
+                      const margin = { top: 20, right: 20, bottom: 50, left: 60 };
+                      const width = 500;
+                      const height = 400;
+                      const chartWidth = width - margin.left - margin.right;
+                      const chartHeight = height - margin.top - margin.bottom;
+
+                      // 유효한 데이터만 필터링
+                      const validPairs = theoreticalQuantiles
+                        .map((x, i) => ({ x, y: sampleQuantiles[i] }))
+                        .filter(p => isFinite(p.x) && isFinite(p.y) && p.x !== null && p.y !== null);
+
+                      if (validPairs.length === 0) {
+                        return <div className="text-gray-500 text-sm">Q-Q Plot 데이터가 없습니다.</div>;
+                      }
+
+                      const xMin = Math.min(...validPairs.map(p => p.x));
+                      const xMax = Math.max(...validPairs.map(p => p.x));
+                      const yMin = Math.min(...validPairs.map(p => p.y));
+                      const yMax = Math.max(...validPairs.map(p => p.y));
+
+                      // 범위에 여유 공간 추가 (5%)
+                      const xRange = xMax - xMin || 1;
+                      const yRange = yMax - yMin || 1;
+                      const xMinAdjusted = xMin - xRange * 0.05;
+                      const xMaxAdjusted = xMax + xRange * 0.05;
+                      const yMinAdjusted = yMin - yRange * 0.05;
+                      const yMaxAdjusted = yMax + yRange * 0.05;
+
+                      const xScale = (x: number) => margin.left + ((x - xMinAdjusted) / (xMaxAdjusted - xMinAdjusted || 1)) * chartWidth;
+                      const yScale = (y: number) => height - margin.bottom - ((y - yMinAdjusted) / (yMaxAdjusted - yMinAdjusted || 1)) * chartHeight;
+
+                      // Perfect fit line (y = x)
+                      const lineMin = Math.min(xMinAdjusted, yMinAdjusted);
+                      const lineMax = Math.max(xMaxAdjusted, yMaxAdjusted);
+
+                      const getTicks = (min: number, max: number, count: number) => {
+                        if (min === max) return [min];
+                        const ticks = [];
+                        const step = (max - min) / (count - 1);
+                        for (let i = 0; i < count; i++) {
+                          ticks.push(min + i * step);
+                        }
+                        return ticks;
+                      };
+
+                      const xTicks = getTicks(xMinAdjusted, xMaxAdjusted, 5);
+                      const yTicks = getTicks(yMinAdjusted, yMaxAdjusted, 5);
+
+                      return (
+                        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+                          <h4 className="text-md font-semibold text-gray-700 mb-3">Q-Q Plot: {localSelected} Distribution</h4>
+                          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto max-w-full">
+                            {/* 그리드 */}
+                            <defs>
+                              <pattern id="qq-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+                              </pattern>
+                            </defs>
+                            <rect width={width} height={height} fill="url(#qq-grid)" />
+
+                            {/* 축 */}
+                            <line x1={margin.left} y1={height - margin.bottom} x2={width - margin.right} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+                            <line x1={margin.left} y1={margin.top} x2={margin.left} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+
+                            {/* Perfect fit line */}
+                            <line
+                              x1={xScale(lineMin)}
+                              y1={yScale(lineMin)}
+                              x2={xScale(lineMax)}
+                              y2={yScale(lineMax)}
+                              stroke="#ef4444"
+                              strokeWidth="2"
+                              strokeDasharray="5,5"
+                              opacity="0.7"
+                            />
+
+                            {/* X축 눈금 및 라벨 */}
+                            {xTicks.map((tick, i) => (
+                              <g key={`x-${i}`}>
+                                <line
+                                  x1={xScale(tick)}
+                                  y1={height - margin.bottom}
+                                  x2={xScale(tick)}
+                                  y2={height - margin.bottom + 5}
+                                  stroke="#6b7280"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={xScale(tick)}
+                                  y={height - margin.bottom + 20}
+                                  textAnchor="middle"
+                                  fontSize="10"
+                                  fill="#6b7280"
+                                >
+                                  {tick.toFixed(2)}
+                                </text>
+                              </g>
+                            ))}
+
+                            {/* Y축 눈금 및 라벨 */}
+                            {yTicks.map((tick, i) => (
+                              <g key={`y-${i}`}>
+                                <line
+                                  x1={margin.left}
+                                  y1={yScale(tick)}
+                                  x2={margin.left - 5}
+                                  y2={yScale(tick)}
+                                  stroke="#6b7280"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={margin.left - 10}
+                                  y={yScale(tick) + 4}
+                                  textAnchor="end"
+                                  fontSize="10"
+                                  fill="#6b7280"
+                                >
+                                  {tick.toFixed(2)}
+                                </text>
+                              </g>
+                            ))}
+
+                            {/* 데이터 포인트 */}
+                            {validPairs.map((pair, i) => (
+                              <circle
+                                key={i}
+                                cx={xScale(pair.x)}
+                                cy={yScale(pair.y)}
+                                r="3"
+                                fill="#3b82f6"
+                                opacity="0.7"
+                              />
+                            ))}
+
+                            {/* X축 라벨 */}
+                            <text
+                              x={width / 2}
+                              y={height - 10}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fill="#374151"
+                              fontWeight="bold"
+                            >
+                              Theoretical Quantiles
+                            </text>
+
+                            {/* Y축 라벨 */}
+                            <text
+                              x={15}
+                              y={height / 2}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fill="#374151"
+                              fontWeight="bold"
+                              transform={`rotate(-90 15 ${height / 2})`}
+                            >
+                              Sample Quantiles
+                            </text>
+                          </svg>
+                        </div>
+                      );
+                    };
+
+                    // P-P Plot 컴포넌트
+                    const PPPlotChart: React.FC<{ data: { theoreticalCDF: number[]; empiricalCDF: number[] } }> = ({ data }) => {
+                      const { theoreticalCDF, empiricalCDF } = data;
+                      if (!theoreticalCDF || !empiricalCDF || theoreticalCDF.length === 0) {
+                        return <div className="text-gray-500 text-sm">P-P Plot 데이터가 없습니다.</div>;
+                      }
+
+                      const margin = { top: 20, right: 20, bottom: 50, left: 60 };
+                      const width = 500;
+                      const height = 400;
+                      const chartWidth = width - margin.left - margin.right;
+                      const chartHeight = height - margin.top - margin.bottom;
+
+                      // 유효한 데이터만 필터링
+                      const validPairs = theoreticalCDF
+                        .map((x, i) => ({ x, y: empiricalCDF[i] }))
+                        .filter(p => isFinite(p.x) && isFinite(p.y) && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1);
+
+                      if (validPairs.length === 0) {
+                        return <div className="text-gray-500 text-sm">P-P Plot 데이터가 없습니다.</div>;
+                      }
+
+                      const xScale = (x: number) => margin.left + x * chartWidth;
+                      const yScale = (y: number) => height - margin.bottom - y * chartHeight;
+
+                      return (
+                        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+                          <h4 className="text-md font-semibold text-gray-700 mb-3">P-P Plot: {localSelected} Distribution</h4>
+                          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto max-w-full">
+                            {/* 그리드 */}
+                            <defs>
+                              <pattern id="pp-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+                              </pattern>
+                            </defs>
+                            <rect width={width} height={height} fill="url(#pp-grid)" />
+
+                            {/* 축 */}
+                            <line x1={margin.left} y1={height - margin.bottom} x2={width - margin.right} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+                            <line x1={margin.left} y1={margin.top} x2={margin.left} y2={height - margin.bottom} stroke="#374151" strokeWidth="2" />
+
+                            {/* Perfect fit line (y = x) */}
+                            <line
+                              x1={xScale(0)}
+                              y1={yScale(0)}
+                              x2={xScale(1)}
+                              y2={yScale(1)}
+                              stroke="#ef4444"
+                              strokeWidth="2"
+                              strokeDasharray="5,5"
+                              opacity="0.7"
+                            />
+
+                            {/* 눈금 및 라벨 */}
+                            {[0, 0.25, 0.5, 0.75, 1].map((tick) => (
+                              <g key={tick}>
+                                <line
+                                  x1={xScale(tick)}
+                                  y1={height - margin.bottom}
+                                  x2={xScale(tick)}
+                                  y2={height - margin.bottom + 5}
+                                  stroke="#6b7280"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={xScale(tick)}
+                                  y={height - margin.bottom + 20}
+                                  textAnchor="middle"
+                                  fontSize="10"
+                                  fill="#6b7280"
+                                >
+                                  {tick.toFixed(2)}
+                                </text>
+                                <line
+                                  x1={margin.left}
+                                  y1={yScale(tick)}
+                                  x2={margin.left - 5}
+                                  y2={yScale(tick)}
+                                  stroke="#6b7280"
+                                  strokeWidth="1"
+                                />
+                                <text
+                                  x={margin.left - 10}
+                                  y={yScale(tick) + 4}
+                                  textAnchor="end"
+                                  fontSize="10"
+                                  fill="#6b7280"
+                                >
+                                  {tick.toFixed(2)}
+                                </text>
+                              </g>
+                            ))}
+
+                            {/* 데이터 포인트 */}
+                            {validPairs.map((pair, i) => (
+                              <circle
+                                key={i}
+                                cx={xScale(pair.x)}
+                                cy={yScale(pair.y)}
+                                r="3"
+                                fill="#3b82f6"
+                                opacity="0.7"
+                              />
+                            ))}
+
+                            {/* X축 라벨 */}
+                            <text
+                              x={width / 2}
+                              y={height - 10}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fill="#374151"
+                              fontWeight="bold"
+                            >
+                              Theoretical CDF
+                            </text>
+
+                            {/* Y축 라벨 */}
+                            <text
+                              x={15}
+                              y={height / 2}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fill="#374151"
+                              fontWeight="bold"
+                              transform={`rotate(-90 15 ${height / 2})`}
+                            >
+                              Empirical CDF
+                            </text>
+                          </svg>
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Q-Q Plot Chart */}
+                        {qqPlot ? (
+                          <QQPlotChart data={qqPlot} />
+                        ) : (
+                          <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                            <h4 className="text-md font-semibold text-gray-700 mb-2">Q-Q Plot</h4>
+                            <p className="text-sm text-gray-500">Q-Q Plot 데이터를 사용할 수 없습니다.</p>
+                          </div>
+                        )}
+
+                        {/* P-P Plot Chart */}
+                        {ppPlot ? (
+                          <PPPlotChart data={ppPlot} />
+                        ) : (
+                          <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                            <h4 className="text-md font-semibold text-gray-700 mb-2">P-P Plot</h4>
+                            <p className="text-sm text-gray-500">P-P Plot 데이터를 사용할 수 없습니다.</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                 </div>
               </div>
             )}

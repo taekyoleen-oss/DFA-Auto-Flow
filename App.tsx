@@ -43,9 +43,13 @@ import {
   InflatedDataOutput,
   FormatChangeOutput,
   ThresholdSplitOutput,
+  SplitFreqServOutput,
   AggregateModelOutput,
   SimulateAggDistOutput,
+  FrequencyModelOutput,
+  SeverityModelOutput,
   FrequencySeverityModelOutput,
+  CombineLossModelOutput,
 } from "./types";
 import { DEFAULT_MODULES, TOOLBOX_MODULES, SAMPLE_MODELS } from "./constants";
 import { SAVED_SAMPLES } from "./savedSamples";
@@ -85,6 +89,11 @@ import { SplitDataPreviewModal } from "./components/SplitDataPreviewModal";
 import { TrainedModelPreviewModal } from "./components/TrainedModelPreviewModal";
 import { AggregateModelPreviewModal } from "./components/AggregateModelPreviewModal";
 import { SimulateAggDistPreviewModal } from "./components/SimulateAggDistPreviewModal";
+import { SimulateFreqServPreviewModal } from "./components/SimulateFreqServPreviewModal";
+import { SplitFreqServPreviewModal } from "./components/SplitFreqServPreviewModal";
+import { FrequencyModelPreviewModal } from "./components/FrequencyModelPreviewModal";
+import { SeverityModelPreviewModal } from "./components/SeverityModelPreviewModal";
+import { CombineLossModelPreviewModal } from "./components/CombineLossModelPreviewModal";
 import { StatsModelsResultPreviewModal } from "./components/StatsModelsResultPreviewModal";
 import { DiversionCheckerPreviewModal } from "./components/DiversionCheckerPreviewModal";
 import { EvaluateStatPreviewModal } from "./components/EvaluateStatPreviewModal";
@@ -95,6 +104,7 @@ import { AIPipelineFromGoalModal } from "./components/AIPipelineFromGoalModal";
 import { AIPipelineFromDataModal } from "./components/AIPipelineFromDataModal";
 import { AIPlanDisplayModal } from "./components/AIPlanDisplayModal";
 import { PipelineCodePanel } from "./components/PipelineCodePanel";
+import { ErrorModal } from "./components/ErrorModal";
 import { GoogleGenAI, Type } from "@google/genai";
 import { savePipeline, loadPipeline } from "./utils/fileOperations";
 import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
@@ -179,6 +189,12 @@ const App: React.FC = () => {
     useState<CanvasModule | null>(null);
   const [viewingEvaluation, setViewingEvaluation] =
     useState<CanvasModule | null>(null);
+  const [viewingSplitFreqServ, setViewingSplitFreqServ] =
+    useState<CanvasModule | null>(null);
+  const [viewingFrequencyModel, setViewingFrequencyModel] =
+    useState<CanvasModule | null>(null);
+  const [viewingSeverityModel, setViewingSeverityModel] =
+    useState<CanvasModule | null>(null);
 
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -197,6 +213,11 @@ const App: React.FC = () => {
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(false);
   const [isRightPanelVisible, setIsRightPanelVisible] = useState(false);
   const [isCodePanelVisible, setIsCodePanelVisible] = useState(false);
+  const [errorModal, setErrorModal] = useState<{
+    moduleName: string;
+    message: string;
+    details?: string;
+  } | null>(null);
   const [activePropertiesTab, setActivePropertiesTab] =
     useState<PropertiesTab>("properties");
   const [rightPanelWidth, setRightPanelWidth] = useState(384); // w-96 in Tailwind is 384px
@@ -1295,7 +1316,7 @@ ${header}
           position: { x: baseX + spacingX * 3, y: baseY },
           status: ModuleStatus.Pending,
           parameters: {
-            columnSelections: {},
+            columnSelections: {}, // Will be initialized with all columns selected when data is available
           },
           inputs: [{ name: "data_in", type: "data" }],
           outputs: [{ name: "data_out", type: "data" }],
@@ -1323,15 +1344,15 @@ ${header}
           position: { x: baseX + spacingX * 5, y: baseY - spacingY / 2 },
           status: ModuleStatus.Pending,
           parameters: {
-            selected_distributions: ["Lognormal"],
-            amount_column: "total_amount",
+            selected_distributions: ["Lognormal", "Exponential", "Gamma", "Pareto"],
+            amount_column: "클레임 금액_infl",
           },
           inputs: [{ name: "data_in", type: "data" }],
           outputs: [{ name: "model_out", type: "evaluation" }],
         },
         {
           id: `SimulateAggDist-${Date.now() + 4.5}`,
-          name: "Simulate Agg Dist",
+          name: "Simulate Agg Table",
           type: ModuleType.SimulateAggDist,
           position: { x: baseX + spacingX * 6, y: baseY - spacingY / 2 },
           status: ModuleStatus.Pending,
@@ -1343,10 +1364,48 @@ ${header}
           outputs: [{ name: "simulation_out", type: "evaluation" }],
         },
         {
-          id: `FitFrequencySeverityModel-${Date.now() + 5}`,
-          name: "Fit Frequency-Severity Model",
-          type: ModuleType.FitFrequencySeverityModel,
-          position: { x: baseX + spacingX * 5, y: baseY + spacingY / 2 },
+          id: `SplitByFreqServ-${Date.now() + 5}`,
+          name: "Split By Freq-Sev",
+          type: ModuleType.SplitByFreqServ,
+          position: { x: baseX + spacingX * 5, y: baseY + spacingY },
+          status: ModuleStatus.Pending,
+          parameters: {
+            amount_column: "클레임 금액_infl",
+            date_column: "날짜",
+          },
+          inputs: [{ name: "data_in", type: "data" }],
+          outputs: [
+            { name: "frequency_out", type: "data" },
+            { name: "severity_out", type: "data" },
+          ],
+        },
+        {
+          id: `FitFrequencyModel-${Date.now() + 6}`,
+          name: "Fit Frequency Model",
+          type: ModuleType.FitFrequencyModel,
+          position: { x: baseX + spacingX * 6, y: baseY + spacingY },
+          status: ModuleStatus.Pending,
+          parameters: {},
+          inputs: [{ name: "data_in", type: "data" }],
+          outputs: [{ name: "data_out", type: "distribution" }],
+        },
+        {
+          id: `FitSeverityModel-${Date.now() + 7}`,
+          name: "Fit Severity Model",
+          type: ModuleType.FitSeverityModel,
+          position: { x: baseX + spacingX * 6, y: baseY + spacingY * 1.5 },
+          status: ModuleStatus.Pending,
+          parameters: {
+            amount_column: "클레임 금액_infl",
+          },
+          inputs: [{ name: "data_in", type: "data" }],
+          outputs: [{ name: "data_out", type: "distribution" }],
+        },
+        {
+          id: `SimulateFreqServ-${Date.now() + 8}`,
+          name: "Simulate Freq-Sev Table",
+          type: ModuleType.SimulateFreqServ,
+          position: { x: baseX + spacingX * 7, y: baseY + spacingY * 1.25 },
           status: ModuleStatus.Pending,
           parameters: {
             frequency_type: "Poisson",
@@ -1354,8 +1413,24 @@ ${header}
             amount_column: "클레임 금액_infl",
             date_column: "날짜",
           },
-          inputs: [{ name: "data_in", type: "data" }],
+          inputs: [
+            { name: "frequency_in", type: "distribution" },
+            { name: "severity_in", type: "distribution" },
+          ],
           outputs: [{ name: "model_out", type: "evaluation" }],
+        },
+        {
+          id: `CombineLossModel-${Date.now() + 9}`,
+          name: "Combine Loss Model",
+          type: ModuleType.CombineLossModel,
+          position: { x: baseX + spacingX * 8, y: baseY + spacingY * 0.5 },
+          status: ModuleStatus.Pending,
+          parameters: {},
+          inputs: [
+            { name: "agg_dist_in", type: "evaluation" },
+            { name: "freq_serv_in", type: "evaluation" },
+          ],
+          outputs: [{ name: "combined_out", type: "evaluation" }],
         },
       ];
 
@@ -1435,6 +1510,72 @@ ${header}
           to: {
             moduleId: dfaModules[7].id,
             portName: "data_in",
+          },
+        },
+        {
+          id: `conn-${Date.now()}-7`,
+          from: {
+            moduleId: dfaModules[7].id,
+            portName: "frequency_out",
+          },
+          to: {
+            moduleId: dfaModules[8].id,
+            portName: "data_in",
+          },
+        },
+        {
+          id: `conn-${Date.now()}-8`,
+          from: {
+            moduleId: dfaModules[7].id,
+            portName: "severity_out",
+          },
+          to: {
+            moduleId: dfaModules[9].id,
+            portName: "data_in",
+          },
+        },
+        {
+          id: `conn-${Date.now()}-9`,
+          from: {
+            moduleId: dfaModules[8].id,
+            portName: "data_out",
+          },
+          to: {
+            moduleId: dfaModules[10].id,
+            portName: "frequency_in",
+          },
+        },
+        {
+          id: `conn-${Date.now()}-10`,
+          from: {
+            moduleId: dfaModules[9].id,
+            portName: "data_out",
+          },
+          to: {
+            moduleId: dfaModules[10].id,
+            portName: "severity_in",
+          },
+        },
+        {
+          id: `conn-${Date.now()}-11`,
+          from: {
+            moduleId: dfaModules[6].id,
+            portName: "simulation_out",
+          },
+          to: {
+            moduleId: dfaModules[11].id,
+            portName: "agg_dist_in",
+          },
+        },
+        {
+          id: `conn-${Date.now()}-12`,
+          from: {
+            moduleId: dfaModules[10].id,
+            portName: "model_out",
+          },
+          to: {
+            moduleId: dfaModules[11].id,
+            portName: "freq_serv_in",
           },
         },
       ];
@@ -2025,6 +2166,14 @@ ${header}
         setViewingEvaluation(module);
       } else if (module.outputData.type === "SimulateAggDistOutput") {
         setViewingDataForModule(module);
+      } else if (module.outputData.type === "SplitFreqServOutput") {
+        setViewingSplitFreqServ(module);
+      } else if (module.outputData.type === "FrequencyModelOutput") {
+        setViewingFrequencyModel(module);
+      } else if (module.outputData.type === "SeverityModelOutput") {
+        setViewingSeverityModel(module);
+      } else if (module.outputData.type === "CombineLossModelOutput") {
+        setViewingDataForModule(module);
       } else {
         setViewingDataForModule(module);
       }
@@ -2041,6 +2190,9 @@ ${header}
     setViewingXoLPrice(null);
     setViewingFinalXolPrice(null);
     setViewingEvaluation(null);
+    setViewingSplitFreqServ(null);
+    setViewingFrequencyModel(null);
+    setViewingSeverityModel(null);
   };
 
   // Model definition modules that should not be executed directly in Run All
@@ -2192,6 +2344,70 @@ ${header}
       runQueue.push(startModuleId);
     }
 
+    const getInputData = (
+      moduleId: string,
+      portName: string,
+      portType: Port["type"] = "data"
+    ): any | null => {
+      const inputConnection = connections.find((c) => {
+        if (c.to.moduleId === moduleId && c.to.portName === portName) {
+          const targetModule = currentModules.find((m) => m.id === moduleId);
+          const targetPort = targetModule?.inputs.find(
+            (p) => p.name === portName
+          );
+          return targetPort?.type === portType;
+        }
+        return false;
+      });
+
+      if (!inputConnection) return null;
+      const sourceModule = currentModules.find(
+        (sm) => sm.id === inputConnection.from.moduleId
+      );
+      if (!sourceModule?.outputData) return null;
+
+      if (
+        sourceModule.outputData.type === "SplitFreqServOutput" &&
+        portType === "data"
+      ) {
+        const fromPortName = inputConnection.from.portName;
+        if (fromPortName === "frequency_out")
+          return sourceModule.outputData.frequencyData;
+        if (fromPortName === "severity_out")
+          return sourceModule.outputData.severityData;
+      }
+
+      if (
+        sourceModule.outputData.type === "FrequencyModelOutput" &&
+        portType === "distribution"
+      ) {
+        return sourceModule.outputData;
+      }
+
+      if (
+        sourceModule.outputData.type === "SeverityModelOutput" &&
+        portType === "distribution"
+      ) {
+        return sourceModule.outputData;
+      }
+
+      if (
+        sourceModule.outputData.type === "SimulateAggDistOutput" &&
+        portType === "evaluation"
+      ) {
+        return sourceModule.outputData;
+      }
+
+      if (
+        sourceModule.outputData.type === "FrequencySeverityModelOutput" &&
+        portType === "evaluation"
+      ) {
+        return sourceModule.outputData;
+      }
+
+      return sourceModule.outputData;
+    };
+
     const getSingleInputData = (
       moduleId: string,
       portType: Port["type"] = "data"
@@ -2205,7 +2421,10 @@ ${header}
           | InflatedDataOutput
           | FormatChangeOutput
           | ThresholdSplitOutput
+          | SplitFreqServOutput
           | AggregateModelOutput
+          | FrequencyModelOutput
+          | SeverityModelOutput
           | FrequencySeverityModelOutput
         )
       | null => {
@@ -2247,6 +2466,31 @@ ${header}
       }
 
       if (
+        sourceModule.outputData.type === "SplitFreqServOutput" &&
+        portType === "data"
+      ) {
+        const portName = inputConnection.from.portName;
+        if (portName === "frequency_out")
+          return sourceModule.outputData.frequencyData;
+        if (portName === "severity_out")
+          return sourceModule.outputData.severityData;
+      }
+
+      if (
+        sourceModule.outputData.type === "FrequencyModelOutput" &&
+        portType === "distribution"
+      ) {
+        return sourceModule.outputData;
+      }
+
+      if (
+        sourceModule.outputData.type === "SeverityModelOutput" &&
+        portType === "distribution"
+      ) {
+        return sourceModule.outputData;
+      }
+
+      if (
         (sourceModule.outputData.type === "DataPreview" &&
           portType === "data") ||
         (sourceModule.outputData.type === "ClaimDataOutput" &&
@@ -2263,6 +2507,10 @@ ${header}
           portType === "handler") ||
         (sourceModule.outputData.type === "AggregateModelOutput" &&
           portType === "evaluation") ||
+        (sourceModule.outputData.type === "FrequencyModelOutput" &&
+          portType === "distribution") ||
+        (sourceModule.outputData.type === "SeverityModelOutput" &&
+          portType === "distribution") ||
         (sourceModule.outputData.type === "FrequencySeverityModelOutput" &&
           portType === "evaluation")
       ) {
@@ -2454,12 +2702,12 @@ ${header}
               },
             } as ClaimDataOutput;
           } else {
-            newOutputData = {
-              type: "DataPreview",
-              columns,
-              totalRowCount: rows.length,
-              rows: rows,
-            };
+          newOutputData = {
+            type: "DataPreview",
+            columns,
+            totalRowCount: rows.length,
+            rows: rows,
+          };
           }
         } else if (module.type === ModuleType.ApplyInflation) {
           // DFA: 인플레이션 적용
@@ -2641,7 +2889,7 @@ ${header}
 
           const {
             selected_distributions = ["Lognormal"],
-            amount_column = "total_amount",
+            amount_column = "클레임 금액_infl",
           } = module.parameters;
 
           const distributionTypes = Array.isArray(selected_distributions) 
@@ -2668,6 +2916,14 @@ ${header}
                 ksStatistic?: number;
                 ksPValue?: number;
               };
+              qqPlot?: {
+                theoreticalQuantiles: number[];
+                sampleQuantiles: number[];
+              };
+              ppPlot?: {
+                theoreticalCDF: number[];
+                empiricalCDF: number[];
+              };
               error?: string;
             }> = [];
             let yearlyAggregates: Array<{ year: number; totalAmount: number }> = [];
@@ -2686,6 +2942,10 @@ ${header}
                   distributionType: result.distributionType,
                   parameters: result.parameters,
                   fitStatistics: result.fitStatistics,
+                  qqPlot: result.qqPlot,
+                  ppPlot: result.ppPlot,
+                  cumulativeDistribution: result.cumulativeDistribution,
+                  theoreticalCumulative: result.theoreticalCumulative,
                 });
                 // yearlyAggregates는 첫 번째 결과에서 가져옴
                 if (yearlyAggregates.length === 0) {
@@ -2787,6 +3047,7 @@ ${header}
               type: "SimulateAggDistOutput",
               simulationCount: nSimulations,
               results: result.results,
+              rawSimulations: result.rawSimulations,
               statistics: result.statistics,
             } as SimulateAggDistOutput;
 
@@ -2796,70 +3057,377 @@ ${header}
             addLog("ERROR", `몬테카를로 시뮬레이션 실패: ${errorMessage}`);
             throw new Error(`몬테카를로 시뮬레이션 실패: ${errorMessage}`);
           }
-        } else if (module.type === ModuleType.FitFrequencySeverityModel) {
-          // DFA: 빈도-심도 모델 적합
+        } else if (module.type === ModuleType.SplitByFreqServ) {
+          // DFA: 빈도-심도 분리
           const inputData = getSingleInputData(module.id) as
             | DataPreview
+            | ClaimDataOutput
+            | InflatedDataOutput
+            | FormatChangeOutput
             | ThresholdSplitOutput;
           if (!inputData)
             throw new Error("Input data not available.");
 
-          // ThresholdSplitOutput의 경우 aboveThreshold 사용
           const actualData =
-            inputData.type === "ThresholdSplitOutput"
+            inputData.type === "ClaimDataOutput" ||
+            inputData.type === "InflatedDataOutput" ||
+            inputData.type === "FormatChangeOutput"
+              ? inputData.data
+              : inputData.type === "ThresholdSplitOutput"
               ? inputData.aboveThreshold
               : inputData;
 
           const {
-            frequency_type = "Poisson",
-            severity_type = "Lognormal",
-            amount_column = "클레임 금액",
+            amount_column = "클레임 금액_infl",
             date_column = "날짜",
           } = module.parameters;
 
-          addLog("INFO", "빈도-심도 모델 적합 중...");
+          addLog("INFO", "빈도-심도 분리 중...");
 
           try {
             const pyodideModule = await import("./utils/pyodideRunner");
-            const { fitFrequencySeverityModelPython } = pyodideModule;
+            const { splitByFreqServPython } = pyodideModule;
 
-            const result = await fitFrequencySeverityModelPython(
+            const result = await splitByFreqServPython(
               actualData.rows || [],
-              frequency_type,
-              severity_type,
               amount_column,
               date_column,
+              60000
+            );
+
+            // DataPreview 형태로 변환
+            const frequencyDataPreview: DataPreview = {
+              type: "DataPreview",
+              columns: result.frequencyData.columns,
+              totalRowCount: result.frequencyData.rows.length,
+              rows: result.frequencyData.rows,
+            };
+
+            const severityDataPreview: DataPreview = {
+              type: "DataPreview",
+              columns: result.severityData.columns,
+              totalRowCount: result.severityData.rows.length,
+              rows: result.severityData.rows,
+            };
+
+            newOutputData = {
+              type: "SplitFreqServOutput",
+              frequencyData: frequencyDataPreview,
+              severityData: severityDataPreview,
+              yearlyFrequency: result.yearlyFrequency,
+              yearlySeverity: result.yearlySeverity,
+            } as SplitFreqServOutput;
+
+            addLog("SUCCESS", "빈도-심도 분리 완료");
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `빈도-심도 분리 실패: ${errorMessage}`);
+            throw new Error(`빈도-심도 분리 실패: ${errorMessage}`);
+          }
+        } else if (module.type === ModuleType.FitFrequencyModel) {
+          // DFA: 빈도 모델 적합
+          // getSingleInputData는 frequency_out 포트에서 frequencyData (DataPreview)를 반환함
+          const inputData = getSingleInputData(module.id) as DataPreview;
+          if (!inputData || inputData.type !== "DataPreview")
+            throw new Error("Input data not available. Please connect frequency data from Split By Freq-Sev module.");
+
+          const actualData = inputData;
+
+          const {
+            count_column = "count",
+            selected_frequency_types = ["Poisson", "NegativeBinomial"],
+          } = module.parameters;
+
+          addLog("INFO", `빈도 모델 적합 중: ${selected_frequency_types.join(", ")}`);
+
+          try {
+            const pyodideModule = await import("./utils/pyodideRunner");
+            const { fitFrequencyModelPython } = pyodideModule;
+
+            const result = await fitFrequencyModelPython(
+              actualData.rows || [],
+              count_column,
+              selected_frequency_types,
+              120000
+            );
+
+            // AIC 기준으로 정렬하여 추천 분포 선택
+            const successfulResults = result.results.filter((r: any) => !r.error);
+            const recommended = successfulResults.reduce((best: any, current: any) => {
+              const bestAic = best.fitStatistics?.aic ?? Infinity;
+              const currentAic = current.fitStatistics?.aic ?? Infinity;
+              return currentAic < bestAic ? current : best;
+            }, successfulResults[0]);
+
+            newOutputData = {
+              type: "FrequencyModelOutput",
+              results: result.results,
+              selectedDistribution: recommended?.distributionType as "Poisson" | "NegativeBinomial" | undefined,
+              yearlyCounts: result.yearlyCounts,
+            } as FrequencyModelOutput;
+
+            addLog("SUCCESS", `빈도 모델 적합 완료 (${successfulResults.length}개 분포, 추천: ${recommended?.distributionType || "없음"})`);
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `빈도 모델 적합 실패: ${errorMessage}`);
+            throw new Error(`빈도 모델 적합 실패: ${errorMessage}`);
+          }
+        } else if (module.type === ModuleType.FitSeverityModel) {
+          // DFA: 심도 모델 적합
+          // getSingleInputData는 severity_out 포트에서 severityData (DataPreview)를 반환함
+          const inputData = getSingleInputData(module.id) as DataPreview;
+          if (!inputData || inputData.type !== "DataPreview")
+            throw new Error("Input data not available. Please connect severity data from Split By Freq-Sev module.");
+
+          const actualData = inputData;
+
+          const {
+            amount_column = "클레임 금액",
+            selected_severity_types = ["Lognormal", "Exponential", "Gamma", "Pareto"],
+          } = module.parameters;
+
+          addLog("INFO", `심도 모델 적합 중: ${selected_severity_types.join(", ")}`);
+
+          try {
+            const pyodideModule = await import("./utils/pyodideRunner");
+            const { fitSeverityModelPython } = pyodideModule;
+
+            const result = await fitSeverityModelPython(
+              actualData.rows || [],
+              amount_column,
+              selected_severity_types,
+              120000
+            );
+
+            // AIC 기준으로 정렬하여 추천 분포 선택
+            const successfulResults = result.results.filter((r: any) => !r.error);
+            const recommended = successfulResults.reduce((best: any, current: any) => {
+              const bestAic = best.fitStatistics?.aic ?? Infinity;
+              const currentAic = current.fitStatistics?.aic ?? Infinity;
+              return currentAic < bestAic ? current : best;
+            }, successfulResults[0]);
+
+            newOutputData = {
+              type: "SeverityModelOutput",
+              results: result.results,
+              selectedDistribution: recommended?.distributionType as "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull" | undefined,
+            } as SeverityModelOutput;
+
+            addLog("SUCCESS", `심도 모델 적합 완료 (${successfulResults.length}개 분포, 추천: ${recommended?.distributionType || "없음"})`);
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `심도 모델 적합 실패: ${errorMessage}`);
+            throw new Error(`심도 모델 적합 실패: ${errorMessage}`);
+          }
+        } else if (module.type === ModuleType.SimulateFreqServ) {
+          // DFA: 빈도-심도 시뮬레이션
+          // 두 개의 입력을 받음: frequencyModel과 severityModel
+          const frequencyInput = getInputData(module.id, "frequency_in", "distribution") as FrequencyModelOutput | null;
+          const severityInput = getInputData(module.id, "severity_in", "distribution") as SeverityModelOutput | null;
+
+          // 입력 데이터가 없으면 원본 데이터에서 직접 적합
+          let frequencyType = "Poisson";
+          let severityType = "Lognormal";
+          let frequencyParams: Record<string, number> = {};
+          let severityParams: Record<string, number> = {};
+          let inputData: DataPreview | ThresholdSplitOutput | null = null;
+
+          if (frequencyInput && frequencyInput.type === "FrequencyModelOutput") {
+            const selected = frequencyInput.selectedDistribution || frequencyInput.results[0]?.distributionType;
+            if (selected) {
+              frequencyType = selected;
+              const selectedResult = frequencyInput.results.find(r => r.distributionType === selected);
+              if (selectedResult && !selectedResult.error) {
+                frequencyParams = selectedResult.parameters;
+              }
+            }
+          }
+
+          if (severityInput && severityInput.type === "SeverityModelOutput") {
+            const selected = severityInput.selectedDistribution || severityInput.results[0]?.distributionType;
+            if (selected) {
+              severityType = selected;
+              const selectedResult = severityInput.results.find(r => r.distributionType === selected);
+              if (selectedResult && !selectedResult.error) {
+                severityParams = selectedResult.parameters;
+              }
+            }
+          }
+
+          // 원본 데이터가 필요한 경우 (파라미터가 없을 때)
+          if (Object.keys(frequencyParams).length === 0 || Object.keys(severityParams).length === 0) {
+            inputData = getSingleInputData(module.id) as
+              | DataPreview
+              | ThresholdSplitOutput;
+            if (!inputData)
+              throw new Error("Input data not available for simulation.");
+
+            const actualData =
+              inputData.type === "ThresholdSplitOutput"
+                ? inputData.aboveThreshold
+                : inputData;
+
+            const {
+              amount_column = "클레임 금액",
+              date_column = "날짜",
+            } = module.parameters;
+
+            addLog("INFO", "빈도-심도 모델 적합 및 시뮬레이션 중...");
+
+            try {
+              const pyodideModule = await import("./utils/pyodideRunner");
+              const { fitFrequencySeverityModelPython } = pyodideModule;
+
+              const result = await fitFrequencySeverityModelPython(
+                actualData.rows || [],
+                frequencyType as "Poisson" | "NegativeBinomial",
+                severityType as "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull",
+                amount_column,
+                date_column,
+                120000
+              );
+
+              newOutputData = {
+                type: "FrequencySeverityModelOutput",
+                frequencyModel: {
+                  type: result.frequencyModel.type as
+                    | "Poisson"
+                    | "NegativeBinomial",
+                  parameters: result.frequencyModel.parameters,
+                  fitStatistics: result.frequencyModel.fitStatistics,
+                },
+                severityModel: {
+                  type: result.severityModel.type as
+                    | "Normal"
+                    | "Lognormal"
+                    | "Pareto"
+                    | "Gamma"
+                    | "Exponential"
+                    | "Weibull",
+                  parameters: result.severityModel.parameters,
+                  fitStatistics: result.severityModel.fitStatistics,
+                },
+                aggregateDistribution: result.aggregateDistribution,
+              } as FrequencySeverityModelOutput;
+
+              addLog("SUCCESS", "빈도-심도 모델 적합 및 시뮬레이션 완료");
+            } catch (error: any) {
+              const errorMessage = error.message || String(error);
+              addLog("ERROR", `빈도-심도 모델 적합 실패: ${errorMessage}`);
+              throw new Error(`빈도-심도 모델 적합 실패: ${errorMessage}`);
+            }
+          } else {
+            // 파라미터가 있으면 시뮬레이션만 수행
+            const {
+              simulation_count = 10000,
+              custom_count = "",
+            } = module.parameters;
+
+            // 시뮬레이션 건수 결정
+            let nSimulations = simulation_count;
+            if (simulation_count === 0 && custom_count) {
+              const custom = parseInt(custom_count, 10);
+              if (!isNaN(custom) && custom > 0) {
+                nSimulations = custom;
+              }
+            }
+
+            addLog("INFO", `빈도-심도 시뮬레이션 중: ${frequencyType} + ${severityType}, ${nSimulations}회`);
+
+            try {
+              const pyodideModule = await import("./utils/pyodideRunner");
+              const { simulateFreqServPython } = pyodideModule;
+
+              const result = await simulateFreqServPython(
+                frequencyType as "Poisson" | "NegativeBinomial",
+                frequencyParams,
+                severityType as "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull",
+                severityParams,
+                nSimulations,
+                120000
+              );
+
+              newOutputData = {
+                type: "SimulateAggDistOutput", // SimulateAggDistOutput과 동일한 형식 사용
+                simulationCount: nSimulations,
+                results: result.results,
+                rawSimulations: result.rawSimulations,
+                statistics: result.statistics,
+              } as SimulateAggDistOutput;
+
+              addLog("SUCCESS", `빈도-심도 시뮬레이션 완료: ${nSimulations}회`);
+            } catch (error: any) {
+              const errorMessage = error.message || String(error);
+              addLog("ERROR", `빈도-심도 시뮬레이션 실패: ${errorMessage}`);
+              throw new Error(`빈도-심도 시뮬레이션 실패: ${errorMessage}`);
+            }
+          }
+        } else if (module.type === ModuleType.CombineLossModel) {
+          // DFA: 두 시뮬레이션 결과 합산 및 퍼센타일 계산
+          const aggDistInput = getInputData(module.id, "agg_dist_in", "evaluation") as SimulateAggDistOutput | null;
+          const freqServInput = getInputData(module.id, "freq_serv_in", "evaluation") as SimulateAggDistOutput | null;
+
+          if (!aggDistInput || aggDistInput.type !== "SimulateAggDistOutput") {
+            throw new Error("Aggregate Distribution simulation input not available. Please connect Simulate Agg Table module.");
+          }
+
+          if (!freqServInput || freqServInput.type !== "SimulateAggDistOutput") {
+            throw new Error("Frequency-Severity simulation input not available. Please connect Simulate Freq-Sev Table module to the 'freq_serv_in' port.");
+          }
+
+          // 각 모듈의 시뮬레이션 결과를 히스토그램에서 재구성
+          // results 배열은 {count, amount} 형태의 히스토그램 데이터
+          const reconstructSimulations = (results: Array<{ count: number; amount: number }>): number[] => {
+            const simulations: number[] = [];
+            for (const result of results) {
+              // 각 구간의 중간값(amount)을 count만큼 반복
+              for (let i = 0; i < result.count; i++) {
+                simulations.push(result.amount);
+              }
+            }
+            return simulations;
+          };
+
+          // 각 모듈의 시뮬레이션 결과 재구성
+          const aggDistSimulations = reconstructSimulations(aggDistInput.results || []);
+          const freqServSimulations = reconstructSimulations(freqServInput.results || []);
+
+          if (aggDistSimulations.length === 0) {
+            throw new Error("Aggregate Distribution simulation results are empty. Please run Simulate Agg Table module first.");
+          }
+
+          if (freqServSimulations.length === 0) {
+            throw new Error("Frequency-Severity simulation results are empty. Please run Simulate Freq-Sev Table module first.");
+          }
+
+          addLog("INFO", `손실 모델 합산 중: Agg Dist ${aggDistSimulations.length}개, Freq-Serv ${freqServSimulations.length}개 시뮬레이션 결과`);
+
+          try {
+            const pyodideModule = await import("./utils/pyodideRunner");
+            const { combineLossModelPython } = pyodideModule;
+
+            const result = await combineLossModelPython(
+              aggDistSimulations,
+              freqServSimulations,
               120000
             );
 
             newOutputData = {
-              type: "FrequencySeverityModelOutput",
-              frequencyModel: {
-                type: result.frequencyModel.type as
-                  | "Poisson"
-                  | "NegativeBinomial",
-                parameters: result.frequencyModel.parameters,
-                fitStatistics: result.frequencyModel.fitStatistics,
-              },
-              severityModel: {
-                type: result.severityModel.type as
-                  | "Normal"
-                  | "Lognormal"
-                  | "Pareto"
-                  | "Gamma"
-                  | "Exponential"
-                  | "Weibull",
-                parameters: result.severityModel.parameters,
-                fitStatistics: result.severityModel.fitStatistics,
-              },
-              aggregateDistribution: result.aggregateDistribution,
-            } as FrequencySeverityModelOutput;
+              type: "CombineLossModelOutput",
+              combinedStatistics: result.combinedStatistics,
+              var: result.var,
+              tvar: result.tvar,
+              percentiles: result.percentiles,
+              aggregateLossDistribution: result.aggregateLossDistribution,
+              aggDistPercentiles: result.aggDistPercentiles,
+              freqServPercentiles: result.freqServPercentiles,
+            } as CombineLossModelOutput;
 
-            addLog("SUCCESS", "빈도-심도 모델 적합 완료");
+            addLog("SUCCESS", "손실 모델 합산 완료 (퍼센타일 계산 완료)");
           } catch (error: any) {
             const errorMessage = error.message || String(error);
-            addLog("ERROR", `빈도-심도 모델 적합 실패: ${errorMessage}`);
-            throw new Error(`빈도-심도 모델 적합 실패: ${errorMessage}`);
+            addLog("ERROR", `손실 모델 합산 실패: ${errorMessage}`);
+            throw new Error(`손실 모델 합산 실패: ${errorMessage}`);
           }
         } else if (module.type === ModuleType.SelectData) {
           const inputData = getSingleInputData(module.id) as
@@ -2883,54 +3451,43 @@ ${header}
             throw new Error("Input data has no columns. Please ensure the upstream module has been executed successfully.");
           }
 
-          const selections =
-            (module.parameters.columnSelections as Record<
-              string,
-              { selected: boolean; type: string }
-            >) || {};
+            const selections =
+              (module.parameters.columnSelections as Record<
+                string,
+                { selected: boolean; type: string }
+              >) || {};
           
-          // Check if any column has explicit selection set to true
-          const hasSelectedColumns = Object.values(selections).some(
-            s => s !== undefined && s !== null && s.selected === true
-          );
           // Check if selections object has any entries (configured by user)
           const isConfigured = Object.keys(selections).length > 0;
 
           const newColumns: ColumnInfo[] = [];
           
-          // If configured and has selected columns, only include selected ones
-          if (isConfigured && hasSelectedColumns) {
-            // Module is configured with selected columns: only select columns where selected === true
+          // If configured, use selections (default is true if not specified)
+          if (isConfigured) {
+            // Module is configured: use explicit selections
             actualData.columns.forEach((col) => {
               const selection = selections[col.name];
-              // Only add if explicitly selected (selected === true)
-              // If selection doesn't exist, don't include it (default is false)
-              if (selection && selection.selected === true) {
+              // Default to true if not explicitly set to false
+              // This means: if not configured, selected=true; if explicitly false, selected=false
+              const isSelected = selection === undefined || selection === null 
+                ? true  // Default to selected
+                : selection.selected !== false; // Selected unless explicitly false
+              
+              if (isSelected) {
                 newColumns.push({
                   name: col.name,
                   type: col.type, // 원본 컬럼의 타입을 그대로 유지
                 });
               }
             });
-            
+
             // Debug log to help diagnose issues
             const selectedColNames = newColumns.map(c => c.name);
             const availableColNames = actualData.columns.map(c => c.name);
-            const selectionKeys = Object.keys(selections);
             const trueSelections = Object.entries(selections)
               .filter(([_, s]) => s && s.selected === true)
               .map(([name, _]) => name);
             addLog("INFO", `Select Data: Selected ${selectedColNames.length} columns: [${selectedColNames.join(", ")}]. Available: [${availableColNames.join(", ")}]. True selections: [${trueSelections.join(", ")}]`);
-          } else if (isConfigured && !hasSelectedColumns) {
-            // Module is configured but no columns are selected: this is an error case
-            // But we'll still try to select all columns as fallback
-            addLog("WARNING", "Select Data: No columns were explicitly selected. Selecting all columns as fallback.");
-            actualData.columns.forEach((col) => {
-              newColumns.push({
-                name: col.name,
-                type: col.type,
-              });
-            });
           } else {
             // Module is unconfigured: select all columns by default
             actualData.columns.forEach((col) => {
@@ -2954,30 +3511,19 @@ ${header}
             const newRows = (actualData.rows || []).map((row) => {
               const newRow: Record<string, any> = {};
               newColumns.forEach((col) => {
+                // Get original column info to preserve type
+                const originalCol = actualData.columns.find(c => c.name === col.name);
                 const originalValue = row[col.name];
-                let newValue = originalValue; // Default to original
-
-                if (col.type === "number") {
-                  // Preserve null/undefined, and convert empty strings to null.
-                  // If conversion to number fails (NaN), also treat as null.
-                  if (
-                    originalValue === null ||
-                    originalValue === undefined ||
-                    String(originalValue).trim() === ""
-                  ) {
-                    newValue = null;
-                  } else {
-                    const num = Number(originalValue);
-                    newValue = isNaN(num) ? null : num;
-                  }
-                } else if (col.type === "string") {
-                  // Preserve null/undefined instead of converting to "null" or empty string.
-                  newValue =
-                    originalValue === null || originalValue === undefined
-                      ? null
-                      : String(originalValue);
+                
+                // Preserve original value without type conversion
+                // Only handle null/undefined cases
+                let newValue = originalValue;
+                
+                if (originalValue === null || originalValue === undefined) {
+                  newValue = null;
                 }
-                // For any other data types, the original value is preserved by default.
+                // For all other cases, preserve the original value as-is without conversion
+                // This ensures number columns remain numbers and string columns remain strings
 
                 newRow[col.name] = newValue;
               });
@@ -7044,6 +7590,13 @@ ${header}
         newStatus = ModuleStatus.Error;
         logLevel = "ERROR";
         logMessage = `Module [${moduleName}] failed: ${error.message}`;
+        
+        // 에러 모달 표시
+        setErrorModal({
+          moduleName: moduleName,
+          message: error.message || String(error),
+          details: error.stack || error.traceback || error.error_traceback || undefined
+        });
       }
 
       const finalModuleState = {
@@ -7278,12 +7831,10 @@ ${header}
 
   useEffect(() => {
     const handleWindowMouseMove = (e: globalThis.MouseEvent) => {
-      if (isDraggingControlPanel.current && canvasContainerRef.current) {
-        const containerRect =
-          canvasContainerRef.current.getBoundingClientRect();
+      if (isDraggingControlPanel.current) {
         setControlPanelPos({
-          x: e.clientX - containerRect.left - controlPanelDragOffset.current.x,
-          y: e.clientY - containerRect.top - controlPanelDragOffset.current.y,
+          x: e.clientX - controlPanelDragOffset.current.x,
+          y: window.innerHeight - (e.clientY - controlPanelDragOffset.current.y),
         });
       }
     };
@@ -7312,12 +7863,11 @@ ${header}
       y: e.clientY - rect.top,
     };
 
-    // If it's the first drag (currently centered via CSS), set explicit coordinates relative to container
-    if (!controlPanelPos && canvasContainerRef.current) {
-      const containerRect = canvasContainerRef.current.getBoundingClientRect();
+    // If it's the first drag (currently centered via CSS), set explicit coordinates relative to viewport
+    if (!controlPanelPos) {
       setControlPanelPos({
-        x: rect.left - containerRect.left,
-        y: rect.top - containerRect.top,
+        x: rect.left,
+        y: window.innerHeight - rect.bottom,
       });
     }
   };
@@ -7931,12 +8481,19 @@ ${header}
           <div
             onMouseDown={handleControlPanelMouseDown}
             style={{
-              transform: controlPanelPos
-                ? `translate(${controlPanelPos.x}px, ${controlPanelPos.y}px)`
-                : "translate(-50%, 0)",
-              cursor: "grab",
+              ...(controlPanelPos
+                ? {
+                    left: `${controlPanelPos.x}px`,
+                    bottom: `${controlPanelPos.y}px`,
+                    transform: "none",
+                  }
+                : {
+                    left: "50%",
+                    bottom: "32px",
+                    transform: "translateX(-50%)",
+                  }),
             }}
-            className={`absolute bottom-8 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-4 shadow-2xl z-50 border border-gray-700 select-none transition-transform active:scale-95 ${
+            className={`fixed bg-gray-900/80 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-4 shadow-2xl z-50 border border-gray-700 select-none transition-all active:scale-95 ${
               controlPanelPos ? "" : ""
             }`}
           >
@@ -8093,7 +8650,23 @@ ${header}
       {viewingDataForModule &&
         viewingDataForModule.outputData?.type === "SimulateAggDistOutput" && (
           <ErrorBoundary>
-            <SimulateAggDistPreviewModal
+            {viewingDataForModule.type === ModuleType.SimulateFreqServ ? (
+              <SimulateFreqServPreviewModal
+                module={viewingDataForModule}
+                onClose={handleCloseModal}
+              />
+            ) : (
+              <SimulateAggDistPreviewModal
+                module={viewingDataForModule}
+                onClose={handleCloseModal}
+              />
+            )}
+          </ErrorBoundary>
+        )}
+      {viewingDataForModule &&
+        viewingDataForModule.outputData?.type === "CombineLossModelOutput" && (
+          <ErrorBoundary>
+            <CombineLossModelPreviewModal
               module={viewingDataForModule}
               onClose={handleCloseModal}
             />
@@ -8195,6 +8768,62 @@ ${header}
           module={viewingFinalXolPrice}
           onClose={handleCloseModal}
         />
+      )}
+      <ErrorModal
+        error={errorModal}
+        onClose={() => setErrorModal(null)}
+      />
+      {viewingSplitFreqServ && (
+        <ErrorBoundary>
+          <SplitFreqServPreviewModal
+            module={viewingSplitFreqServ}
+            onClose={handleCloseModal}
+          />
+        </ErrorBoundary>
+      )}
+      {viewingFrequencyModel && (
+        <ErrorBoundary>
+          <FrequencyModelPreviewModal
+            module={viewingFrequencyModel}
+            onClose={handleCloseModal}
+            onSelectDistribution={(moduleId, distributionType) => {
+              setModules(prev => prev.map(m => {
+                if (m.id === moduleId && m.outputData?.type === "FrequencyModelOutput") {
+                  return {
+                    ...m,
+                    outputData: {
+                      ...m.outputData,
+                      selectedDistribution: distributionType as "Poisson" | "NegativeBinomial"
+                    }
+                  };
+                }
+                return m;
+              }));
+            }}
+          />
+        </ErrorBoundary>
+      )}
+      {viewingSeverityModel && (
+        <ErrorBoundary>
+          <SeverityModelPreviewModal
+            module={viewingSeverityModel}
+            onClose={handleCloseModal}
+            onSelectDistribution={(moduleId, distributionType) => {
+              setModules(prev => prev.map(m => {
+                if (m.id === moduleId && m.outputData?.type === "SeverityModelOutput") {
+                  return {
+                    ...m,
+                    outputData: {
+                      ...m.outputData,
+                      selectedDistribution: distributionType as "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull"
+                    }
+                  };
+                }
+                return m;
+              }));
+            }}
+          />
+        </ErrorBoundary>
       )}
       {viewingEvaluation &&
         (() => {

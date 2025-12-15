@@ -25,6 +25,9 @@ import {
   EncoderOutput,
   NormalizerOutput,
   AggregateModelOutput,
+  SplitFreqServOutput,
+  FrequencyModelOutput,
+  SeverityModelOutput,
 } from "../types";
 import {
   PlayIcon,
@@ -439,7 +442,7 @@ const getConnectedDataSourceHelper = (
   allModules: CanvasModule[],
   allConnections: Connection[],
   portNameToFind?: string
-): DataPreview | AggregateModelOutput | undefined => {
+): DataPreview | AggregateModelOutput | SplitFreqServOutput | FrequencyModelOutput | SeverityModelOutput | SimulateAggDistOutput | FrequencySeverityModelOutput | undefined => {
   const portName = portNameToFind || "data_in";
   let inputConnection = allConnections.find(
     (c) => c.to.moduleId === moduleId && c.to.portName === portName
@@ -482,6 +485,36 @@ const getConnectedDataSourceHelper = (
     return (sourceModule.outputData as any).data;
   } else if (sourceModule.outputData.type === "AggregateModelOutput") {
     return sourceModule.outputData as AggregateModelOutput;
+  } else if (sourceModule.outputData.type === "ThresholdSplitOutput") {
+    // ThresholdSplitOutput의 경우 포트 이름에 따라 적절한 데이터 반환
+    const fromPortName = inputConnection.from.portName;
+    if (fromPortName === "above_threshold_out") {
+      return (sourceModule.outputData as any).aboveThreshold;
+    } else if (fromPortName === "below_threshold_out") {
+      return (sourceModule.outputData as any).belowThreshold;
+    }
+    // 포트 이름이 없거나 알 수 없는 경우 기본적으로 aboveThreshold 반환 (SplitByFreqServ가 주로 사용)
+    return (sourceModule.outputData as any).aboveThreshold;
+  } else if (sourceModule.outputData.type === "SplitFreqServOutput") {
+    // 포트 이름에 따라 적절한 데이터 반환
+    const fromPortName = inputConnection.from.portName;
+    if (fromPortName === "frequency_out") {
+      return (sourceModule.outputData as SplitFreqServOutput).frequencyData;
+    } else if (fromPortName === "severity_out") {
+      return (sourceModule.outputData as SplitFreqServOutput).severityData;
+    }
+    // 포트 이름이 없거나 알 수 없는 경우, to.portName을 확인하여 추론 시도
+    // 하지만 일반적으로는 포트 이름이 명확해야 하므로 undefined 반환
+    // (PropertiesPanel에서 SplitFreqServOutput 타입을 확인하여 처리)
+    return undefined;
+  } else if (sourceModule.outputData.type === "FrequencyModelOutput") {
+    return sourceModule.outputData as FrequencyModelOutput;
+  } else if (sourceModule.outputData.type === "SeverityModelOutput") {
+    return sourceModule.outputData as SeverityModelOutput;
+  } else if (sourceModule.outputData.type === "SimulateAggDistOutput") {
+    return sourceModule.outputData as SimulateAggDistOutput;
+  } else if (sourceModule.outputData.type === "FrequencySeverityModelOutput") {
+    return sourceModule.outputData as FrequencySeverityModelOutput;
   }
   return undefined;
 };
@@ -611,12 +644,13 @@ const renderParameters = (
         key: "selected" | "type",
         value: boolean | string
       ) => {
+        const col = inputColumns.find(c => c.name === colName);
         const newSelections = {
           ...currentSelections,
           [colName]: {
             ...(currentSelections[colName] || {
               selected: true,
-              type: "string",
+              type: col?.type || "string", // Use original column type, not default "string"
             }),
             [key]: value,
           },
@@ -667,10 +701,10 @@ const renderParameters = (
               <span className="text-xs font-bold text-gray-400">Data Type</span>
             </div>
             {inputColumns.map((col) => {
-              // Default to false if not explicitly configured
-              // Only show as selected if explicitly set to true in selections
+              // Default to true (all selected) if not explicitly configured
+              // This ensures all columns are selected by default
               const selection = currentSelections[col.name] || {
-                selected: false,
+                selected: true,
                 type: col.type,
               };
               return (
@@ -2305,13 +2339,13 @@ const renderParameters = (
     case ModuleType.FitAggregateModel: {
       const sourceData = getConnectedDataSource(module.id);
       // Handle different output types (ThresholdSplitOutput, DataPreview, etc.)
+      // getConnectedDataSourceHelper가 이미 ThresholdSplitOutput을 처리하므로
+      // sourceData는 DataPreview 타입이거나 undefined일 수 있음
       let inputColumns: ColumnInfo[] = [];
       if (sourceData) {
-        if (sourceData.type === "ThresholdSplitOutput") {
-          inputColumns = sourceData.belowThreshold?.columns || [];
-        } else if (sourceData.type === "DataPreview") {
+        if (sourceData.type === "DataPreview") {
           inputColumns = sourceData.columns || [];
-        } else if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
           inputColumns = (sourceData as any).data?.columns || [];
         }
       }
@@ -2377,19 +2411,452 @@ const renderParameters = (
               <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
             )}
           </div>
+          <div className="space-y-4">
+            {amountColumns.length > 0 ? (
+              <>
+                <PropertySelect
+                  label="Column to Fit (적합할 열)"
+                  value={module.parameters.amount_column || amountColumns[0]}
+                  onChange={(v) => onParamChange("amount_column", v)}
+                  options={amountColumns}
+                />
+                <div>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Group By Column (집계 기준 열)
+                  </label>
+                  <select
+                    value={module.parameters.group_by_column || "none"}
+                    onChange={(e) => onParamChange("group_by_column", e.target.value === "none" ? undefined : e.target.value)}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="none">None (Use raw data)</option>
+                    {inputColumns
+                      .filter(col => col.type === "number" || col.type === "string")
+                      .map(col => (
+                        <option key={col.name} value={col.name}>
+                          {col.name}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Select a column to group by (e.g., year). Leave as "None" to use raw data without grouping.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                  <p className="text-sm text-yellow-400 mb-2">
+                    {sourceData 
+                      ? `Connected but no columns found. Source type: ${(sourceData as any).type || 'unknown'}`
+                      : "Connect a data source module to see available columns."}
+                  </p>
+                  {sourceData && (
+                    <p className="text-xs text-yellow-300 mt-1">
+                      Debug: sourceData exists but inputColumns.length = {inputColumns.length}
+                    </p>
+                  )}
+                </div>
+                {module.parameters.amount_column && (
+                  <div className="p-2 bg-gray-800 rounded border border-gray-600">
+                    <label className="block text-sm font-semibold text-gray-300 mb-1">
+                      Column to Fit (적합할 열)
+                    </label>
+                    <p className="text-sm text-gray-400 font-mono">
+                      {module.parameters.amount_column}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Connect a data source to change this column.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      );
+    }
+    case ModuleType.SplitByFreqServ: {
+      const sourceData = getConnectedDataSource(module.id);
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
+      const allColumns = inputColumns.map(col => col.name);
+      const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액_infl"];
+      const dateOptions = allColumns.length > 0 ? allColumns : ["날짜"];
+      
+      // 사용 가능한 컬럼 중에서 기본값 선택
+      const defaultAmountColumn = amountOptions.includes("클레임 금액_infl") 
+        ? "클레임 금액_infl" 
+        : amountOptions.includes("클레임 금액") 
+        ? "클레임 금액" 
+        : amountOptions[0] || "클레임 금액_infl";
+      
+      return (
+        <div className="space-y-4">
+          <PropertySelect
+            label="Amount Column"
+            value={module.parameters.amount_column || defaultAmountColumn}
+            onChange={(v) => onParamChange("amount_column", v)}
+            options={amountOptions}
+          />
+          <PropertySelect
+            label="Date Column"
+            value={module.parameters.date_column || "날짜"}
+            onChange={(v) => onParamChange("date_column", v)}
+            options={dateOptions}
+          />
+        </div>
+      );
+    }
+    case ModuleType.FitFrequencyModel: {
+      // FitFrequencyModel은 frequency_out 포트에서 데이터를 가져와야 함
+      // getConnectedDataSourceHelper가 from.portName을 확인하므로, 
+      // 연결이 frequency_out에서 오는 경우 자동으로 frequencyData를 반환함
+      const sourceData = getConnectedDataSource(module.id);
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        } else if (sourceData.type === "SplitFreqServOutput") {
+          // SplitFreqServOutput인 경우 frequencyData 사용
+          inputColumns = (sourceData as SplitFreqServOutput).frequencyData?.columns || [];
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        }
+      }
+      
+      const allFrequencyTypes = ["Poisson", "NegativeBinomial"];
+      const selectedFrequencyTypes = (module.parameters.selected_frequency_types as string[]) || ["Poisson", "NegativeBinomial"];
+      const countColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
+      
+      const handleFrequencyTypeToggle = (freqType: string) => {
+        const current = selectedFrequencyTypes.includes(freqType);
+        if (current) {
+          onParamChange("selected_frequency_types", selectedFrequencyTypes.filter(d => d !== freqType));
+        } else {
+          onParamChange("selected_frequency_types", [...selectedFrequencyTypes, freqType]);
+        }
+      };
+      
+      const handleSelectAllFrequencyTypes = (selectAll: boolean) => {
+        if (selectAll) {
+          onParamChange("selected_frequency_types", allFrequencyTypes);
+        } else {
+          onParamChange("selected_frequency_types", []);
+        }
+      };
+      
+      return (
+        <div className="space-y-4">
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-300">Frequency Distribution Types</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSelectAllFrequencyTypes(true)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => handleSelectAllFrequencyTypes(false)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
+              {allFrequencyTypes.map((freqType) => (
+                <label
+                  key={freqType}
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedFrequencyTypes.includes(freqType)}
+                    onChange={() => handleFrequencyTypeToggle(freqType)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-gray-200">{freqType}</span>
+                </label>
+              ))}
+            </div>
+            {selectedFrequencyTypes.length === 0 && (
+              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
+            )}
+          </div>
+          {countColumns.length > 0 ? (
+            <PropertySelect
+              label="Count Column (건수 열)"
+              value={module.parameters.count_column || countColumns[0]}
+              onChange={(v) => onParamChange("count_column", v)}
+              options={countColumns}
+            />
+          ) : (
+            <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect frequency data from Split By Freq-Sev module to see available columns.
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    case ModuleType.FitSeverityModel: {
+      // FitSeverityModel은 severity_out 포트에서 데이터를 가져와야 함
+      // getConnectedDataSourceHelper가 from.portName을 확인하므로,
+      // 연결이 severity_out에서 오는 경우 자동으로 severityData를 반환함
+      const sourceData = getConnectedDataSource(module.id);
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        } else if (sourceData.type === "SplitFreqServOutput") {
+          // SplitFreqServOutput인 경우 severityData 사용
+          inputColumns = (sourceData as SplitFreqServOutput).severityData?.columns || [];
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        }
+      }
+      
+      const allSeverityTypes = ["Normal", "Lognormal", "Pareto", "Gamma", "Exponential", "Weibull"];
+      const selectedSeverityTypes = (module.parameters.selected_severity_types as string[]) || ["Lognormal", "Exponential", "Gamma", "Pareto"];
+      const amountColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
+      
+      const handleSeverityTypeToggle = (sevType: string) => {
+        const current = selectedSeverityTypes.includes(sevType);
+        if (current) {
+          onParamChange("selected_severity_types", selectedSeverityTypes.filter(d => d !== sevType));
+        } else {
+          onParamChange("selected_severity_types", [...selectedSeverityTypes, sevType]);
+        }
+      };
+      
+      const handleSelectAllSeverityTypes = (selectAll: boolean) => {
+        if (selectAll) {
+          onParamChange("selected_severity_types", allSeverityTypes);
+        } else {
+          onParamChange("selected_severity_types", []);
+        }
+      };
+      
+      return (
+        <div className="space-y-4">
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-300">Severity Distribution Types</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSelectAllSeverityTypes(true)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => handleSelectAllSeverityTypes(false)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
+              {allSeverityTypes.map((sevType) => (
+                <label
+                  key={sevType}
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedSeverityTypes.includes(sevType)}
+                    onChange={() => handleSeverityTypeToggle(sevType)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-gray-200">{sevType}</span>
+                </label>
+              ))}
+            </div>
+            {selectedSeverityTypes.length === 0 && (
+              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
+            )}
+          </div>
           {amountColumns.length > 0 ? (
             <PropertySelect
-              label="Amount Column"
+              label="Amount Column (금액 열)"
               value={module.parameters.amount_column || amountColumns[0]}
               onChange={(v) => onParamChange("amount_column", v)}
               options={amountColumns}
             />
           ) : (
-            <p className="text-sm text-gray-500">
-              Connect a data source module to configure columns.
-            </p>
+            <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect severity data from Split By Freq-Sev module to see available columns.
+              </p>
+            </div>
           )}
-        </>
+        </div>
+      );
+    }
+    case ModuleType.SimulateFreqServ: {
+      const frequencyInput = getConnectedDataSource(module.id, "frequency_in");
+      const severityInput = getConnectedDataSource(module.id, "severity_in");
+      
+      let availableFrequencyTypes: string[] = [];
+      let availableSeverityTypes: string[] = [];
+      let selectedFrequency: string | undefined;
+      let selectedSeverity: string | undefined;
+      
+      if (frequencyInput && frequencyInput.type === "FrequencyModelOutput") {
+        availableFrequencyTypes = frequencyInput.results?.map((r: any) => r.distributionType) || [];
+        selectedFrequency = frequencyInput.selectedDistribution || availableFrequencyTypes[0];
+      }
+      
+      if (severityInput && severityInput.type === "SeverityModelOutput") {
+        availableSeverityTypes = severityInput.results?.map((r: any) => r.distributionType) || [];
+        selectedSeverity = severityInput.selectedDistribution || availableSeverityTypes[0];
+      }
+
+      const simulationCountOptions = [
+        { value: 100, label: "100" },
+        { value: 1000, label: "1,000" },
+        { value: 10000, label: "10,000" },
+        { value: 100000, label: "100,000" },
+        { value: 1000000, label: "1,000,000" },
+      ];
+      
+      const currentCount = module.parameters.simulation_count as number || 10000;
+      const customCount = module.parameters.custom_count as string || "";
+      
+      return (
+        <div className="space-y-4">
+          {availableFrequencyTypes.length > 0 ? (
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Selected Frequency Distribution
+              </label>
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  {selectedFrequency || "Not selected"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect a Fit Frequency Model module to see available distributions.
+              </p>
+            </div>
+          )}
+          {availableSeverityTypes.length > 0 ? (
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Selected Severity Distribution
+              </label>
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  {selectedSeverity || "Not selected"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect a Fit Severity Model module to see available distributions.
+              </p>
+            </div>
+          )}
+          <PropertySelect
+            label="Simulation Count"
+            value={currentCount}
+            onChange={(v) => {
+              const numValue = typeof v === 'string' ? parseInt(v, 10) : v;
+              onParamChange("simulation_count", numValue === 0 ? 0 : numValue);
+              if (numValue !== 0) {
+                onParamChange("custom_count", "");
+              }
+            }}
+            options={[
+              ...simulationCountOptions.map(opt => ({ value: opt.value, label: opt.label })),
+              { value: 0, label: "Custom" }
+            ]}
+          />
+          {currentCount === 0 && (
+            <div className="mt-2">
+              <label className="block text-sm font-semibold text-gray-300 mb-1">
+                Custom Count
+              </label>
+              <input
+                type="number"
+                value={customCount}
+                onChange={(e) => onParamChange("custom_count", e.target.value)}
+                placeholder="Enter custom count"
+                min="1"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            If models are not connected, the module will fit models from input data using default parameters.
+          </p>
+        </div>
+      );
+    }
+    case ModuleType.CombineLossModel: {
+      const aggDistInput = getConnectedDataSource(module.id, "agg_dist_in");
+      const freqServInput = getConnectedDataSource(module.id, "freq_serv_in");
+      
+      return (
+        <div className="space-y-4">
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-300 mb-2">
+              Aggregate Distribution Input
+            </label>
+            {aggDistInput && aggDistInput.type === "SimulateAggDistOutput" ? (
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  Connected: Simulate Agg Dist
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Simulations: {(aggDistInput as any).simulationCount || 0}
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                <p className="text-sm text-yellow-400">
+                  Connect a Simulate Agg Dist module to the "agg_dist_in" port.
+                </p>
+              </div>
+            )}
+          </div>
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-300 mb-2">
+              Frequency-Severity Input
+            </label>
+            {freqServInput && freqServInput.type === "SimulateAggDistOutput" ? (
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  Connected: Simulate Freq-Sev Table
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                <p className="text-sm text-yellow-400">
+                  Connect a Simulate Freq-Sev Table module to the "freq_serv_in" port.
+                </p>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-gray-500">
+            This module combines two simulation results and calculates VaR (Value at Risk) and TVaR (Tail Value at Risk) at various confidence levels.
+          </p>
+        </div>
       );
     }
     case ModuleType.SimulateAggDist: {

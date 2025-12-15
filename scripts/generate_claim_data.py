@@ -55,3 +55,8 @@ print(f"\n처음 5개 행:")
 print(df.head())
 
 
+
+
+
+
+

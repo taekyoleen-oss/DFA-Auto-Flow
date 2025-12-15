@@ -63,9 +63,13 @@ export enum ModuleType {
   ApplyInflation = "ApplyInflation",
   FormatChange = "FormatChange",
   SplitByThreshold = "SplitByThreshold",
+  SplitByFreqServ = "SplitByFreqServ",
   FitAggregateModel = "FitAggregateModel",
   SimulateAggDist = "SimulateAggDist",
-  FitFrequencySeverityModel = "FitFrequencySeverityModel",
+  FitFrequencyModel = "FitFrequencyModel",
+  FitSeverityModel = "FitSeverityModel",
+  SimulateFreqServ = "SimulateFreqServ",
+  CombineLossModel = "CombineLossModel",
 
   // Deprecating these
   LogisticTradition = "LogisticTradition",
@@ -418,6 +422,22 @@ export interface AggregateModelFitResult {
     ksStatistic?: number;
     ksPValue?: number;
   };
+  qqPlot?: {
+    theoreticalQuantiles: number[];
+    sampleQuantiles: number[];
+  };
+  ppPlot?: {
+    theoreticalCDF: number[];
+    empiricalCDF: number[];
+  };
+  cumulativeDistribution?: {
+    percentiles: number[];
+    amounts: number[];
+  };
+  theoreticalCumulative?: {
+    probabilities: number[];
+    amounts: number[];
+  };
 }
 
 export interface AggregateModelOutput {
@@ -437,6 +457,7 @@ export interface SimulateAggDistOutput {
     count: number;
     amount: number;
   }>;
+  rawSimulations?: number[]; // 원본 시뮬레이션 결과 (최대 100개)
   statistics: {
     mean: number;
     std: number;
@@ -449,6 +470,77 @@ export interface SimulateAggDistOutput {
     percentile95: number;
     percentile99: number;
   };
+}
+
+export interface SplitFreqServOutput {
+  type: "SplitFreqServOutput";
+  frequencyData: DataPreview; // 연도별 빈도 데이터
+  severityData: DataPreview; // 개별 클레임 심도 데이터
+  yearlyFrequency: Array<{ year: number; count: number }>;
+  yearlySeverity: Array<{ year: number; totalAmount: number; count: number; meanAmount: number }>;
+}
+
+export interface FrequencyModelFitResult {
+  distributionType: "Poisson" | "NegativeBinomial";
+  parameters: Record<string, number>;
+  fitStatistics: {
+    aic?: number;
+    bic?: number;
+    logLikelihood?: number;
+    mean?: number;
+    variance?: number;
+    dispersion?: number; // 분산/평균 비율
+  };
+  yearlyCounts?: Array<{ year: number; count: number }>;
+  qqPlot?: {
+    theoreticalQuantiles: number[];
+    sampleQuantiles: number[];
+  };
+  ppPlot?: {
+    theoreticalCDF: number[];
+    empiricalCDF: number[];
+  };
+}
+
+export interface FrequencyModelOutput {
+  type: "FrequencyModelOutput";
+  results: FrequencyModelFitResult[];
+  selectedDistribution?: "Poisson" | "NegativeBinomial";
+  yearlyCounts: Array<{ year: number; count: number }>;
+}
+
+export interface SeverityModelFitResult {
+  distributionType: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
+  parameters: Record<string, number>;
+  fitStatistics: {
+    aic?: number;
+    bic?: number;
+    logLikelihood?: number;
+    ksStatistic?: number;
+    ksPValue?: number;
+  };
+  qqPlot?: {
+    theoreticalQuantiles: number[];
+    sampleQuantiles: number[];
+  };
+  ppPlot?: {
+    theoreticalCDF: number[];
+    empiricalCDF: number[];
+  };
+  cumulativeDistribution?: {
+    percentiles: number[];
+    amounts: number[];
+  };
+  theoreticalCumulative?: {
+    probabilities: number[];
+    amounts: number[];
+  };
+}
+
+export interface SeverityModelOutput {
+  type: "SeverityModelOutput";
+  results: SeverityModelFitResult[];
+  selectedDistribution?: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
 }
 
 export interface FrequencySeverityModelOutput {
@@ -477,6 +569,27 @@ export interface FrequencySeverityModelOutput {
     mean: number;
     stdDev: number;
     percentiles: Record<string, number>;
+  };
+}
+
+export interface CombineLossModelOutput {
+  type: "CombineLossModelOutput";
+  combinedStatistics: {
+    mean: number;
+    stdDev: number;
+    min: number;
+    max: number;
+    skewness?: number;
+    kurtosis?: number;
+  };
+  var: Record<string, number>; // VaR at different confidence levels (e.g., { "95": 1000000, "99": 2000000 })
+  tvar: Record<string, number>; // TVaR (Conditional VaR) at different confidence levels
+  percentiles: Record<string, number>; // Combined percentiles
+  aggDistPercentiles?: Record<string, number>; // Aggregate Distribution percentiles
+  freqServPercentiles?: Record<string, number>; // Frequency-Severity percentiles
+  aggregateLossDistribution?: {
+    percentiles: number[];
+    amounts: number[];
   };
 }
 
@@ -515,9 +628,13 @@ export interface CanvasModule {
     | InflatedDataOutput
     | FormatChangeOutput
     | ThresholdSplitOutput
+    | SplitFreqServOutput
     | AggregateModelOutput
     | SimulateAggDistOutput
-    | FrequencySeverityModelOutput;
+    | FrequencyModelOutput
+    | SeverityModelOutput
+    | FrequencySeverityModelOutput
+    | CombineLossModelOutput;
   // Shape-specific properties
   shapeData?: {
     // For TextBox

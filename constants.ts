@@ -346,15 +346,39 @@ export const TOOLBOX_MODULES = [
   },
   {
     type: ModuleType.SimulateAggDist,
-    name: "Simulate Agg Dist",
+    name: "Simulate Agg Table",
     icon: PresentationChartLineIcon,
     description: "Performs Monte Carlo simulation using the selected distribution.",
   },
   {
-    type: ModuleType.FitFrequencySeverityModel,
-    name: "Fit Frequency-Severity Model",
+    type: ModuleType.SplitByFreqServ,
+    name: "Split By Freq-Sev",
+    icon: ShareIcon,
+    description: "Splits claim data into frequency and severity components.",
+  },
+  {
+    type: ModuleType.FitFrequencyModel,
+    name: "Fit Frequency Model",
     icon: BeakerIcon,
-    description: "Fits frequency and severity models for claim analysis.",
+    description: "Fits and compares multiple frequency distributions.",
+  },
+  {
+    type: ModuleType.FitSeverityModel,
+    name: "Fit Severity Model",
+    icon: BeakerIcon,
+    description: "Fits and compares multiple severity distributions.",
+  },
+  {
+    type: ModuleType.SimulateFreqServ,
+    name: "Simulate Freq-Sev Table",
+    icon: PresentationChartLineIcon,
+    description: "Simulates aggregate loss using frequency and severity models.",
+  },
+  {
+    type: ModuleType.CombineLossModel,
+    name: "Combine Loss Model",
+    icon: BarChartIcon,
+    description: "Combines two simulation results and calculates VaR and TVaR.",
   },
 ];
 
@@ -857,16 +881,64 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       outputs: [{ name: "model_out", type: "evaluation" }],
     },
     {
-      type: ModuleType.FitFrequencySeverityModel,
+      type: ModuleType.SplitByFreqServ,
+      status: ModuleStatus.Pending,
+      parameters: {
+        amount_column: "클레임 금액_infl",
+        date_column: "날짜",
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [
+        { name: "frequency_out", type: "data" },
+        { name: "severity_out", type: "data" },
+      ],
+    },
+    {
+      type: ModuleType.FitFrequencyModel,
+      status: ModuleStatus.Pending,
+      parameters: {
+        count_column: "count",
+        selected_frequency_types: ["Poisson", "NegativeBinomial"],
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [{ name: "data_out", type: "distribution" }],
+    },
+    {
+      type: ModuleType.FitSeverityModel,
+      status: ModuleStatus.Pending,
+      parameters: {
+        amount_column: "클레임 금액",
+        selected_severity_types: ["Lognormal", "Exponential", "Gamma", "Pareto"],
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [{ name: "data_out", type: "distribution" }],
+    },
+    {
+      type: ModuleType.SimulateFreqServ,
       status: ModuleStatus.Pending,
       parameters: {
         frequency_type: "Poisson",
         severity_type: "Lognormal",
         amount_column: "클레임 금액",
         date_column: "날짜",
+        simulation_count: 10000,
+        custom_count: "",
       },
-      inputs: [{ name: "data_in", type: "data" }],
+      inputs: [
+        { name: "frequency_in", type: "distribution" },
+        { name: "severity_in", type: "distribution" },
+      ],
       outputs: [{ name: "model_out", type: "evaluation" }],
+    },
+    {
+      type: ModuleType.CombineLossModel,
+      status: ModuleStatus.Pending,
+      parameters: {},
+      inputs: [
+        { name: "agg_dist_in", type: "evaluation" },
+        { name: "freq_serv_in", type: "evaluation" },
+      ],
+      outputs: [{ name: "combined_out", type: "evaluation" }],
     },
   ];
 
