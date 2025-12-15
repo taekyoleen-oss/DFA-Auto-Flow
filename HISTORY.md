@@ -21,7 +21,7 @@
 - Select Data 모듈의 예상치 못한 동작 수정
 - 모듈 이름 변경에 따른 일관성 유지
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** a7b6418
 
 **Recovery Command:**
 ```bash
