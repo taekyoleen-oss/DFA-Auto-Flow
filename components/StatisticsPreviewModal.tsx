@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { CanvasModule, StatisticsOutput } from '../types';
-import { XCircleIcon, SparklesIcon } from './icons';
+import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { SpreadViewModal } from './SpreadViewModal';
 
 interface StatisticsPreviewModalProps {
     module: CanvasModule;
@@ -135,11 +136,54 @@ const Pairplot: React.FC<{ output: StatisticsOutput }> = ({ output }) => {
 export const StatisticsPreviewModal: React.FC<StatisticsPreviewModalProps> = ({ module, projectName, onClose }) => {
     const [isInterpreting, setIsInterpreting] = useState(false);
     const [aiInterpretation, setAiInterpretation] = useState<string | null>(null);
+    const [showSpreadView, setShowSpreadView] = useState(false);
 
     const output = module.outputData as StatisticsOutput;
     if (!output || output.type !== 'StatisticsOutput') return null;
 
     const { stats, correlation } = output;
+
+    // Spread View용 데이터 변환 (Descriptive Statistics 테이블)
+    const spreadViewData = useMemo(() => {
+        const data: Array<Record<string, any>> = [];
+        const statDisplay = [
+            { key: 'count', label: 'Count' },
+            { key: 'mean', label: 'Mean' },
+            { key: 'std', label: 'Std Dev' },
+            { key: '50%', label: 'Median' },
+            { key: 'min', label: 'Min' },
+            { key: 'max', label: 'Max' },
+            { key: '25%', label: '25%' },
+            { key: '75%', label: '75%' },
+            { key: 'mode', label: 'Mode' },
+            { key: 'nulls', label: 'Null' },
+            { key: 'skewness', label: 'Skew' },
+            { key: 'kurtosis', label: 'Kurt' },
+        ];
+        
+        statDisplay.forEach(({ key, label }) => {
+            const row: Record<string, any> = { Metric: label };
+            Object.keys(stats).forEach(col => {
+                const value = (stats[col] as any)[key];
+                let displayValue = value;
+                if (typeof value === 'number' && !Number.isInteger(value)) {
+                    displayValue = value.toFixed(2);
+                }
+                row[col] = displayValue === undefined || displayValue === null || Number.isNaN(displayValue) ? 'N/A' : String(displayValue);
+            });
+            data.push(row);
+        });
+        
+        return data;
+    }, [stats]);
+
+    const spreadViewColumns = useMemo(() => {
+        const cols = [{ name: 'Metric', type: 'string' }];
+        Object.keys(stats).forEach(col => {
+            cols.push({ name: col, type: 'number' });
+        });
+        return cols;
+    }, [stats]);
 
     const statDisplay = [
         { key: 'count', label: 'Count' },
@@ -220,9 +264,20 @@ ${correlationText}
             >
                 <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                     <h2 className="text-xl font-bold text-gray-800">Statistics Preview: {module.name}</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-                        <XCircleIcon className="w-6 h-6" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowSpreadView(true)}
+                            className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                            </svg>
+                            Spread View
+                        </button>
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                            <XCircleIcon className="w-6 h-6" />
+                        </button>
+                    </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-6">
                     <div className="flex justify-end font-sans">
@@ -300,6 +355,14 @@ ${correlationText}
                     </div>
                 </main>
             </div>
+            {showSpreadView && spreadViewData.length > 0 && (
+                <SpreadViewModal
+                    onClose={() => setShowSpreadView(false)}
+                    data={spreadViewData}
+                    columns={spreadViewColumns}
+                    title={`Spread View: ${module.name} - Statistics`}
+                />
+            )}
         </div>
     );
 };

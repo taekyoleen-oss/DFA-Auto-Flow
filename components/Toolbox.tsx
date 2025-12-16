@@ -100,7 +100,7 @@ const categorizedModules = [
     modules: TOOLBOX_MODULES.filter((m) => preprocessTypes.includes(m.type)),
   },
   {
-    name: "Data Analysis",
+    name: "Claim Analysis",
     subCategories: [
       {
         name: "Operations",
@@ -188,7 +188,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
     Record<string, boolean>
   >({
     "Data Preprocess": true,
-    "Data Analysis": true,
+    "Claim Analysis": true,
     "Tradition Analysis": true,
     "Reinsurance Analysis": true,
     "XoL Reinsurance Pricing": true,

@@ -42,6 +42,7 @@ import {
   ShieldCheckIcon,
   ChartPieIcon,
   FingerPrintIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 
 // Solid icons (if needed)
@@ -216,6 +217,7 @@ export {
   ChartPieIcon,
   FingerPrintIcon,
   CheckCircleIcon,
+  ArrowDownTrayIcon,
   // Aliased icons
   BarChartIcon,
   PriceTagIcon,

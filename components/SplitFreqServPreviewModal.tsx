@@ -1,7 +1,8 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { CanvasModule, SplitFreqServOutput } from '../types';
-import { XCircleIcon } from './icons';
+import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
+import { SpreadViewModal } from './SpreadViewModal';
 
 interface SplitFreqServPreviewModalProps {
   module: CanvasModule;
@@ -15,6 +16,57 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
   const output = module.outputData as SplitFreqServOutput;
   const viewDetailsRef = useRef<HTMLDivElement>(null);
   useCopyOnCtrlC(viewDetailsRef);
+  const [showSpreadView, setShowSpreadView] = useState(false);
+  const [spreadViewTab, setSpreadViewTab] = useState<'frequency' | 'severity' | 'amount'>('frequency');
+
+  // Spread View용 데이터 변환
+  const spreadViewData = useMemo(() => {
+    if (spreadViewTab === 'frequency') {
+      return output.yearlyFrequency.map(item => ({
+        Year: item.year,
+        Count: item.count,
+      }));
+    } else if (spreadViewTab === 'severity') {
+      return output.yearlySeverity.map(item => ({
+        Year: item.year,
+        'Total Amount': item.totalAmount,
+        Count: item.count,
+        'Mean Amount': item.meanAmount,
+      }));
+    } else {
+      // amount: 보험금 데이터
+      return output.severityData.rows.map((row, idx) => {
+        const amountColumn = output.severityData.columns[0]?.name || 'amount';
+        return {
+          Index: idx + 1,
+          [amountColumn]: row[amountColumn],
+        };
+      });
+    }
+  }, [output, spreadViewTab]);
+
+  const spreadViewColumns = useMemo(() => {
+    if (spreadViewTab === 'frequency') {
+      return [
+        { name: 'Year', type: 'number' },
+        { name: 'Count', type: 'number' },
+      ];
+    } else if (spreadViewTab === 'severity') {
+      return [
+        { name: 'Year', type: 'number' },
+        { name: 'Total Amount', type: 'number' },
+        { name: 'Count', type: 'number' },
+        { name: 'Mean Amount', type: 'number' },
+      ];
+    } else {
+      // amount: 보험금 데이터
+      const amountColumn = output.severityData.columns[0] || { name: 'amount', type: 'number' };
+      return [
+        { name: 'Index', type: 'number' },
+        { name: amountColumn.name, type: amountColumn.type },
+      ];
+    }
+  }, [output, spreadViewTab]);
 
   if (!output || output.type !== 'SplitFreqServOutput') {
     return (
@@ -50,15 +102,52 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
       >
         <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-xl font-bold text-gray-800">Split By Freq-Sev: {module.name}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <XCircleIcon className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+              <XCircleIcon className="w-6 h-6" />
+            </button>
+          </div>
         </header>
         <main className="flex-grow p-6 overflow-auto" ref={viewDetailsRef}>
           <div className="space-y-6">
             {/* Yearly Frequency */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Yearly Frequency (연도별 빈도)</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Yearly Frequency (연도별 빈도)</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSpreadViewTab('frequency');
+                      setShowSpreadView(true);
+                    }}
+                    className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                    </svg>
+                    Spread View
+                  </button>
+                  <button
+                    onClick={() => {
+                      const csvContent = [
+                        'Year,Count',
+                        ...output.yearlyFrequency.map(item => `${item.year},${item.count}`)
+                      ].join('\n');
+                      // BOM 추가하여 한글 인코딩 문제 해결
+                      const bom = '\uFEFF';
+                      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+                      const link = document.createElement('a');
+                      link.href = URL.createObjectURL(blob);
+                      link.download = `${module.name}_frequency.csv`;
+                      link.click();
+                    }}
+                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -81,7 +170,44 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
 
             {/* Yearly Severity */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Yearly Severity (연도별 심도)</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Yearly Severity (연도별 심도)</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSpreadViewTab('severity');
+                      setShowSpreadView(true);
+                    }}
+                    className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                    </svg>
+                    Spread View
+                  </button>
+                  <button
+                    onClick={() => {
+                      const csvContent = [
+                        'Year,Total Amount,Count,Mean Amount',
+                        ...output.yearlySeverity.map(item => 
+                          `${item.year},${item.totalAmount},${item.count},${item.meanAmount}`
+                        )
+                      ].join('\n');
+                      // BOM 추가하여 한글 인코딩 문제 해결
+                      const bom = '\uFEFF';
+                      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+                      const link = document.createElement('a');
+                      link.href = URL.createObjectURL(blob);
+                      link.download = `${module.name}_severity.csv`;
+                      link.click();
+                    }}
+                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -105,9 +231,96 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                 </table>
               </div>
             </div>
+
+            {/* Amount (보험금) - 연도 없이 개별 보험금 데이터 */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Amount (보험금)</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setSpreadViewTab('amount');
+                      setShowSpreadView(true);
+                    }}
+                    className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                    </svg>
+                    Spread View
+                  </button>
+                  <button
+                    onClick={() => {
+                      const amountColumn = output.severityData.columns[0]?.name || 'amount';
+                      const csvContent = [
+                        amountColumn,
+                        ...output.severityData.rows.map(row => {
+                          const val = row[amountColumn];
+                          return val === null || val === undefined ? '' : String(val);
+                        })
+                      ].join('\n');
+                      // BOM 추가하여 한글 인코딩 문제 해결
+                      const bom = '\uFEFF';
+                      const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+                      const link = document.createElement('a');
+                      link.href = URL.createObjectURL(blob);
+                      link.download = `${module.name}_amount.csv`;
+                      link.click();
+                    }}
+                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    Download CSV
+                  </button>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {output.severityData.columns.map((col, idx) => (
+                        <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          {col.name}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {output.severityData.rows.slice(0, 100).map((row, idx) => (
+                      <tr key={idx}>
+                        {output.severityData.columns.map((col, colIdx) => (
+                          <td key={colIdx} className="px-4 py-3 text-sm text-gray-900">
+                            {typeof row[col.name] === 'number' 
+                              ? row[col.name].toLocaleString() 
+                              : row[col.name]}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {output.severityData.rows.length > 100 && (
+                  <div className="px-4 py-3 text-sm text-gray-500 text-center">
+                    Showing first 100 rows of {output.severityData.rows.length} total rows
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </main>
       </div>
+      {showSpreadView && spreadViewData.length > 0 && (
+        <SpreadViewModal
+          onClose={() => setShowSpreadView(false)}
+          data={spreadViewData}
+          columns={spreadViewColumns}
+          title={`Spread View: ${module.name} - ${
+            spreadViewTab === 'frequency' ? 'Frequency' : 
+            spreadViewTab === 'severity' ? 'Severity' : 
+            'Amount'
+          }`}
+        />
+      )}
     </div>
   );
 };

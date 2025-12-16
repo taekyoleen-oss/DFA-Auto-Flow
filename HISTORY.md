@@ -1,5 +1,48 @@
 # Change History
 
+## 2025-01-16 01:00:00
+
+### feat(modules): Add Excel file support and direct input for Load Claim Data module
+
+**Description:**
+- Load Claim Data 모듈에 엑셀 파일(.xlsx, .xls) 지원 추가
+  - SheetJS(xlsx) 라이브러리를 사용하여 엑셀 파일을 CSV 형식으로 변환
+  - 파일 선택 시 CSV와 엑셀 파일 모두 선택 가능
+  - 엑셀 파일의 첫 번째 시트를 자동으로 읽어서 처리
+- 엑셀 데이터 직접 입력 기능 추가
+  - "엑셀 데이터 직접 입력" 버튼 추가
+  - 텍스트 영역에 엑셀에서 복사한 데이터(탭으로 구분)를 붙여넣기 가능
+  - 붙여넣은 데이터를 CSV 형식으로 변환하여 처리
+- 파일 타입 및 시트 정보 표시
+  - 엑셀 파일 로드 시 시트 이름 표시
+  - 파일 타입 정보를 파라미터에 저장
+
+**Files Affected:**
+- `package.json` - xlsx 라이브러리 의존성 추가
+- `components/PropertiesPanel.tsx` - LoadClaimData 케이스에 엑셀 파일 지원 및 직접 입력 기능 추가
+  - SheetJS import 추가
+  - 엑셀 파일을 CSV로 변환하는 함수 추가
+  - 파일 선택 시 엑셀 파일 처리 로직 추가
+  - 직접 입력 모드 UI 및 처리 로직 추가
+  - handleFileChange 함수에 LoadClaimData 엑셀 파일 처리 추가
+  - file input의 accept 속성을 LoadClaimData에서 .csv,.xlsx,.xls로 확장
+
+**Reason:**
+- 사용자가 엑셀 파일을 직접 로드하거나 복사-붙여넣기로 데이터를 입력할 수 있도록 편의성 향상
+- 기존 CSV 파일 로드 기능과 호환성 유지
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
 ## 2025-01-16 00:00:00
 
 ### fix(modules): Update module names and fix Select Data module behavior

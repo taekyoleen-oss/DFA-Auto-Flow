@@ -541,6 +541,7 @@ export interface SeverityModelOutput {
   type: "SeverityModelOutput";
   results: SeverityModelFitResult[];
   selectedDistribution?: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
+  originalData?: number[]; // 원본 보험금 데이터 (통계 계산용)
 }
 
 export interface FrequencySeverityModelOutput {

@@ -44,6 +44,8 @@ import { getModuleCode } from "../codeSnippets";
 import { SAMPLE_DATA } from "../sampleData";
 import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_MODULES } from "../constants";
+import * as XLSX from "xlsx";
+import { ExcelInputModal } from "./ExcelInputModal";
 
 type TerminalLog = {
   id: number;
@@ -528,7 +530,8 @@ const renderParameters = (
   projectName: string,
   updateModuleParameters: (id: string, newParams: Record<string, any>) => void,
   onSampleLoad: (sample: { name: string; content: string }) => void,
-  folderHandle: FileSystemDirectoryHandle | null
+  folderHandle: FileSystemDirectoryHandle | null,
+  onOpenExcelModal?: () => void
 ) => {
   // Use the helper function
   const getConnectedDataSource = (moduleId: string, portNameToFind?: string) =>
@@ -542,8 +545,33 @@ const renderParameters = (
   switch (module.type) {
     // ... [Previous cases remain unchanged: LoadData, SelectData, HandleMissingValues, TransformData, EncodeCategorical, NormalizeData, TransitionData, ResampleData, SplitData] ...
     case ModuleType.LoadData:
-    case ModuleType.XolLoading:
-    case ModuleType.LoadClaimData: {
+    case ModuleType.XolLoading: {
+      // 엑셀 파일을 CSV로 변환하는 함수
+      const convertExcelToCSV = (workbook: XLSX.Workbook, sheetName?: string): string => {
+        const targetSheet = sheetName || workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[targetSheet];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          defval: null,
+          raw: false,
+        });
+
+        return jsonData
+          .map((row: any) => {
+            return row
+              .map((cell: any) => {
+                if (cell === null || cell === undefined) return "";
+                const str = String(cell);
+                if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+                  return `"${str.replace(/"/g, '""')}"`;
+                }
+                return str;
+              })
+              .join(",");
+          })
+          .join("\n");
+      };
+
       const handleBrowseClick = async () => {
         if (folderHandle && (window as any).showOpenFilePicker) {
           try {
@@ -554,18 +582,46 @@ const renderParameters = (
                   description: "CSV Files",
                   accept: { "text/csv": [".csv"] },
                 },
+                {
+                  description: "Excel Files",
+                  accept: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+                      ".xlsx",
+                    ],
+                    "application/vnd.ms-excel": [".xls"],
+                  },
+                },
               ],
             });
             const file = await fileHandle.getFile();
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const content = e.target?.result as string;
+            const fileName = file.name.toLowerCase();
+
+            if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+              // 엑셀 파일 처리
+              const arrayBuffer = await file.arrayBuffer();
+              const workbook = XLSX.read(arrayBuffer, { type: "array" });
+              const firstSheetName = workbook.SheetNames[0];
+              const csvContent = convertExcelToCSV(workbook, firstSheetName);
+
               updateModuleParameters(module.id, {
                 source: file.name,
-                fileContent: content,
+                fileContent: csvContent,
+                fileType: "excel",
+                sheetName: firstSheetName,
               });
-            };
-            reader.readAsText(file);
+            } else {
+              // CSV 파일 처리
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const content = e.target?.result as string;
+                updateModuleParameters(module.id, {
+                  source: file.name,
+                  fileContent: content,
+                  fileType: "csv",
+                });
+              };
+              reader.readAsText(file);
+            }
           } catch (error: any) {
             if (error.name !== "AbortError") {
               console.warn(
@@ -598,6 +654,179 @@ const renderParameters = (
               Browse...
             </button>
           </div>
+          {/* 파일 타입 표시 */}
+          {module.parameters.fileType === "excel" &&
+            module.parameters.sheetName && (
+              <div className="mt-2 text-xs text-gray-500">
+                Excel Sheet: {module.parameters.sheetName}
+              </div>
+            )}
+          {/* 엑셀 데이터 직접 입력 버튼 */}
+          <button
+            onClick={() => {
+              if (onOpenExcelModal) {
+                onOpenExcelModal();
+              }
+            }}
+            className="mt-2 px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+          >
+            엑셀 데이터 직접 입력
+          </button>
+          <div className="mt-4">
+            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+              Examples
+            </h4>
+            <div className="bg-gray-700 p-2 rounded-md space-y-1">
+              {SAMPLE_DATA.map((sample) => (
+                <div
+                  key={sample.name}
+                  onDoubleClick={() => onSampleLoad(sample)}
+                  className="px-2 py-1.5 text-sm text-gray-300 rounded-md hover:bg-gray-600 cursor-pointer"
+                  title="Double-click to load"
+                >
+                  {sample.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    case ModuleType.LoadClaimData: {
+      // 엑셀 파일을 CSV로 변환하는 함수
+      const convertExcelToCSV = (workbook: XLSX.WorkBook, sheetName?: string): string => {
+        const targetSheet = sheetName || workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[targetSheet];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          defval: null,
+          raw: false,
+        });
+
+        return jsonData
+          .map((row: any) => {
+            return row
+              .map((cell: any) => {
+                if (cell === null || cell === undefined) return "";
+                const str = String(cell);
+                if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+                  return `"${str.replace(/"/g, '""')}"`;
+                }
+                return str;
+              })
+              .join(",");
+          })
+          .join("\n");
+      };
+
+      const handleBrowseClick = async () => {
+        if (folderHandle && (window as any).showOpenFilePicker) {
+          try {
+            const [fileHandle] = await (window as any).showOpenFilePicker({
+              startIn: folderHandle,
+              types: [
+                {
+                  description: "CSV Files",
+                  accept: { "text/csv": [".csv"] },
+                },
+                {
+                  description: "Excel Files",
+                  accept: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+                      ".xlsx",
+                    ],
+                    "application/vnd.ms-excel": [".xls"],
+                  },
+                },
+              ],
+            });
+            const file = await fileHandle.getFile();
+            const fileName = file.name.toLowerCase();
+
+            if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
+              // 엑셀 파일 처리
+              const arrayBuffer = await file.arrayBuffer();
+              const workbook = XLSX.read(arrayBuffer, { type: "array" });
+              const firstSheetName = workbook.SheetNames[0];
+              const csvContent = convertExcelToCSV(workbook, firstSheetName);
+
+              updateModuleParameters(module.id, {
+                source: file.name,
+                fileContent: csvContent,
+                fileType: "excel",
+                sheetName: firstSheetName,
+              });
+            } else {
+              // CSV 파일 처리
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const content = e.target?.result as string;
+                updateModuleParameters(module.id, {
+                  source: file.name,
+                  fileContent: content,
+                  fileType: "csv",
+                });
+              };
+              reader.readAsText(file);
+            }
+          } catch (error: any) {
+            if (error.name !== "AbortError") {
+              console.warn(
+                "Could not use directory picker, falling back to default.",
+                error
+              );
+              fileInputRef.current?.click();
+            }
+          }
+        } else {
+          fileInputRef.current?.click();
+        }
+      };
+
+      const handleExcelModalApply = (csvContent: string) => {
+        updateModuleParameters(module.id, {
+          source: "pasted_data.csv",
+          fileContent: csvContent,
+          fileType: "pasted",
+        });
+      };
+
+      return (
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Source</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={module.parameters.source}
+              onChange={(e) => onParamChange("source", e.target.value)}
+              className="flex-grow bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="No file selected"
+            />
+            <button
+              onClick={handleBrowseClick}
+              className="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+            >
+              Browse...
+            </button>
+          </div>
+          {/* 파일 타입 표시 */}
+          {module.parameters.fileType === "excel" &&
+            module.parameters.sheetName && (
+              <div className="mt-2 text-xs text-gray-500">
+                Excel Sheet: {module.parameters.sheetName}
+              </div>
+            )}
+          {/* 엑셀 데이터 직접 입력 버튼 */}
+          <button
+            onClick={() => {
+              if (onOpenExcelModal) {
+                onOpenExcelModal();
+              }
+            }}
+            className="mt-2 px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+          >
+            엑셀 데이터 직접 입력
+          </button>
           <div className="mt-4">
             <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
               Examples
@@ -2292,16 +2521,63 @@ const renderParameters = (
     case ModuleType.FormatChange: {
       const sourceData = getConnectedDataSource(module.id);
       const inputColumns = sourceData?.columns || [];
-      const dateColumns = inputColumns.filter(col => col.type === "string" || col.name.includes("날짜") || col.name.includes("date")).map(col => col.name);
+      const inputRows = sourceData?.rows || [];
+      
+      // 날짜 형식 판단 함수
+      const isDateColumn = (col: ColumnInfo): boolean => {
+        // 컬럼명에 "날짜" 또는 "date"가 포함되어야 함
+        const nameLower = col.name.toLowerCase();
+        if (!nameLower.includes("날짜") && !nameLower.includes("date")) {
+          return false;
+        }
+        
+        // 실제 데이터가 날짜 형식인지 확인
+        if (inputRows.length > 0) {
+          const sampleValues = inputRows
+            .slice(0, Math.min(10, inputRows.length))
+            .map(row => row[col.name])
+            .filter(val => val !== null && val !== undefined && val !== "");
+          
+          if (sampleValues.length === 0) {
+            return false;
+          }
+          
+          // 날짜 형식 패턴 확인 (YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD, YYYYMMDD 등)
+          const datePatterns = [
+            /^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/, // YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD
+            /^\d{4}\d{2}\d{2}/, // YYYYMMDD
+            /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/, // MM-DD-YYYY, DD/MM/YYYY
+          ];
+          
+          // 샘플 값 중 일부라도 날짜 형식이면 날짜 컬럼으로 인정
+          const dateMatchCount = sampleValues.filter(val => {
+            const str = String(val);
+            return datePatterns.some(pattern => pattern.test(str));
+          }).length;
+          
+          // 샘플의 50% 이상이 날짜 형식이면 날짜 컬럼으로 인정
+          return dateMatchCount >= Math.ceil(sampleValues.length * 0.5);
+        }
+        
+        // 데이터가 없으면 컬럼명만으로 판단
+        return true;
+      };
+      
+      const dateColumns = inputColumns
+        .filter(col => isDateColumn(col))
+        .map(col => col.name);
       
       return (
         <div className="space-y-4">
           <PropertySelect
             label="Date Column"
-            value={module.parameters.date_column || "날짜"}
+            value={module.parameters.date_column || ""}
             onChange={(v) => onParamChange("date_column", v)}
-            options={dateColumns.length > 0 ? dateColumns : ["날짜"]}
+            options={dateColumns.length > 0 ? dateColumns : []}
           />
+          {dateColumns.length === 0 && (
+            <p className="text-xs text-yellow-500 mt-1">날짜 형식이 없습니다.</p>
+          )}
         </div>
       );
     }
@@ -3268,6 +3544,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const [isCopied, setIsCopied] = useState(false);
   const [terminalHeight, setTerminalHeight] = useState(200);
   const resizableContainerRef = useRef<HTMLDivElement>(null);
+  const [showExcelModal, setShowExcelModal] = useState(false);
 
   const handleTerminalResizeMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -3331,13 +3608,61 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && module) {
+    if (!file || !module) return;
+
+    const fileName = file.name.toLowerCase();
+
+    // LoadClaimData와 LoadData의 경우 엑셀 파일 처리
+    if ((module.type === ModuleType.LoadClaimData || module.type === ModuleType.LoadData) && (fileName.endsWith(".xlsx") || fileName.endsWith(".xls"))) {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            defval: null,
+            raw: false,
+          });
+
+          const csvContent = jsonData
+            .map((row: any) => {
+              return row
+                .map((cell: any) => {
+                  if (cell === null || cell === undefined) return "";
+                  const str = String(cell);
+                  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+                    return `"${str.replace(/"/g, '""')}"`;
+                  }
+                  return str;
+                })
+                .join(",");
+            })
+            .join("\n");
+
+          updateModuleParameters(module.id, {
+            source: file.name,
+            fileContent: csvContent,
+            fileType: "excel",
+            sheetName: firstSheetName,
+          });
+        } catch (error) {
+          console.error("Error processing Excel file:", error);
+          alert("엑셀 파일 처리 중 오류가 발생했습니다.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // CSV 파일 처리 (기존 로직)
       const reader = new FileReader();
       reader.onload = (e) => {
         const content = e.target?.result as string;
         updateModuleParameters(module.id, {
           source: file.name,
           fileContent: content,
+          fileType: module.type === ModuleType.LoadClaimData ? "csv" : undefined,
         });
       };
       reader.readAsText(file);
@@ -3874,7 +4199,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept=".csv"
+        accept={(module?.type === ModuleType.LoadClaimData || module?.type === ModuleType.LoadData) ? ".csv,.xlsx,.xls" : ".csv"}
         className="hidden"
       />
       <div className="flex-grow flex flex-col min-h-0">
@@ -3951,7 +4276,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     projectName,
                     updateModuleParameters,
                     handleLoadSample,
-                    folderHandle
+                    folderHandle,
+                    () => setShowExcelModal(true)
                   )}
                 </PropertyGroup>
               )}
@@ -4108,6 +4434,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           )}
         </div>
       </div>
+
+      {/* Excel Input Modal */}
+      {showExcelModal && module && (module.type === ModuleType.LoadClaimData || module.type === ModuleType.LoadData) && (
+        <ExcelInputModal
+          onClose={() => setShowExcelModal(false)}
+          onApply={(csvContent) => {
+            updateModuleParameters(module.id, {
+              source: "pasted_data.csv",
+              fileContent: csvContent,
+              fileType: "pasted",
+            });
+            setShowExcelModal(false);
+          }}
+        />
+      )}
     </div>
   );
 };

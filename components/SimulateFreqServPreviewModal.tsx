@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CanvasModule, SimulateAggDistOutput } from '../types';
-import { XCircleIcon } from './icons';
+import { XCircleIcon, ArrowDownTrayIcon } from './icons';
+import { SpreadViewModal } from './SpreadViewModal';
 
 interface SimulateFreqServPreviewModalProps {
   module: CanvasModule;
@@ -36,6 +37,21 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
   }
 
   const { results, statistics, simulationCount } = output;
+  const [showSpreadView, setShowSpreadView] = useState(false);
+
+  // Spread View용 데이터 변환
+  const spreadViewData = useMemo(() => {
+    if (!results || results.length === 0) return [];
+    return results.map(result => ({
+      amount: result.amount,
+      count: result.count,
+    }));
+  }, [results]);
+
+  const spreadViewColumns = [
+    { name: 'amount', type: 'number' },
+    { name: 'count', type: 'number' },
+  ];
 
   // 히스토그램 차트 데이터 계산
   const histogramChartData = useMemo(() => {
@@ -98,13 +114,24 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
           <h2 className="text-xl font-bold text-gray-800">Simulation Results: {module.name}</h2>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setShowSpreadView(true)}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              Spread View
+            </button>
+            <button
               onClick={() => {
                 if (!results || results.length === 0) return;
                 const csvContent = [
                   'count,amount',
                   ...results.map(r => `${r.count},${r.amount}`)
                 ].join('\n');
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                // BOM 추가하여 한글 인코딩 문제 해결
+                const bom = '\uFEFF';
+                const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = `${module.name}_simulation_results.csv`;
@@ -400,7 +427,17 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
           </div>
         </main>
       </div>
+      {showSpreadView && spreadViewData.length > 0 && (
+        <SpreadViewModal
+          onClose={() => setShowSpreadView(false)}
+          data={spreadViewData}
+          columns={spreadViewColumns}
+          title={`Spread View: ${module.name} - Simulation Results`}
+        />
+      )}
     </div>
   );
 };
+
+
 

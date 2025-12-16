@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { CanvasModule, SeverityModelOutput, SeverityModelFitResult } from '../types';
-import { XCircleIcon } from './icons';
+import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
+import { SpreadViewModal } from './SpreadViewModal';
 
 interface SeverityModelPreviewModalProps {
   module: CanvasModule;
@@ -67,6 +68,85 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
   });
 
   const recommended = sortedResults.length > 0 ? sortedResults[0] : null;
+  const [showSpreadView, setShowSpreadView] = useState(false);
+
+  // 통계 계산 (originalData 사용)
+  const statistics = useMemo(() => {
+    if (!output.originalData || output.originalData.length === 0) {
+      return null;
+    }
+
+    const amounts = [...output.originalData].filter(a => typeof a === 'number' && !isNaN(a) && a > 0);
+    if (amounts.length === 0) return null;
+
+    amounts.sort((a, b) => a - b);
+    const n = amounts.length;
+    const sum = amounts.reduce((a, b) => a + b, 0);
+    const mean = sum / n;
+    const variance = amounts.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / n;
+    const stdDev = Math.sqrt(variance);
+    
+    // 왜도 (skewness)
+    const skewness = stdDev > 0 
+      ? amounts.reduce((s, val) => s + Math.pow(val - mean, 3), 0) / (n * Math.pow(stdDev, 3))
+      : 0;
+    
+    // 첨도 (kurtosis) - excess kurtosis
+    const kurtosis = stdDev > 0
+      ? amounts.reduce((s, val) => s + Math.pow(val - mean, 4), 0) / (n * Math.pow(stdDev, 4)) - 3
+      : 0;
+
+    // 백분위수 계산
+    const getQuantile = (q: number) => {
+      const pos = (n - 1) * q;
+      const base = Math.floor(pos);
+      const rest = pos - base;
+      return amounts[base + 1] !== undefined 
+        ? amounts[base] + rest * (amounts[base + 1] - amounts[base])
+        : amounts[base];
+    };
+
+    return {
+      mean,
+      stdDev,
+      skewness,
+      kurtosis,
+      min: amounts[0],
+      max: amounts[n - 1],
+      percentile25: getQuantile(0.25),
+      percentile50: getQuantile(0.5), // median
+      percentile75: getQuantile(0.75),
+      percentile90: getQuantile(0.90),
+      percentile95: getQuantile(0.95),
+      percentile99: getQuantile(0.99),
+      count: n,
+    };
+  }, [output.originalData]);
+
+  // Spread View용 데이터 변환
+  const spreadViewData = useMemo(() => {
+    return sortedResults.map(result => ({
+      Distribution: result.distributionType,
+      AIC: result.fitStatistics?.aic?.toFixed(4) || 'N/A',
+      BIC: result.fitStatistics?.bic?.toFixed(4) || 'N/A',
+      'Log Likelihood': result.fitStatistics?.logLikelihood?.toFixed(4) || 'N/A',
+      'KS Statistic': result.fitStatistics?.ksStatistic?.toFixed(4) || 'N/A',
+      'KS P-Value': result.fitStatistics?.ksPValue?.toFixed(4) || 'N/A',
+      Mean: result.fitStatistics?.mean?.toFixed(4) || 'N/A',
+      Variance: result.fitStatistics?.variance?.toFixed(4) || 'N/A',
+    }));
+  }, [sortedResults]);
+
+  const spreadViewColumns = [
+    { name: 'Distribution', type: 'string' },
+    { name: 'AIC', type: 'number' },
+    { name: 'BIC', type: 'number' },
+    { name: 'Log Likelihood', type: 'number' },
+    { name: 'KS Statistic', type: 'number' },
+    { name: 'KS P-Value', type: 'number' },
+    { name: 'Mean', type: 'number' },
+    { name: 'Variance', type: 'number' },
+  ];
 
   return (
     <div 
@@ -79,12 +159,110 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
       >
         <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-xl font-bold text-gray-800">Severity Model: {module.name}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <XCircleIcon className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSpreadView(true)}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              Spread View
+            </button>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+              <XCircleIcon className="w-6 h-6" />
+            </button>
+          </div>
         </header>
         <main className="flex-grow p-6 overflow-auto">
           <div className="space-y-6">
+            {/* Data Statistics */}
+            {statistics && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Data Statistics (데이터 통계)</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Count</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.count}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Mean</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.mean.toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Std Dev</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.stdDev.toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Skewness</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.skewness.toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Kurtosis</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.kurtosis.toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Min</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.min.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">25th Percentile</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.percentile25.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">50th Percentile (Median)</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.percentile50.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">75th Percentile</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.percentile75.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">90th Percentile</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.percentile90.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">95th Percentile</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.percentile95.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">99th Percentile</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.percentile99.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-gray-500 mb-1">Max</span>
+                    <span className="font-mono text-sm text-gray-800 font-semibold">
+                      {statistics.max.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Distribution Comparison Table */}
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Distribution Comparison</h3>

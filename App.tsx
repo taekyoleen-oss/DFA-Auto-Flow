@@ -165,7 +165,7 @@ const App: React.FC = () => {
   const [connections, _setConnections] = useState<Connection[]>([]);
   const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>([]);
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
-  const [projectName, setProjectName] = useState("Data Analysis");
+  const [projectName, setProjectName] = useState("Claim Analysis");
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
 
   const [scale, setScale] = useState(0.8);
@@ -3181,12 +3181,21 @@ ${header}
 
           const actualData = inputData;
 
+          // severityData는 보험금 컬럼만 포함하므로, 첫 번째 숫자 컬럼을 자동으로 사용
+          const amountColumns = actualData.columns?.filter(col => col.type === "number").map(col => col.name) || [];
+          const autoAmountColumn = amountColumns[0] || "amount";
+          
           const {
-            amount_column = "클레임 금액",
+            amount_column = autoAmountColumn,
             selected_severity_types = ["Lognormal", "Exponential", "Gamma", "Pareto"],
           } = module.parameters;
 
-          addLog("INFO", `심도 모델 적합 중: ${selected_severity_types.join(", ")}`);
+          // 최종적으로 사용할 amount_column 결정 (파라미터에 설정된 값이 실제 데이터에 있으면 사용, 없으면 자동 감지)
+          const finalAmountColumn = actualData.columns?.some(col => col.name === amount_column) 
+            ? amount_column 
+            : autoAmountColumn;
+
+          addLog("INFO", `심도 모델 적합 중: ${selected_severity_types.join(", ")} (Amount Column: ${finalAmountColumn})`);
 
           try {
             const pyodideModule = await import("./utils/pyodideRunner");
@@ -3194,10 +3203,18 @@ ${header}
 
             const result = await fitSeverityModelPython(
               actualData.rows || [],
-              amount_column,
+              finalAmountColumn,
               selected_severity_types,
               120000
             );
+
+            // 원본 보험금 데이터 추출 (통계 계산용)
+            const originalAmounts = (actualData.rows || [])
+              .map(row => {
+                const val = row[finalAmountColumn];
+                return typeof val === 'number' ? val : parseFloat(String(val || 0));
+              })
+              .filter(val => !isNaN(val) && val > 0);
 
             // AIC 기준으로 정렬하여 추천 분포 선택
             const successfulResults = result.results.filter((r: any) => !r.error);
@@ -3211,6 +3228,7 @@ ${header}
               type: "SeverityModelOutput",
               results: result.results,
               selectedDistribution: recommended?.distributionType as "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull" | undefined,
+              originalData: originalAmounts,
             } as SeverityModelOutput;
 
             addLog("SUCCESS", `심도 모델 적합 완료 (${successfulResults.length}개 분포, 추천: ${recommended?.distributionType || "없음"})`);
@@ -3458,9 +3476,9 @@ ${header}
               >) || {};
           
           // Check if selections object has any entries (configured by user)
-          const isConfigured = Object.keys(selections).length > 0;
+            const isConfigured = Object.keys(selections).length > 0;
 
-          const newColumns: ColumnInfo[] = [];
+            const newColumns: ColumnInfo[] = [];
           
           // If configured, use selections (default is true if not specified)
           if (isConfigured) {
@@ -3520,7 +3538,7 @@ ${header}
                 let newValue = originalValue;
                 
                 if (originalValue === null || originalValue === undefined) {
-                  newValue = null;
+                    newValue = null;
                 }
                 // For all other cases, preserve the original value as-is without conversion
                 // This ensures number columns remain numbers and string columns remain strings

@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { CanvasModule, ColumnInfo, DataPreview, ModuleType } from '../types';
-import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon } from './icons';
+import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
 // import { calculatePCAForScoreVisualization } from '../utils/pyodideRunner'; // Python 기반 (주석 처리)
 import { calculatePCA } from '../utils/pcaCalculator'; // JavaScript 기반 (ml-pca 사용)
 import { DataTable } from './SplitDataPreviewModal';
+import { SpreadViewModal } from './SpreadViewModal';
 
 interface DataPreviewModalProps {
     module: CanvasModule;
@@ -708,6 +709,21 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     
     const [activeThresholdTab, setActiveThresholdTab] = useState<'below' | 'above'>('below');
     const [activeTab, setActiveTab] = useState<'table' | 'visualization'>('table');
+    const [showSpreadView, setShowSpreadView] = useState(false);
+    
+    // Spread View용 데이터 계산 (thresholdOutput이 있는 경우)
+    const spreadViewData = useMemo(() => {
+        if (!showSpreadView || !thresholdOutput) return null;
+        const belowData = thresholdOutput.belowThreshold;
+        const aboveData = thresholdOutput.aboveThreshold;
+        const currentData = activeThresholdTab === 'below' ? belowData : aboveData;
+        if (!currentData || !currentData.rows || currentData.rows.length === 0) return null;
+        return {
+            data: currentData.rows,
+            columns: currentData.columns,
+            title: `Spread View: ${module.name} (${activeThresholdTab === 'below' ? 'Below' : 'Above'} Threshold)`
+        };
+    }, [showSpreadView, activeThresholdTab, thresholdOutput, module.name]);
     
     // 안전한 데이터 가져오기
     const getPreviewData = (): DataPreview | null => {
@@ -1151,6 +1167,19 @@ const PCAScoreVisualization: React.FC<{
                                 onClick={() => {
                                     const currentData = activeThresholdTab === 'below' ? belowData : aboveData;
                                     if (!currentData || !currentData.rows || currentData.rows.length === 0) return;
+                                    setShowSpreadView(true);
+                                }}
+                                className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                                </svg>
+                                Spread View
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const currentData = activeThresholdTab === 'below' ? belowData : aboveData;
+                                    if (!currentData || !currentData.rows || currentData.rows.length === 0) return;
                                     const csvContent = [
                                         currentData.columns.map(c => c.name).join(','),
                                         ...currentData.rows.map(row => 
@@ -1164,7 +1193,9 @@ const PCAScoreVisualization: React.FC<{
                                             }).join(',')
                                         )
                                     ].join('\n');
-                                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                    // BOM 추가하여 한글 인코딩 문제 해결
+                                    const bom = '\uFEFF';
+                                    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
                                     const link = document.createElement('a');
                                     link.href = URL.createObjectURL(blob);
                                     link.download = `${module.name}_${activeThresholdTab === 'below' ? 'below_threshold' : 'above_threshold'}.csv`;
@@ -1276,8 +1307,16 @@ const PCAScoreVisualization: React.FC<{
                         )}
                     </main>
                 </div>
+                {spreadViewData && (
+                    <SpreadViewModal
+                        onClose={() => setShowSpreadView(false)}
+                        data={spreadViewData.data}
+                        columns={spreadViewData.columns}
+                        title={spreadViewData.title}
+                    />
+                )}
             </div>
-        );
+    );
     }
 
     if (!data) {
@@ -1307,6 +1346,15 @@ const PCAScoreVisualization: React.FC<{
                     <h2 className="text-xl font-bold text-gray-800">Data Preview: {module.name}</h2>
                     <div className="flex items-center gap-2">
                         <button
+                            onClick={() => setShowSpreadView(true)}
+                            className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                            </svg>
+                            Spread View
+                        </button>
+                        <button
                             onClick={() => {
                                 const csvContent = [
                                     columns.map(c => c.name).join(','),
@@ -1321,18 +1369,18 @@ const PCAScoreVisualization: React.FC<{
                                         }).join(',')
                                     )
                                 ].join('\n');
-                                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                                // BOM 추가하여 한글 인코딩 문제 해결
+                                const bom = '\uFEFF';
+                                const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
                                 const link = document.createElement('a');
                                 link.href = URL.createObjectURL(blob);
                                 link.download = `${module.name}_data.csv`;
                                 link.click();
                             }}
-                            className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                            className="text-gray-500 hover:text-gray-800 p-1 rounded hover:bg-gray-100"
+                            title="Download CSV"
                         >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download CSV
+                            <ArrowDownTrayIcon className="w-6 h-6" />
                         </button>
                     <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
                         <XCircleIcon className="w-6 h-6" />
@@ -1637,6 +1685,14 @@ const PCAScoreVisualization: React.FC<{
                     )}
                 </main>
             </div>
+            {showSpreadView && (
+                <SpreadViewModal
+                    onClose={() => setShowSpreadView(false)}
+                    data={rows}
+                    columns={columns}
+                    title={`Spread View: ${module.name}`}
+                />
+            )}
         </div>
     );
 };

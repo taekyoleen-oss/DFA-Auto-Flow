@@ -83,7 +83,7 @@ export const TOOLBOX_MODULES = [
       "Applies pre-trained handlers (e.g., for missing values, encoding) to a dataset.",
   },
 
-  // Data Analysis
+  // Claim Analysis
   {
     type: ModuleType.SplitData,
     name: "Split Data",

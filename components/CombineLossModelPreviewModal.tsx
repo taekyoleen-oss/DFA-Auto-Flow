@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import { CanvasModule } from "../types";
 import { CombineLossModelOutput } from "../types";
-import { XMarkIcon } from "./icons";
+import { XMarkIcon, ArrowDownTrayIcon } from "./icons";
 import { useCopyOnCtrlC } from "../hooks/useCopyOnCtrlC";
+import { SpreadViewModal } from "./SpreadViewModal";
 
 interface CombineLossModelPreviewModalProps {
   module: CanvasModule;
@@ -19,7 +20,54 @@ export const CombineLossModelPreviewModal: React.FC<
     return null;
   }
 
-  const { combinedStatistics, var: varData, tvar, percentiles, aggregateLossDistribution } = outputData;
+  const { combinedStatistics, var: varData, tvar, percentiles, aggregateLossDistribution, aggDistPercentiles, freqServPercentiles } = outputData;
+  const [showSpreadView, setShowSpreadView] = useState(false);
+
+  // Spread View용 데이터 변환
+  const spreadViewData = useMemo(() => {
+    const data: Array<Record<string, any>> = [];
+    
+    // Combined Percentiles
+    if (percentiles) {
+      Object.entries(percentiles).forEach(([level, value]) => {
+        data.push({
+          type: 'Combined',
+          percentile: `${level}%`,
+          value: value,
+        });
+      });
+    }
+    
+    // Aggregate Distribution Percentiles
+    if (aggDistPercentiles) {
+      Object.entries(aggDistPercentiles).forEach(([level, value]) => {
+        data.push({
+          type: 'Agg Dist',
+          percentile: `${level}%`,
+          value: value,
+        });
+      });
+    }
+    
+    // Frequency-Severity Percentiles
+    if (freqServPercentiles) {
+      Object.entries(freqServPercentiles).forEach(([level, value]) => {
+        data.push({
+          type: 'Freq-Serv',
+          percentile: `${level}%`,
+          value: value,
+        });
+      });
+    }
+    
+    return data;
+  }, [percentiles, aggDistPercentiles, freqServPercentiles]);
+
+  const spreadViewColumns = [
+    { name: 'type', type: 'string' },
+    { name: 'percentile', type: 'string' },
+    { name: 'value', type: 'number' },
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -28,12 +76,23 @@ export const CombineLossModelPreviewModal: React.FC<
           <h2 className="text-xl font-bold text-white">
             {module.name} - Combined Loss Model Results
           </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
-          >
-            <XMarkIcon className="h-6 w-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSpreadView(true)}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+              </svg>
+              Spread View
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-white transition-colors"
+            >
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
         </div>
 
         <div
@@ -274,6 +333,14 @@ export const CombineLossModelPreviewModal: React.FC<
           )}
         </div>
       </div>
+      {showSpreadView && spreadViewData.length > 0 && (
+        <SpreadViewModal
+          onClose={() => setShowSpreadView(false)}
+          data={spreadViewData}
+          columns={spreadViewColumns}
+          title={`Spread View: ${module.name} - Combined Loss Model`}
+        />
+      )}
     </div>
   );
 };

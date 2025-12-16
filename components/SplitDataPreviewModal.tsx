@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { CanvasModule, SplitDataOutput, DataPreview } from '../types';
-import { XCircleIcon, SparklesIcon } from './icons';
+import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { SpreadViewModal } from './SpreadViewModal';
 
 type SortConfig = {
     key: string;
@@ -281,9 +282,22 @@ export const DataTable: React.FC<{ title: string; data: DataPreview }> = ({ titl
 export const SplitDataPreviewModal: React.FC<{ module: CanvasModule; onClose: () => void; }> = ({ module, onClose }) => {
     const [isInterpreting, setIsInterpreting] = useState(false);
     const [aiInterpretation, setAiInterpretation] = useState<string | null>(null);
+    const [showSpreadView, setShowSpreadView] = useState(false);
+    const [spreadViewTab, setSpreadViewTab] = useState<'train' | 'test'>('train');
 
     const output = module.outputData as SplitDataOutput;
     if (!output || output.type !== 'SplitDataOutput') return null;
+
+    // Spread View용 데이터 변환
+    const spreadViewData = useMemo(() => {
+        const currentData = spreadViewTab === 'train' ? output.train : output.test;
+        return currentData.rows || [];
+    }, [output, spreadViewTab]);
+
+    const spreadViewColumns = useMemo(() => {
+        const currentData = spreadViewTab === 'train' ? output.train : output.test;
+        return currentData.columns || [];
+    }, [output, spreadViewTab]);
 
     const handleInterpret = async () => {
         setIsInterpreting(true);
@@ -314,9 +328,35 @@ You are an ML educator. Please explain the following concepts in Korean, each in
             <div className="bg-white text-gray-900 rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                     <h2 className="text-xl font-bold text-gray-800">Data Split Preview: {module.name}</h2>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-                        <XCircleIcon className="w-6 h-6" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                setSpreadViewTab('train');
+                                setShowSpreadView(true);
+                            }}
+                            className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                            </svg>
+                            Spread View (Train)
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSpreadViewTab('test');
+                                setShowSpreadView(true);
+                            }}
+                            className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-1"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                            </svg>
+                            Spread View (Test)
+                        </button>
+                        <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+                            <XCircleIcon className="w-6 h-6" />
+                        </button>
+                    </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-6">
                      <div className="flex justify-end font-sans">
@@ -346,6 +386,14 @@ You are an ML educator. Please explain the following concepts in Korean, each in
                     </div>
                 </main>
             </div>
+            {showSpreadView && spreadViewData.length > 0 && (
+                <SpreadViewModal
+                    onClose={() => setShowSpreadView(false)}
+                    data={spreadViewData}
+                    columns={spreadViewColumns}
+                    title={`Spread View: ${module.name} - ${spreadViewTab === 'train' ? 'Train' : 'Test'} Data`}
+                />
+            )}
         </div>
     );
 };

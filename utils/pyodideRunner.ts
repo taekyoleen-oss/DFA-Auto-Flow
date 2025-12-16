@@ -5861,15 +5861,12 @@ try:
         {"name": "count", "type": "number"}
     ]
     
-    # 2. 심도 데이터: 개별 클레임 금액 (원본 데이터 유지)
-    severity_df = df.copy()
-    if 'year' in severity_df.columns:
-        severity_df = severity_df.drop(columns=['year'])
+    # 2. 심도 데이터: 보험금(amount_column)만 포함
+    severity_df = pd.DataFrame({amount_column: df[amount_column]})
     
-    severity_columns = []
-    for col in severity_df.columns:
-        col_type = "number" if pd.api.types.is_numeric_dtype(severity_df[col]) else "string"
-        severity_columns.append({"name": col, "type": col_type})
+    severity_columns = [
+        {"name": amount_column, "type": "number"}
+    ]
     
     # 3. 연도별 심도 통계: 연도별 총액, 건수, 평균
     if use_year:
