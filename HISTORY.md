@@ -1,5 +1,48 @@
 # Change History
 
+## 2025-01-16 09:00:00
+
+### feat(xol): Add XoL Pricing module and improve XOL Calculator UI
+
+**Description:**
+- XoL Pricing 모듈 추가
+  - XoL Pricing 카테고리에 새로운 모듈 추가
+  - XOL Calculator의 출력 데이터를 입력으로 받아 Net Premium 및 Gross Premium 계산
+  - Expense Rate 파라미터 지원 (기본값: 0.2)
+  - View Details에 입력값, 계산 수식, 계산 결과 표시
+- XOL Calculator View Details 개선
+  - '연도별 XoL 적용' 탭 레이아웃 재설계: 테이블 상단, 통계 및 그래프 하단
+  - 통계 정보 섹션 추가: XoL Claim 평균, 표준편차, XoL Premium Rate 평균, Reluctance Factor
+  - XoL Premium Rate 컬럼 계산 로직 추가
+  - 탭 이름 변경: '사고별 XoL 적용', '연도별 XoL 적용'
+- XoL Contract 모듈에서 Expense Ratio를 Reluctance Factor로 이름 변경
+- 사용하지 않는 모듈 제거: XoL Loading, Calculate Ceded Loss, Price XoL Contract
+
+**Files Affected:**
+- `types.ts` - ModuleType.XolPricing 및 XolPricingOutput 타입 추가
+- `constants.ts` - XoL Pricing 모듈 정의 추가
+- `components/Toolbox.tsx` - XoL Pricing 모듈 추가
+- `components/PropertiesPanel.tsx` - XoL Pricing 속성 패널 추가, Expense Ratio → Reluctance Factor 이름 변경
+- `App.tsx` - XoL Pricing 모듈 실행 로직 추가, 모달 닫기 기능 수정
+- `components/DataPreviewModal.tsx` - XOL Calculator View Details 레이아웃 개선, XoL Premium Rate 계산 추가
+- `components/XolPricingPreviewModal.tsx` - 새로 생성, View Details 모달 구현
+
+**Reason:**
+- 사용자 요청에 따라 XoL Pricing 모듈 추가 및 XOL Calculator UI 개선
+- XoL Premium Rate 계산 기능 추가로 더 정확한 프리미엄 계산 지원
+
+**Commit Hash:** c959f76ca21ec5f06c9f1a9fb8c387e0587d0b2d
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard c959f76ca21ec5f06c9f1a9fb8c387e0587d0b2d
+
+# Or direct recovery
+git reset --hard c959f76ca21ec5f06c9f1a9fb8c387e0587d0b2d
+```
+
 ## 2025-01-16 08:10:00
 
 ### fix(config): Ensure XoL Contract default values apply to initial screen models
