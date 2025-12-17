@@ -21,16 +21,16 @@
 - 사용자 요청에 따라 초기화면의 모델에도 변경된 기본값이 적용되도록 보장
 - localStorage에 저장된 이전 값이 있어도 최신 기본값이 적용되도록 함
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** c9082c251c79f3966136e044e126341d703b6391
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard c9082c251c79f3966136e044e126341d703b6391
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard c9082c251c79f3966136e044e126341d703b6391
 ```
 
 ## 2025-01-16 08:00:00
@@ -50,16 +50,16 @@ git reset --hard <커밋해시>
 **Reason:**
 - 사용자 요청에 따라 XoL Contract 모듈의 기본값을 변경하여 더 적절한 초기값 제공
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** c9082c251c79f3966136e044e126341d703b6391
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard c9082c251c79f3966136e044e126341d703b6391
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard c9082c251c79f3966136e044e126341d703b6391
 ```
 
 ## 2025-01-16 07:30:00
