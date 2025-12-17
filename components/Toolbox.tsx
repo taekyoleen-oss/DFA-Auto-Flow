@@ -72,12 +72,10 @@ const reinsuranceTypes = [
 ];
 
 const xolPricingTypes = [
-  ModuleType.XolLoading,
   ModuleType.ApplyThreshold,
   ModuleType.DefineXolContract,
-  ModuleType.CalculateCededLoss,
-  ModuleType.PriceXolContract,
   ModuleType.XolCalculator,
+  ModuleType.XolPricing,
 ];
 
 const dfaTypes = [

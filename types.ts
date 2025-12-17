@@ -58,6 +58,7 @@ export enum ModuleType {
   CalculateCededLoss = "CalculateCededLoss",
   PriceXolContract = "PriceXolContract",
   XolCalculator = "XolCalculator",
+  XolPricing = "XolPricing",
   ExperienceModel = "ExperienceModel",
 
   // DFA Modules
@@ -352,6 +353,17 @@ export interface FinalXolPriceOutput {
   finalPremium: number;
 }
 
+export interface XolPricingOutput {
+  type: "XolPricingOutput";
+  xolClaimMean: number;
+  xolClaimStdDev: number;
+  xolPremiumRateMean: number;
+  reluctanceFactor: number;
+  expenseRate: number;
+  netPremium: number;
+  grossPremium: number;
+}
+
 export interface MissingHandlerOutput {
   type: "MissingHandlerOutput";
   method: "remove_row" | "impute" | "knn";
@@ -618,6 +630,7 @@ export interface CanvasModule {
     | XoLPriceOutput
     | XolContractOutput
     | FinalXolPriceOutput
+    | XolPricingOutput
     | EvaluationOutput
     | DiversionCheckerOutput
     | EvaluateStatOutput

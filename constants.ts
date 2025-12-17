@@ -312,6 +312,12 @@ export const TOOLBOX_MODULES = [
     description: "Calculates XoL results using contract terms and claim data.",
   },
   {
+    type: ModuleType.XolPricing,
+    name: "XoL Pricing",
+    icon: PriceTagIcon,
+    description: "Calculates XoL pricing based on XOL Calculator results.",
+  },
+  {
     type: ModuleType.ExperienceModel,
     name: "Experience Model",
     icon: BeakerIcon,
@@ -827,6 +833,17 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         { name: "data_in", type: "data" },
       ],
       outputs: [{ name: "data_out", type: "data" }],
+    },
+    {
+      type: ModuleType.XolPricing,
+      status: ModuleStatus.Pending,
+      parameters: {
+        expenseRate: 0.2,
+      },
+      inputs: [
+        { name: "data_in", type: "data" },
+      ],
+      outputs: [{ name: "pricing_out", type: "evaluation" }],
     },
     {
       type: ModuleType.ExperienceModel,

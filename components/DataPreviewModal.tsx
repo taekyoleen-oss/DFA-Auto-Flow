@@ -859,18 +859,63 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
                     }
                     
                     // XoL Claim(Incl. Agg/Reinst) 계산
+                    let xolClaimAggReinst = 0;
                     if (contract && xolLimitColumnName) {
                         const maxValue = contract.limit * (contract.reinstatements + 1) + contract.aggDeductible;
-                        const xolClaimAggReinst = totals.xolLimit >= maxValue 
+                        xolClaimAggReinst = totals.xolLimit >= maxValue 
                             ? maxValue 
                             : totals.xolLimit;
                         row['XoL Claim(Incl. Agg/Reinst)'] = xolClaimAggReinst;
                     }
                     
+                    // XoL Premium Rate 계산
+                    if (contract && xolClaimAggReinst > 0) {
+                        // 1. Agg Deductible 제외
+                        const afterAggDed = xolClaimAggReinst - contract.aggDeductible;
+                        
+                        if (afterAggDed > 0 && contract.limit > 0) {
+                            // 2. Limit로 나누기 (몇 개의 limit로 나뉘는지)
+                            const limitCount = afterAggDed / contract.limit;
+                            
+                            // 3. 각 limit 단위에 대한 복원 비율 계산
+                            let totalReinstatementRate = 0;
+                            const fullLimitCount = Math.floor(limitCount);
+                            const partialLimit = limitCount - fullLimitCount; // 마지막 부분 limit
+                            
+                            // 전체 limit 단위들에 대한 복원 비율
+                            // 각 limit 단위는 1차, 2차, 3차... 복원에 해당
+                            for (let i = 0; i < fullLimitCount; i++) {
+                                if (i < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[i] !== undefined) {
+                                    // 각 limit 단위를 limit로 나눈 값(1)에 복원 비율을 곱함
+                                    // 복원 비율은 백분율이므로 100으로 나눔
+                                    totalReinstatementRate += 1 * (contract.reinstatementPremiums[i] / 100);
+                                }
+                                // 복원 횟수를 초과하면 0 (복원 안됨)
+                            }
+                            
+                            // 부분 limit에 대한 복원 비율 (마지막 limit)
+                            if (partialLimit > 0) {
+                                const reinstatementIndex = fullLimitCount; // 부분 limit의 복원 차수
+                                if (reinstatementIndex < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[reinstatementIndex] !== undefined) {
+                                    // 부분 limit을 limit로 나눈 값(partialLimit)에 복원 비율을 곱함
+                                    totalReinstatementRate += partialLimit * (contract.reinstatementPremiums[reinstatementIndex] / 100);
+                                }
+                                // 복원 횟수를 초과하면 0 (복원 안됨)
+                            }
+                            
+                            // 4. 최초 보험료 비율 1에 모든 복원 비율을 더함
+                            const xolPremiumRate = 1 + totalReinstatementRate;
+                            row['XoL Premium Rate'] = xolPremiumRate;
+                        } else {
+                            // Agg Deductible을 빼면 0 이하인 경우
+                            row['XoL Premium Rate'] = 1;
+                        }
+                    }
+                    
                     return row;
                 });
             
-            // 컬럼 정의: 연도, 클레임 금액_infl, XoL Claim(Incl. Limit), XoL Claim(Incl. Agg/Reinst)
+            // 컬럼 정의: 연도, 클레임 금액_infl, XoL Claim(Incl. Limit), XoL Claim(Incl. Agg/Reinst), XoL Premium Rate
             const aggregatedColumns = [
                 { name: yearColumnName, type: yearColumn.type }
             ];
@@ -882,6 +927,7 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
             }
             if (contract) {
                 aggregatedColumns.push({ name: 'XoL Claim(Incl. Agg/Reinst)', type: 'number' });
+                aggregatedColumns.push({ name: 'XoL Premium Rate', type: 'number' });
             }
             
             return {
@@ -1673,7 +1719,7 @@ const PCAScoreVisualization: React.FC<{
                                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
                                 >
-                                    XoL Claim(Incl. Limit)
+                                    사고별 XoL 적용
                                 </button>
                                 <button
                                     onClick={() => setActiveXolTab('aggreinst')}
@@ -1683,7 +1729,7 @@ const PCAScoreVisualization: React.FC<{
                                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                                     } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
                                 >
-                                    XoL Claim(Incl. Agg/Reinst)
+                                    연도별 XoL 적용
                                 </button>
                             </nav>
                         </div>
@@ -1738,124 +1784,381 @@ const PCAScoreVisualization: React.FC<{
                             )}
                             {xolData && (
                                 <>
-                                    <div className="flex justify-between items-center flex-shrink-0">
-                                        <div className="text-xs text-gray-600">
-                                            Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.
-                                        </div>
-                                    </div>
-                                    {/* 왼쪽 테이블 + 오른쪽 통계량 */}
-                                    <div className="flex gap-4 flex-shrink-0">
-                                        {/* 왼쪽: 테이블 */}
-                                        <div className={`overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg ${selectedColumn ? 'w-1/2' : 'w-full'}`}>
-                                            <table className="min-w-full text-xs text-left" style={{ minWidth: 'max-content' }}>
-                                                <thead className="bg-gray-50 sticky top-0">
-                                                    <tr>
-                                                        {xolData.columns.map(col => (
-                                                            <th 
-                                                                key={col.name} 
-                                                                className="py-1 px-2 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
-                                                                onClick={() => setSelectedColumn(col.name)}
-                                                            >
-                                                                <span className="truncate" title={col.name}>{col.name}</span>
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {(xolData.rows || []).slice(0, 1000).map((row, rowIndex) => (
-                                                        <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                            {xolData.columns.map(col => {
-                                                                const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
-                                                                const isNumeric = col.type === 'number' && !isYearColumn;
-                                                                const value = row[col.name];
-                                                                
-                                                                let displayValue: string;
-                                                                if (value === null || value === undefined || value === '') {
-                                                                    displayValue = '';
-                                                                } else if (isNumeric) {
-                                                                    const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                                                                    if (!isNaN(numValue)) {
-                                                                        displayValue = numValue.toLocaleString('ko-KR', { 
-                                                                            maximumFractionDigits: 2,
-                                                                            minimumFractionDigits: 0
-                                                                        });
+                                    {/* XoL Claim(Incl. Agg/Reinst) 탭의 경우 특별한 레이아웃 */}
+                                    {activeXolTab === 'aggreinst' ? (
+                                        <>
+                                            <div className="flex justify-between items-center flex-shrink-0">
+                                                <div className="text-xs text-gray-600">
+                                                    Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.
+                                                </div>
+                                            </div>
+                                            
+                                            {/* 1. 테이블: 전체 너비, 맨 위 */}
+                                            <div className="overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg flex-shrink-0">
+                                                <table className="min-w-full text-xs text-left" style={{ minWidth: 'max-content' }}>
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            {xolData.columns.map(col => (
+                                                                <th 
+                                                                    key={col.name} 
+                                                                    className="py-1 px-2 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
+                                                                    onClick={() => setSelectedColumn(col.name)}
+                                                                >
+                                                                    <span className="truncate" title={col.name}>{col.name}</span>
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {(xolData.rows || []).slice(0, 1000).map((row, rowIndex) => (
+                                                            <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
+                                                                {xolData.columns.map(col => {
+                                                                    const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                                    const isNumeric = col.type === 'number' && !isYearColumn;
+                                                                    const value = row[col.name];
+                                                                    
+                                                                    let displayValue: string;
+                                                                    if (value === null || value === undefined || value === '') {
+                                                                        displayValue = '';
+                                                                    } else if (isNumeric) {
+                                                                        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                                        if (!isNaN(numValue)) {
+                                                                            displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                                maximumFractionDigits: 2,
+                                                                                minimumFractionDigits: 0
+                                                                            });
+                                                                        } else {
+                                                                            displayValue = String(value);
+                                                                        }
                                                                     } else {
                                                                         displayValue = String(value);
                                                                     }
-                                                                } else {
-                                                                    displayValue = String(value);
-                                                                }
-                                                                
-                                                                return (
-                                                                    <td 
-                                                                        key={col.name} 
-                                                                        className={`py-1 px-2 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
-                                                                        onClick={() => setSelectedColumn(col.name)}
-                                                                        title={String(row[col.name])}
-                                                                    >
-                                                                        {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                        
-                                        {/* 오른쪽: 선택된 열 통계량 */}
-                                        {selectedColumn && (
-                                            <div className="w-1/2 flex-shrink-0">
-                                                <div className="h-full border border-gray-200 rounded-lg p-4 overflow-auto">
-                                                    <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
-                                                </div>
+                                                                    
+                                                                    return (
+                                                                        <td 
+                                                                            key={col.name} 
+                                                                            className={`py-1 px-2 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
+                                                                            onClick={() => setSelectedColumn(col.name)}
+                                                                            title={String(row[col.name])}
+                                                                        >
+                                                                            {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                             </div>
-                                        )}
-                                    </div>
-                                    
-                                    {/* 아래: 연도별 막대그래프 (XoL Claim(Incl. Agg/Reinst) 탭인 경우) */}
-                                    {activeXolTab === 'aggreinst' && xolData && xolData.rows && xolData.rows.length > 0 && (() => {
-                                        // 연도 컬럼 찾기
-                                        const yearColumn = xolData.columns.find(col => 
-                                            col.name === '연도' || 
-                                            col.name === 'year' || 
-                                            col.name.toLowerCase() === 'year'
-                                        );
-                                        
-                                        // 숫자형 컬럼들 찾기 (연도 제외)
-                                        const numericColumns = xolData.columns.filter(col => 
-                                            col.type === 'number' && 
-                                            col.name !== yearColumn?.name &&
-                                            col.name !== '연도' && 
-                                            col.name !== 'year'
-                                        );
-                                        
-                                        if (!yearColumn || numericColumns.length === 0) {
-                                            return null;
-                                        }
-                                        
-                                        return (
-                                            <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4">
-                                                <h3 className="text-sm font-semibold text-gray-800 mb-4">
-                                                    Yearly Bar Chart
-                                                </h3>
-                                                <div className="space-y-6">
-                                                    {numericColumns.map((col) => (
-                                                        <div key={col.name}>
-                                                            <h4 className="text-xs font-semibold text-gray-700 mb-2">{col.name}</h4>
-                                                            <div className="h-64">
-                                                                <YearlyAmountBarPlot 
-                                                                    rows={xolData.rows || []} 
-                                                                    yearColumn={yearColumn.name} 
-                                                                    amountColumn={col.name} 
-                                                                />
+                                            
+                                            {/* 통계 정보: 테이블 아래 */}
+                                            {(() => {
+                                                // XoL Contract 정보 가져오기
+                                                const contractConnection = allConnections.find(
+                                                    (c) => c.to.moduleId === module.id && c.to.portName === 'contract_in'
+                                                );
+                                                const contractModule = contractConnection 
+                                                    ? allModules.find((m) => m.id === contractConnection.from.moduleId)
+                                                    : null;
+                                                const contract = contractModule?.outputData?.type === 'XolContractOutput' 
+                                                    ? contractModule.outputData as any
+                                                    : null;
+                                                
+                                                // XoL Claim(Incl. Agg/Reinst) 컬럼 찾기
+                                                const xolClaimAggReinstColumn = xolData.columns.find(col => 
+                                                    col.name === 'XoL Claim(Incl. Agg/Reinst)'
+                                                );
+                                                
+                                                // XoL Premium Rate 컬럼 찾기
+                                                const xolPremiumRateColumn = xolData.columns.find(col => 
+                                                    col.name === 'XoL Premium Rate'
+                                                );
+                                                
+                                                // 평균과 표준편차 계산
+                                                let xolClaimMean = 0;
+                                                let xolClaimStdDev = 0;
+                                                let xolPremiumMean = 0;
+                                                
+                                                if (xolClaimAggReinstColumn && xolData.rows && xolData.rows.length > 0) {
+                                                    const values = xolData.rows
+                                                        .map(row => {
+                                                            const val = row[xolClaimAggReinstColumn.name];
+                                                            return val !== null && val !== undefined ? (typeof val === 'number' ? val : parseFloat(String(val))) : null;
+                                                        })
+                                                        .filter(v => v !== null && !isNaN(v)) as number[];
+                                                    
+                                                    if (values.length > 0) {
+                                                        // 평균 계산
+                                                        xolClaimMean = values.reduce((sum, v) => sum + v, 0) / values.length;
+                                                        
+                                                        // 표준편차 계산
+                                                        const variance = values.reduce((sum, v) => sum + Math.pow(v - xolClaimMean, 2), 0) / values.length;
+                                                        xolClaimStdDev = Math.sqrt(variance);
+                                                    }
+                                                }
+                                                
+                                                if (xolPremiumRateColumn && xolData.rows && xolData.rows.length > 0) {
+                                                    const values = xolData.rows
+                                                        .map(row => {
+                                                            const val = row[xolPremiumRateColumn.name];
+                                                            return val !== null && val !== undefined ? (typeof val === 'number' ? val : parseFloat(String(val))) : null;
+                                                        })
+                                                        .filter(v => v !== null && !isNaN(v)) as number[];
+                                                    
+                                                    if (values.length > 0) {
+                                                        // 평균 계산
+                                                        xolPremiumMean = values.reduce((sum, v) => sum + v, 0) / values.length;
+                                                    }
+                                                }
+                                                
+                                                // Reluctance Factor 값 가져오기
+                                                const reluctanceFactor = contract?.expenseRatio || 0;
+                                                
+                                                return (
+                                                    <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4">
+                                                        <div className="grid grid-cols-4 gap-4">
+                                                            {/* XoL Claim 평균 */}
+                                                            <div>
+                                                                <div className="text-sm font-semibold text-gray-800 mb-2">
+                                                                    XoL Claim 평균
+                                                                </div>
+                                                                <div className="text-lg font-mono text-gray-700">
+                                                                    {xolClaimMean.toLocaleString('ko-KR', { 
+                                                                        maximumFractionDigits: 2,
+                                                                        minimumFractionDigits: 2
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* XoL Claim 표준편차 */}
+                                                            <div>
+                                                                <div className="text-sm font-semibold text-gray-800 mb-2">
+                                                                    XoL Claim 표준편차
+                                                                </div>
+                                                                <div className="text-lg font-mono text-gray-700">
+                                                                    {xolClaimStdDev.toLocaleString('ko-KR', { 
+                                                                        maximumFractionDigits: 2,
+                                                                        minimumFractionDigits: 2
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* XoL Premium Rate 평균 */}
+                                                            <div>
+                                                                <div className="text-sm font-semibold text-gray-800 mb-2">
+                                                                    XoL Premium Rate 평균
+                                                                </div>
+                                                                <div className="text-lg font-mono text-gray-700">
+                                                                    {xolPremiumMean.toLocaleString('ko-KR', { 
+                                                                        maximumFractionDigits: 2,
+                                                                        minimumFractionDigits: 2
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Reluctance Factor */}
+                                                            <div>
+                                                                <div className="text-sm font-semibold text-gray-800 mb-2">
+                                                                    Reluctance Factor
+                                                                </div>
+                                                                <div className="text-lg font-mono text-gray-700">
+                                                                    {reluctanceFactor.toLocaleString('ko-KR', { 
+                                                                        maximumFractionDigits: 2,
+                                                                        minimumFractionDigits: 2
+                                                                    })}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                    </div>
+                                                );
+                                            })()}
+                                            
+                                            {/* 2. 통계량 + XoL Claim(Incl. Agg/Reinst) 그래프: 테이블 아래 */}
+                                            {(() => {
+                                                // 연도 컬럼 찾기
+                                                const yearColumn = xolData.columns.find(col => 
+                                                    col.name === '연도' || 
+                                                    col.name === 'year' || 
+                                                    col.name.toLowerCase() === 'year'
+                                                );
+                                                
+                                                // XoL Claim(Incl. Agg/Reinst) 컬럼 찾기
+                                                const xolClaimAggReinstColumn = xolData.columns.find(col => 
+                                                    col.name === 'XoL Claim(Incl. Agg/Reinst)'
+                                                );
+                                                
+                                                return (
+                                                    <div className="flex gap-4 flex-shrink-0">
+                                                        {/* 왼쪽: 통계량 */}
+                                                        {selectedColumn && (
+                                                            <div className="w-1/2 flex-shrink-0">
+                                                                <div className="h-full border border-gray-200 rounded-lg p-4 overflow-auto">
+                                                                    <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {/* 오른쪽: XoL Claim(Incl. Agg/Reinst) 그래프 */}
+                                                        {yearColumn && xolClaimAggReinstColumn && (
+                                                            <div className="w-1/2 flex-shrink-0">
+                                                                <div className="h-full border border-gray-200 rounded-lg p-4">
+                                                                    <h3 className="text-sm font-semibold text-gray-800 mb-4">
+                                                                        {xolClaimAggReinstColumn.name}
+                                                                    </h3>
+                                                                    <div className="h-64">
+                                                                        <YearlyAmountBarPlot 
+                                                                            rows={xolData.rows || []} 
+                                                                            yearColumn={yearColumn.name} 
+                                                                            amountColumn={xolClaimAggReinstColumn.name} 
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                            
+                                            {/* 3. 첫번째와 두번째 열 그래프: 맨 아래, 2열로 표시 */}
+                                            {(() => {
+                                                // 연도 컬럼 찾기
+                                                const yearColumn = xolData.columns.find(col => 
+                                                    col.name === '연도' || 
+                                                    col.name === 'year' || 
+                                                    col.name.toLowerCase() === 'year'
+                                                );
+                                                
+                                                // 첫번째와 두번째 숫자형 컬럼 찾기 (연도 제외)
+                                                const numericColumns = xolData.columns.filter(col => 
+                                                    col.type === 'number' && 
+                                                    col.name !== yearColumn?.name &&
+                                                    col.name !== '연도' && 
+                                                    col.name !== 'year'
+                                                );
+                                                
+                                                const firstNumericColumn = numericColumns[0]; // 클레임 금액_infl
+                                                const secondNumericColumn = numericColumns[1]; // XoL Claim(Incl. Limit)
+                                                
+                                                if (!yearColumn || (!firstNumericColumn && !secondNumericColumn)) {
+                                                    return null;
+                                                }
+                                                
+                                                return (
+                                                    <div className="grid grid-cols-2 gap-4 flex-shrink-0">
+                                                        {/* 첫번째 열 그래프 */}
+                                                        {firstNumericColumn && (
+                                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                                <h3 className="text-sm font-semibold text-gray-800 mb-4">
+                                                                    {firstNumericColumn.name}
+                                                                </h3>
+                                                                <div className="h-64">
+                                                                    <YearlyAmountBarPlot 
+                                                                        rows={xolData.rows || []} 
+                                                                        yearColumn={yearColumn.name} 
+                                                                        amountColumn={firstNumericColumn.name} 
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {/* 두번째 열 그래프 */}
+                                                        {secondNumericColumn && (
+                                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                                <h3 className="text-sm font-semibold text-gray-800 mb-4">
+                                                                    {secondNumericColumn.name}
+                                                                </h3>
+                                                                <div className="h-64">
+                                                                    <YearlyAmountBarPlot 
+                                                                        rows={xolData.rows || []} 
+                                                                        yearColumn={yearColumn.name} 
+                                                                        amountColumn={secondNumericColumn.name} 
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </>
+                                    ) : (
+                                        <>
+                                            {/* XoL Claim(Incl. Limit) 탭은 기존 레이아웃 유지 */}
+                                            <div className="flex justify-between items-center flex-shrink-0">
+                                                <div className="text-xs text-gray-600">
+                                                    Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.
                                                 </div>
                                             </div>
-                                        );
-                                    })()}
+                                            {/* 왼쪽 테이블 + 오른쪽 통계량 */}
+                                            <div className="flex gap-4 flex-shrink-0">
+                                                {/* 왼쪽: 테이블 */}
+                                                <div className={`overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg ${selectedColumn ? 'w-1/2' : 'w-full'}`}>
+                                                    <table className="min-w-full text-xs text-left" style={{ minWidth: 'max-content' }}>
+                                                        <thead className="bg-gray-50 sticky top-0">
+                                                            <tr>
+                                                                {xolData.columns.map(col => (
+                                                                    <th 
+                                                                        key={col.name} 
+                                                                        className="py-1 px-2 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
+                                                                        onClick={() => setSelectedColumn(col.name)}
+                                                                    >
+                                                                        <span className="truncate" title={col.name}>{col.name}</span>
+                                                                    </th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {(xolData.rows || []).slice(0, 1000).map((row, rowIndex) => (
+                                                                <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
+                                                                    {xolData.columns.map(col => {
+                                                                        const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                                        const isNumeric = col.type === 'number' && !isYearColumn;
+                                                                        const value = row[col.name];
+                                                                        
+                                                                        let displayValue: string;
+                                                                        if (value === null || value === undefined || value === '') {
+                                                                            displayValue = '';
+                                                                        } else if (isNumeric) {
+                                                                            const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                                            if (!isNaN(numValue)) {
+                                                                                displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                                    maximumFractionDigits: 2,
+                                                                                    minimumFractionDigits: 0
+                                                                                });
+                                                                            } else {
+                                                                                displayValue = String(value);
+                                                                            }
+                                                                        } else {
+                                                                            displayValue = String(value);
+                                                                        }
+                                                                        
+                                                                        return (
+                                                                            <td 
+                                                                                key={col.name} 
+                                                                                className={`py-1 px-2 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
+                                                                                onClick={() => setSelectedColumn(col.name)}
+                                                                                title={String(row[col.name])}
+                                                                            >
+                                                                                {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                                            </td>
+                                                                        );
+                                                                    })}
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                
+                                                {/* 오른쪽: 선택된 열 통계량 */}
+                                                {selectedColumn && (
+                                                    <div className="w-1/2 flex-shrink-0">
+                                                        <div className="h-full border border-gray-200 rounded-lg p-4 overflow-auto">
+                                                            <ColumnStatistics data={selectedColumnData} columnName={selectedColumn} isNumeric={isSelectedColNumeric} />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
                                     {/* 아래: 선택된 열 히스토그램 (XoL Claim(Incl. Limit) 탭인 경우) */}
                                     {activeXolTab === 'limit' && selectedColumn && isSelectedColNumeric && (
                                         <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4">

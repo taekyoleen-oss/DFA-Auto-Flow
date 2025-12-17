@@ -3479,7 +3479,7 @@ const renderParameters = (
             onChange={(v) => onParamChange("aggDeductible", v)}
           />
           <PropertyInput
-            label="Expense Ratio"
+            label="Reluctance Factor"
             value={expenseRatio || 0}
             type="number"
             step="0.01"
@@ -3515,6 +3515,21 @@ const renderParameters = (
           <p className="text-xs text-gray-500 mt-1">
             XoL 계산에 사용할 클레임 컬럼을 선택하세요.
           </p>
+        </div>
+      );
+    }
+    case ModuleType.XolPricing: {
+      const { expenseRate } = module.parameters;
+      
+      return (
+        <div>
+          <PropertyInput
+            label="Expense Rate"
+            value={expenseRate || 0.2}
+            type="number"
+            step="0.01"
+            onChange={(v) => onParamChange("expenseRate", v)}
+          />
         </div>
       );
     }

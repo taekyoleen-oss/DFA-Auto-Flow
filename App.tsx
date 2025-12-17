@@ -27,6 +27,7 @@ import {
   XoLPriceOutput,
   XolContractOutput,
   FinalXolPriceOutput,
+  XolPricingOutput,
   EvaluationOutput,
   KMeansOutput,
   HierarchicalClusteringOutput,
@@ -99,6 +100,7 @@ import { DiversionCheckerPreviewModal } from "./components/DiversionCheckerPrevi
 import { EvaluateStatPreviewModal } from "./components/EvaluateStatPreviewModal";
 import { XoLPricePreviewModal } from "./components/XoLPricePreviewModal";
 import { FinalXolPricePreviewModal } from "./components/FinalXolPricePreviewModal";
+import { XolPricingPreviewModal } from "./components/XolPricingPreviewModal";
 import { EvaluationPreviewModal } from "./components/EvaluationPreviewModal";
 import { AIPipelineFromGoalModal } from "./components/AIPipelineFromGoalModal";
 import { AIPipelineFromDataModal } from "./components/AIPipelineFromDataModal";
@@ -186,6 +188,8 @@ const App: React.FC = () => {
     null
   );
   const [viewingFinalXolPrice, setViewingFinalXolPrice] =
+    useState<CanvasModule | null>(null);
+  const [viewingXolPricing, setViewingXolPricing] =
     useState<CanvasModule | null>(null);
   const [viewingEvaluation, setViewingEvaluation] =
     useState<CanvasModule | null>(null);
@@ -2253,6 +2257,8 @@ ${header}
         setViewingXoLPrice(module);
       } else if (module.outputData.type === "FinalXolPriceOutput") {
         setViewingFinalXolPrice(module);
+      } else if (module.outputData.type === "XolPricingOutput") {
+        setViewingXolPricing(module);
       } else if (module.outputData.type === "EvaluationOutput") {
         setViewingEvaluation(module);
       } else if (module.outputData.type === "SimulateAggDistOutput") {
@@ -2275,6 +2281,7 @@ ${header}
     setViewingDataForModule(null);
     setViewingSplitDataForModule(null);
     setViewingTrainedModel(null);
+    setViewingXolPricing(null);
     setViewingStatsModelsResult(null);
     setViewingDiversionChecker(null);
     setViewingEvaluateStat(null);
@@ -7831,6 +7838,164 @@ ${header}
           }
 
           newOutputData = { ...inputData, columns: newColumns, rows: newRows };
+        } else if (module.type === ModuleType.XolPricing) {
+          // XOL Calculator의 출력 데이터를 받아서 통계 계산
+          const calculatorConnection = connections.find(
+            (c) => c.to.moduleId === module.id && c.to.portName === "data_in"
+          );
+          if (!calculatorConnection)
+            throw new Error("XOL Calculator input must be connected.");
+
+          const calculatorSource = currentModules.find(
+            (m) => m.id === calculatorConnection.from.moduleId
+          );
+          if (!calculatorSource || calculatorSource.outputData?.type !== "DataPreview")
+            throw new Error("XOL Calculator output is not valid.");
+
+          const calculatorData = calculatorSource.outputData;
+          const { expenseRate = 0.2 } = module.parameters;
+
+          // XOL Calculator의 contract 연결 찾기 (Reluctance Factor를 가져오기 위해)
+          const contractConnection = connections.find(
+            (c) => c.to.moduleId === calculatorSource.id && c.to.portName === "contract_in"
+          );
+          const contractModule = contractConnection 
+            ? currentModules.find((m) => m.id === contractConnection.from.moduleId)
+            : null;
+          const contract = contractModule?.outputData?.type === 'XolContractOutput' 
+            ? contractModule.outputData as any
+            : null;
+
+          // 연도 컬럼 찾기
+          const yearColumn = calculatorData.columns.find(col => 
+            col.name === '연도' || 
+            col.name === 'year' || 
+            col.name.toLowerCase() === 'year' ||
+            col.name.toLowerCase().includes('year')
+          );
+
+          // XoL Claim(Incl. Limit) 컬럼 찾기
+          const xolLimitColumn = calculatorData.columns.find(col => 
+            col.name === 'XoL Claim(Incl. Limit)'
+          );
+
+          // 통계 계산
+          let xolClaimMean = 0;
+          let xolClaimStdDev = 0;
+          let xolPremiumRateMean = 0;
+          const reluctanceFactor = contract?.expenseRatio || 0;
+
+          // 연도별 집계하여 XoL Claim(Incl. Agg/Reinst) 및 XoL Premium Rate 계산
+          if (yearColumn && contract && calculatorData.rows && calculatorData.rows.length > 0) {
+            const yearColumnName = yearColumn.name;
+            const xolLimitColumnName = xolLimitColumn?.name || null;
+
+            // 연도별 집계
+            const yearMap = new Map<number, { xolLimit: number }>();
+            
+            calculatorData.rows.forEach(row => {
+              const year = row[yearColumnName];
+              
+              if (year !== null && year !== undefined) {
+                const yearNum = typeof year === 'number' ? year : parseInt(String(year));
+                
+                if (!isNaN(yearNum)) {
+                  const current = yearMap.get(yearNum) || { xolLimit: 0 };
+                  
+                  // XoL Claim(Incl. Limit) 합계
+                  if (xolLimitColumnName) {
+                    const limitValue = row[xolLimitColumnName];
+                    if (limitValue !== null && limitValue !== undefined) {
+                      const limitNum = typeof limitValue === 'number' ? limitValue : parseFloat(String(limitValue));
+                      if (!isNaN(limitNum)) {
+                        current.xolLimit += limitNum;
+                      }
+                    }
+                  }
+                  
+                  yearMap.set(yearNum, current);
+                }
+              }
+            });
+
+            // 집계된 데이터로 통계 계산
+            const aggregatedData = Array.from(yearMap.entries())
+              .sort((a, b) => a[0] - b[0])
+              .map(([year, totals]) => {
+                // XoL Claim(Incl. Agg/Reinst) 계산
+                let xolClaimAggReinst = 0;
+                if (contract && xolLimitColumnName) {
+                  const maxValue = contract.limit * (contract.reinstatements + 1) + contract.aggDeductible;
+                  xolClaimAggReinst = totals.xolLimit >= maxValue 
+                    ? maxValue 
+                    : totals.xolLimit;
+                }
+
+                // XoL Premium Rate 계산
+                let xolPremiumRate = 1;
+                if (contract && xolClaimAggReinst > 0) {
+                  const afterAggDed = xolClaimAggReinst - contract.aggDeductible;
+                  
+                  if (afterAggDed > 0 && contract.limit > 0) {
+                    const limitCount = afterAggDed / contract.limit;
+                    let totalReinstatementRate = 0;
+                    const fullLimitCount = Math.floor(limitCount);
+                    const partialLimit = limitCount - fullLimitCount;
+                    
+                    for (let i = 0; i < fullLimitCount; i++) {
+                      if (i < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[i] !== undefined) {
+                        totalReinstatementRate += 1 * (contract.reinstatementPremiums[i] / 100);
+                      }
+                    }
+                    
+                    if (partialLimit > 0) {
+                      const reinstatementIndex = fullLimitCount;
+                      if (reinstatementIndex < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[reinstatementIndex] !== undefined) {
+                        totalReinstatementRate += partialLimit * (contract.reinstatementPremiums[reinstatementIndex] / 100);
+                      }
+                    }
+                    
+                    xolPremiumRate = 1 + totalReinstatementRate;
+                  }
+                }
+
+                return {
+                  xolClaimAggReinst,
+                  xolPremiumRate
+                };
+              });
+
+            // XoL Claim(Incl. Agg/Reinst) 통계 계산
+            const xolClaimValues = aggregatedData.map(d => d.xolClaimAggReinst).filter(v => !isNaN(v) && v > 0);
+            if (xolClaimValues.length > 0) {
+              xolClaimMean = xolClaimValues.reduce((sum, v) => sum + v, 0) / xolClaimValues.length;
+              const variance = xolClaimValues.reduce((sum, v) => sum + Math.pow(v - xolClaimMean, 2), 0) / xolClaimValues.length;
+              xolClaimStdDev = Math.sqrt(variance);
+            }
+
+            // XoL Premium Rate 평균 계산
+            const xolPremiumRateValues = aggregatedData.map(d => d.xolPremiumRate).filter(v => !isNaN(v) && v > 0);
+            if (xolPremiumRateValues.length > 0) {
+              xolPremiumRateMean = xolPremiumRateValues.reduce((sum, v) => sum + v, 0) / xolPremiumRateValues.length;
+            }
+          }
+
+          // Net Premium 계산: (XoL Claim 평균 / XoL Premium Rate 평균) + XoL Claim 표준편차 * Reluctance Factor
+          const netPremium = (xolClaimMean / (xolPremiumRateMean || 1)) + (xolClaimStdDev * reluctanceFactor);
+          
+          // Gross Premium 계산: Net Premium / (1 - Expense Rate)
+          const grossPremium = netPremium / (1 - expenseRate);
+
+          newOutputData = {
+            type: "XolPricingOutput",
+            xolClaimMean,
+            xolClaimStdDev,
+            xolPremiumRateMean,
+            reluctanceFactor,
+            expenseRate,
+            netPremium,
+            grossPremium,
+          };
         } else if (module.type === ModuleType.PriceXolContract) {
           const dataConnection = connections.find(
             (c) => c.to.moduleId === module.id && c.to.portName === "data_in"
@@ -9111,6 +9276,12 @@ ${header}
       {viewingFinalXolPrice && (
         <FinalXolPricePreviewModal
           module={viewingFinalXolPrice}
+          onClose={handleCloseModal}
+        />
+      )}
+      {viewingXolPricing && (
+        <XolPricingPreviewModal
+          module={viewingXolPricing}
           onClose={handleCloseModal}
         />
       )}
