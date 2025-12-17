@@ -2612,6 +2612,40 @@ const renderParameters = (
         </div>
       );
     }
+    case ModuleType.ApplyThreshold: {
+      const sourceData = getConnectedDataSource(module.id);
+      // Handle different output types (InflatedDataOutput, FormatChangeOutput, ClaimDataOutput, etc.)
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
+      const allColumns = inputColumns.map(col => col.name);
+      const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액"];
+      
+      return (
+        <div className="space-y-4">
+          <PropertyInput
+            label="Threshold"
+            value={module.parameters.threshold || 1000000}
+            type="number"
+            onChange={(v) => onParamChange("threshold", Number(v))}
+          />
+          <PropertySelect
+            label="Amount Column"
+            value={module.parameters.amount_column || "클레임 금액"}
+            onChange={(v) => onParamChange("amount_column", v)}
+            options={amountOptions}
+          />
+          <p className="text-xs text-gray-500">
+            Filters data to keep only rows where the amount column value is greater than or equal to the threshold.
+          </p>
+        </div>
+      );
+    }
     case ModuleType.FitAggregateModel: {
       const sourceData = getConnectedDataSource(module.id);
       // Handle different output types (ThresholdSplitOutput, DataPreview, etc.)
@@ -3409,6 +3443,81 @@ const renderParameters = (
         </>
       );
     }
+    case ModuleType.DefineXolContract: {
+      const {
+        deductible,
+        limit,
+        reinstatements,
+        aggDeductible,
+        expenseRatio,
+      } = module.parameters;
+
+      return (
+        <div>
+          <PropertyInput
+            label="Deductible"
+            value={deductible || 0}
+            type="number"
+            onChange={(v) => onParamChange("deductible", v)}
+          />
+          <PropertyInput
+            label="Limit"
+            value={limit || 0}
+            type="number"
+            onChange={(v) => onParamChange("limit", v)}
+          />
+          <PropertyInput
+            label="Reinstatements"
+            value={reinstatements || 5}
+            type="number"
+            onChange={(v) => onParamChange("reinstatements", v || 5)}
+          />
+          <PropertyInput
+            label="Aggregate Deductible"
+            value={aggDeductible || 0}
+            type="number"
+            onChange={(v) => onParamChange("aggDeductible", v)}
+          />
+          <PropertyInput
+            label="Expense Ratio"
+            value={expenseRatio || 0}
+            type="number"
+            step="0.01"
+            onChange={(v) => onParamChange("expenseRatio", v)}
+          />
+        </div>
+      );
+    }
+    case ModuleType.XolCalculator: {
+      const sourceData = getConnectedDataSource(module.id, "data_in");
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
+      
+      const { claim_column } = module.parameters;
+      
+      return (
+        <div>
+          <PropertySelect
+            label="클레임 행"
+            value={claim_column || ""}
+            onChange={(v) => onParamChange("claim_column", v)}
+            options={[
+              { value: "", label: "선택하세요" },
+              ...inputColumns
+                .filter((col) => col.type === "number")
+                .map((col) => ({ value: col.name, label: col.name })),
+            ]}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            XoL 계산에 사용할 클레임 컬럼을 선택하세요.
+          </p>
+        </div>
+      );
+    }
     default:
       const hasParams = Object.keys(module.parameters).length > 0;
       if (!hasParams) {
@@ -3455,6 +3564,120 @@ const renderParameters = (
         </div>
       );
   }
+};
+
+const ReinstatementPremiumRateEditor: React.FC<{
+  module: CanvasModule;
+  onParamChange: (key: string, value: any) => void;
+}> = ({ module, onParamChange }) => {
+  const {
+    defaultReinstatementRate = 100,
+    yearRates = [],
+    reinstatements = 5,
+  } = module.parameters;
+
+  const handleAddYear = () => {
+    const nextYear = yearRates.length + 1;
+    const newYearRates = [...yearRates, { year: nextYear, rate: defaultReinstatementRate }];
+    onParamChange("yearRates", newYearRates);
+  };
+
+  const handleRemoveYear = (index: number) => {
+    const newYearRates = yearRates.filter((_, i) => i !== index);
+    // 년도 번호 재정렬
+    const reorderedRates = newYearRates.map((yr, i) => ({ ...yr, year: i + 1 }));
+    onParamChange("yearRates", reorderedRates);
+  };
+
+  const handleYearRateChange = (index: number, rate: number) => {
+    const newYearRates = [...yearRates];
+    newYearRates[index] = { ...newYearRates[index], rate };
+    onParamChange("yearRates", newYearRates);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-semibold text-gray-300 mb-2">
+          기본복원비율
+        </label>
+        <select
+          value={defaultReinstatementRate}
+          onChange={(e) => onParamChange("defaultReinstatementRate", parseFloat(e.target.value))}
+          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value={100}>100%</option>
+          <option value={0}>0%</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+          모든 복원횟수에 적용되는 기본 비율입니다.
+        </p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-semibold text-gray-300">
+            년도별 복원비율
+          </label>
+          <button
+            onClick={handleAddYear}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
+          >
+            추가
+          </button>
+        </div>
+        {yearRates.length === 0 ? (
+          <p className="text-xs text-gray-500 py-2">
+            년도별 비율을 추가하려면 "추가" 버튼을 클릭하세요.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {yearRates.map((yearRate, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-2 p-2 bg-gray-800 rounded-md"
+              >
+                <span className="text-sm text-gray-400 w-20">
+                  {yearRate.year}차년도:
+                </span>
+                <input
+                  type="number"
+                  value={yearRate.rate}
+                  onChange={(e) =>
+                    handleYearRateChange(index, parseFloat(e.target.value) || 0)
+                  }
+                  className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="100"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+                <span className="text-xs text-gray-500 w-6">%</span>
+                <button
+                  onClick={() => handleRemoveYear(index)}
+                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
+                >
+                  삭제
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-gray-500 mt-2">
+          년도별로 다른 비율을 설정할 수 있습니다. 설정하지 않은 년도는 기본복원비율이 적용됩니다.
+        </p>
+      </div>
+
+      <div className="pt-2 border-t border-gray-700">
+        <p className="text-xs text-gray-400 mb-2">복원횟수: {reinstatements}</p>
+        <p className="text-xs text-gray-500">
+          모든 복원횟수({reinstatements}회)는 기본복원비율({defaultReinstatementRate}%)이 적용되며,
+          {yearRates.length > 0 && ` ${yearRates.map(yr => `${yr.year}차년도`).join(", ")}에만 다른 비율이 적용됩니다.`}
+          {yearRates.length === 0 && " 년도별 비율이 설정되지 않았습니다."}
+        </p>
+      </div>
+    </div>
+  );
 };
 
 const StatRow: React.FC<{ label: string; value: React.ReactNode }> = ({
@@ -4429,7 +4652,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     : "text-gray-400 hover:bg-gray-700/50"
                 }`}
               >
-                <TableCellsIcon className="w-5 h-5" /> Preview
+                <TableCellsIcon className="w-5 h-5" /> {module.type === ModuleType.DefineXolContract ? "복원P 비율" : "Preview"}
               </button>
               <button
                 onClick={() => setActiveTab("code")}
@@ -4471,35 +4694,44 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 </PropertyGroup>
               )}
               {activeTab === "preview" && (
-                <div>
-                  <div className="flex mb-3 rounded-md bg-gray-700 p-1">
-                    <button
-                      onClick={() => setActivePreviewTab("Input")}
-                      className={`flex-1 text-center text-sm py-1 rounded-md transition-colors ${
-                        activePreviewTab === "Input"
-                          ? "bg-gray-600 font-semibold"
-                          : "hover:bg-gray-600/50"
-                      }`}
-                    >
-                      Input
-                    </button>
-                    <button
-                      onClick={() => setActivePreviewTab("Output")}
-                      className={`flex-1 text-center text-sm py-1 rounded-md transition-colors ${
-                        activePreviewTab === "Output"
-                          ? "bg-gray-600 font-semibold"
-                          : "hover:bg-gray-600/50"
-                      }`}
-                    >
-                      Output
-                    </button>
-                  </div>
-                  <div className="bg-gray-900/50 p-3 rounded-lg">
-                    {activePreviewTab === "Input"
-                      ? renderInputPreview()
-                      : renderOutputPreview()}
-                  </div>
-                </div>
+                <>
+                  {module.type === ModuleType.DefineXolContract ? (
+                    <ReinstatementPremiumRateEditor
+                      module={module}
+                      onParamChange={handleParamChange}
+                    />
+                  ) : (
+                    <div>
+                      <div className="flex mb-3 rounded-md bg-gray-700 p-1">
+                        <button
+                          onClick={() => setActivePreviewTab("Input")}
+                          className={`flex-1 text-center text-sm py-1 rounded-md transition-colors ${
+                            activePreviewTab === "Input"
+                              ? "bg-gray-600 font-semibold"
+                              : "hover:bg-gray-600/50"
+                          }`}
+                        >
+                          Input
+                        </button>
+                        <button
+                          onClick={() => setActivePreviewTab("Output")}
+                          className={`flex-1 text-center text-sm py-1 rounded-md transition-colors ${
+                            activePreviewTab === "Output"
+                              ? "bg-gray-600 font-semibold"
+                              : "hover:bg-gray-600/50"
+                          }`}
+                        >
+                          Output
+                        </button>
+                      </div>
+                      <div className="bg-gray-900/50 p-3 rounded-lg">
+                        {activePreviewTab === "Input"
+                          ? renderInputPreview()
+                          : renderOutputPreview()}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
               {activeTab === "code" && (
                 <div>

@@ -914,17 +914,42 @@ p_limit = {limit}
 p_reinstatements = {reinstatements}
 p_agg_deductible = {aggDeductible}
 p_expense_ratio = {expenseRatio}
+p_default_reinstatement_rate = {defaultReinstatementRate}  # Default reinstatement rate (100% or 0%)
+p_year_rates = {yearRates}  # List of {year: int, rate: float} for specific years
 
-contract_terms = {
+# Calculate reinstatement premiums (보장금액 × 비율(%) = 복원보험료)
+# All reinstatements use default rate, except for years specified in yearRates
+reinstatement_premium_rates = []
+year_rate_dict = {{yr['year']: yr['rate'] for yr in p_year_rates}} if p_year_rates else {{}}
+
+for i in range(1, p_reinstatements + 1):
+    # Use year-specific rate if available, otherwise use default rate
+    if i in year_rate_dict:
+        rate = year_rate_dict[i] / 100.0
+    else:
+        rate = p_default_reinstatement_rate / 100.0
+    reinstatement_premium_rates.append(rate)
+
+# Calculate reinstatement premiums (보장금액 × 비율)
+reinstatement_premiums = [p_limit * rate for rate in reinstatement_premium_rates]
+
+contract_terms = {{
     'deductible': p_deductible,
     'limit': p_limit,
     'reinstatements': p_reinstatements,
     'agg_deductible': p_agg_deductible,
     'expense_ratio': p_expense_ratio,
-}
+    'default_reinstatement_rate': p_default_reinstatement_rate,
+    'reinstatement_premium_rates': reinstatement_premium_rates,
+    'reinstatement_premiums': reinstatement_premiums,
+}}
 
 print("XoL Contract terms defined:")
 print(contract_terms)
+print(f"Default Reinstatement Rate: {{p_default_reinstatement_rate}}%")
+print(f"Year-specific Rates: {{year_rate_dict}}")
+print(f"Reinstatement Premium Rates: {{reinstatement_premium_rates}}")
+print(f"Reinstatement Premiums (보장금액 × 비율): {{reinstatement_premiums}}")
 `,
 
     CalculateCededLoss: `
@@ -1001,6 +1026,46 @@ p_ceded_loss_column = {ceded_loss_column}
 #     p_year_column, 
 #     p_ceded_loss_column
 # )
+`,
+
+    XolCalculator: `
+import pandas as pd
+import numpy as np
+
+def calculate_xol_claim(df: pd.DataFrame, contract: dict, claim_col: str):
+    """
+    Calculates XoL Claim (Incl. Limit) for each claim based on contract terms.
+    Formula: Max(min(클레임-Deductible, Limit), 0)
+    """
+    deductible = contract.get('deductible', 0)
+    limit = contract.get('limit', 0)
+    
+    print(f"Calculating XoL Claim (Incl. Limit) for layer {limit:,.0f} xs {deductible:,.0f}...")
+    
+    # Calculate XoL Claim (Incl. Limit): Max(min(클레임-Deductible, Limit), 0)
+    df['XoL Claim(Incl. Limit)'] = df[claim_col].apply(
+        lambda claim: max(min(claim - deductible, limit), 0)
+    )
+    
+    # Calculate statistics
+    total_claim = df[claim_col].sum()
+    total_xol_claim = df['XoL Claim(Incl. Limit)'].sum()
+    xol_ratio = (total_xol_claim / total_claim * 100) if total_claim > 0 else 0
+    
+    print(f"Total Claim: {total_claim:,.2f}")
+    print(f"Total XoL Claim (Incl. Limit): {total_xol_claim:,.2f}")
+    print(f"XoL Ratio: {xol_ratio:.2f}%")
+    print("'XoL Claim(Incl. Limit)' column added to the dataframe.")
+    
+    return df
+
+# Assuming 'dataframe' and 'contract_terms' are passed from previous steps
+# Parameters from UI
+p_claim_column = {claim_column}
+# contract_terms = {{'deductible': 250000, 'limit': 1000000, ...}}
+
+# Execution
+# result_df = calculate_xol_claim(dataframe, contract_terms, p_claim_column)
 `,
     DiversionChecker: `
 import pandas as pd

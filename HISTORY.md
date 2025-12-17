@@ -1,5 +1,481 @@
 # Change History
 
+## 2025-01-16 08:10:00
+
+### fix(config): Ensure XoL Contract default values apply to initial screen models
+
+**Description:**
+- XoL Contract 모듈의 기본값이 초기화면 모델과 샘플 모델에도 적용되도록 수정
+  - 초기 모델 로드 시 (localStorage의 initialModel)
+  - 샘플 모델 로드 시 (handleLoadSample)
+  - XoL Contract 모듈의 경우 저장된 parameters를 무시하고 DEFAULT_MODULES의 기본값을 강제 적용
+  - 이제 새로운 모듈 추가, 초기 모델 로드, 샘플 모델 로드 모든 경우에 동일한 기본값 적용
+
+**Files Affected:**
+- `App.tsx` - 초기 모델 로드 및 샘플 모델 로드 로직 수정
+  - XoL Contract 모듈의 경우 기본값을 강제 적용하도록 조건 추가
+  - 초기 모델 로드 시 (1608-1643 라인)
+  - 샘플 모델 로드 시 (1150-1177 라인)
+
+**Reason:**
+- 사용자 요청에 따라 초기화면의 모델에도 변경된 기본값이 적용되도록 보장
+- localStorage에 저장된 이전 값이 있어도 최신 기본값이 적용되도록 함
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 08:00:00
+
+### fix(config): Update XoL Contract module default values
+
+**Description:**
+- XoL Contract 모듈의 기본값 변경
+  - Deductible: 1000000 → 3000000
+  - Limit: 500000 → 2000000
+  - Reinstatements: 5 → 2
+  - 새로운 모듈 생성 시 변경된 기본값이 적용됨
+
+**Files Affected:**
+- `constants.ts` - DEFAULT_MODULES 배열의 DefineXolContract 모듈 기본값 수정
+
+**Reason:**
+- 사용자 요청에 따라 XoL Contract 모듈의 기본값을 변경하여 더 적절한 초기값 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 07:30:00
+
+### feat(ui): Add horizontal scroll to XOL Calculator table and change histogram to bar chart
+
+**Description:**
+- XOL Calculator 모듈의 View Details 테이블에 좌우 스크롤 추가
+  - 테이블 컨테이너에 `overflow-x-auto` 추가하여 좌우 스크롤 가능
+  - 테이블에 `minWidth: 'max-content'` 스타일 추가하여 컬럼이 많을 때 스크롤 활성화
+- XoL Claim(Incl. Agg/Reinst) 탭의 히스토그램을 연도별 막대그래프로 변경
+  - 기존: 선택된 열의 히스토그램 표시
+  - 변경: 연도를 가로축, 숫자형 열(클레임 금액_infl, XoL Claim(Incl. Limit), XoL Claim(Incl. Agg/Reinst))을 세로축으로 하는 막대그래프 표시
+  - 각 숫자형 열마다 별도의 막대그래프 표시
+  - YearlyAmountBarPlot 컴포넌트를 사용하여 연도별 값 표시
+  - XoL Claim(Incl. Limit) 탭은 기존 히스토그램 유지
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XOL Calculator 테이블 스크롤 및 그래프 변경
+  - 테이블 컨테이너에 overflow-x-auto 추가
+  - 테이블에 minWidth 스타일 추가
+  - XoL Claim(Incl. Agg/Reinst) 탭의 히스토그램을 연도별 막대그래프로 변경
+
+**Reason:**
+- 사용자 요청에 따라 테이블의 좌우 스크롤 기능 추가로 많은 컬럼을 가진 테이블도 편리하게 탐색 가능
+- 연도별 집계 데이터를 막대그래프로 시각화하여 트렌드를 더 쉽게 파악 가능
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 07:00:00
+
+### feat(ui): Add XoL Claim(Incl. Agg/Reinst) column to XOL Calculator second tab
+
+**Description:**
+- XOL Calculator 모듈의 두 번째 탭(XoL Claim(Incl. Agg/Reinst))에 새로운 열 추가
+  - 테이블 열 구성: 연도, 클레임 금액_infl, XoL Claim(Incl. Limit), XoL Claim(Incl. Agg/Reinst)
+  - XoL Claim(Incl. Agg/Reinst) 계산 수식:
+    - XoL Claim(Incl. Limit) >= Limit*(Reinstatements+1) + Aggregate Deductible 이라면
+      → Limit*(Reinstatements+1) + Aggregate Deductible
+    - 그렇지 않다면 → XoL Claim(Incl. Limit)
+  - XoL Contract 모듈의 정보(limit, reinstatements, aggDeductible)를 사용하여 계산
+  - allModules와 allConnections props를 DataPreviewModal에 추가하여 upstream 모듈 정보 접근 가능
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Claim(Incl. Agg/Reinst) 컬럼 추가 및 계산 로직 구현
+  - DataPreviewModalProps에 allModules, allConnections 추가
+  - getXolData 함수에서 XoL Contract 정보 가져오기
+  - 연도별 집계 시 XoL Claim(Incl. Agg/Reinst) 계산 추가
+
+**Reason:**
+- 사용자 요청에 따라 XoL Claim(Incl. Agg/Reinst) 탭에 계산된 컬럼 추가
+- XoL Contract 조건에 따른 최대값 제한을 반영한 계산 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 06:30:00
+
+### feat(ui): Add year aggregation for XOL Calculator second tab with specific columns
+
+**Description:**
+- XOL Calculator 모듈의 두 번째 탭(XoL Claim(Incl. Agg/Reinst))에 연도별 집계 기능 추가
+  - 두 번째 탭 선택 시 기존 테이블을 연도별로 집계하여 표시
+  - 테이블 열 구성: 연도, 클레임 금액_infl, XoL Claim(Incl. Limit)
+  - 연도 컬럼(연도, year 등)을 자동으로 찾아서 연도별로 집계
+  - 클레임 금액_infl과 XoL Claim(Incl. Limit) 컬럼을 연도별로 합계 계산
+  - 집계된 데이터는 연도, 클레임 금액_infl(합계), XoL Claim(Incl. Limit)(합계)만 포함
+  - 첫 번째 탭과 동일한 레이아웃 유지 (왼쪽 테이블, 오른쪽 통계량, 아래 히스토그램)
+  - 연도 컬럼이 없는 경우 빈 데이터 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XOL Calculator 모듈의 getXolData 함수 수정
+  - 두 번째 탭(aggreinst) 선택 시 연도별 집계 로직 추가
+  - 연도별 합계 계산 및 새로운 데이터 구조 생성
+
+**Reason:**
+- 사용자 요청에 따라 XOL Calculator 모듈의 두 번째 탭에서 연도별 집계 데이터를 확인할 수 있도록 개선
+- 연도별 트렌드를 쉽게 파악할 수 있도록 집계 기능 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 06:00:00
+
+### fix(config): Update XoL Contract module default values
+
+**Description:**
+- XoL Contract 모듈의 기본값 변경
+  - Deductible: 250000 → 1000000
+  - Limit: 1000000 → 500000
+  - 새로운 모듈 생성 시 변경된 기본값이 적용됨
+
+**Files Affected:**
+- `constants.ts` - DEFAULT_MODULES 배열의 DefineXolContract 모듈 기본값 수정
+
+**Reason:**
+- 사용자 요청에 따라 XoL Contract 모듈의 기본값을 변경하여 더 적절한 초기값 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 05:30:00
+
+### fix(ui): Remove top statistics table from XOL Calculator View Details
+
+**Description:**
+- XOL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
+  - 기존: 상단에 StatsTable 표시
+  - 변경: 상단 통계량 테이블 제거, 테이블과 통계량/히스토그램만 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XOL Calculator 모듈의 상단 StatsTable 제거
+
+**Reason:**
+- 사용자 요청에 따라 XOL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
+- 선택된 열의 통계량과 히스토그램만 표시하여 더 간결한 레이아웃 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 05:00:00
+
+### feat(ui): Update XOL Calculator View Details with table, statistics, and histogram layout
+
+**Description:**
+- XOL Calculator 모듈의 View Details 레이아웃 수정
+  - 왼쪽: 데이터 테이블 (컬럼 클릭 가능)
+  - 오른쪽: 선택된 열의 통계량 표시
+  - 아래: 선택된 열의 히스토그램 표시 (숫자형 컬럼인 경우)
+  - 상하 스크롤 가능하도록 flex-grow와 overflow-auto 적용
+  - 컬럼 클릭 시 선택된 컬럼에 대한 통계량과 히스토그램 자동 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XOL Calculator 모듈 View Details 레이아웃 수정
+  - 왼쪽/오른쪽 레이아웃으로 변경 (테이블 + 통계량)
+  - 선택된 열의 히스토그램을 아래에 추가
+  - 상하 스크롤 가능하도록 컨테이너 구조 변경
+
+**Reason:**
+- 사용자 요청에 따라 XOL Calculator 모듈의 View Details를 더 직관적인 레이아웃으로 개선
+- 테이블, 통계량, 히스토그램을 한 화면에서 확인할 수 있도록 개선
+- 상하 스크롤을 통해 모든 정보를 쉽게 탐색 가능
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 04:30:00
+
+### feat(ui): Update Select Data module View Details to match Apply Threshold layout
+
+**Description:**
+- Select Data 모듈의 View Details를 Apply Threshold 모듈과 동일한 형태로 수정
+  - 탭 구성: Data Table + Histogram (visualization 탭 제거)
+  - Data Table 탭: 왼쪽에 테이블, 오른쪽에 선택된 열의 통계량만 표시 (그래프 제거)
+  - Histogram 탭: 히스토그램 및 통계량 표시
+  - Select Data 모듈도 Apply Threshold와 동일하게 통계량만 표시하도록 변경
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Select Data 모듈 View Details 수정
+  - Select Data 모듈에 Histogram 탭 추가
+  - visualization 탭에서 Select Data 제외
+  - Data Table 탭에서 Select Data는 통계량만 표시 (그래프 제거)
+  - Histogram 탭에 Select Data 추가 (Apply Threshold와 동일한 구조)
+
+**Reason:**
+- 사용자 요청에 따라 Select Data 모듈을 Apply Threshold 모듈과 동일한 형태로 통일
+- Data Table 탭에서는 테이블과 통계량에 집중, 히스토그램은 별도 탭에서 확인하도록 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 04:00:00
+
+### fix(ui): Remove right-side graph from Apply Threshold Data Table tab and show statistics instead
+
+**Description:**
+- Apply Threshold 모듈의 View Details에서 Data Table 탭의 오른쪽 상단 그래프 제거 및 통계량 표시 추가
+  - 기존: 컬럼 선택 시 오른쪽에 그래프와 통계량 표시
+  - 변경: Apply Threshold 모듈의 경우 오른쪽에 선택한 열의 통계량만 표시 (그래프 제거)
+  - ColumnStatistics 컴포넌트를 사용하여 선택한 열에 대한 통계량 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Apply Threshold 모듈의 Data Table 탭에서 오른쪽 그래프 패널 제거
+  - selectedColumn 조건에 `module.type !== ModuleType.ApplyThreshold` 추가
+
+**Reason:**
+- 사용자 요청에 따라 Apply Threshold 모듈의 Data Table 탭에서 오른쪽 상단 그래프 제거
+- 히스토그램은 별도 Histogram 탭에서 확인 가능하므로 Data Table 탭에서는 테이블만 표시
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 03:30:00
+
+### fix(ui): Fix Apply Threshold module View Details and add histogram tab
+
+**Description:**
+- Apply Threshold 모듈의 View Details 수정
+  - Apply Threshold 모듈은 Split By Threshold 모듈과 달리 Threshold 미만의 데이터를 처리하지 않음
+  - ThresholdSplitOutput 처리 부분에서 Apply Threshold 모듈 제외 (Apply Threshold는 DataPreview를 사용)
+  - Threshold 미만 데이터 탭 제거 (Apply Threshold는 threshold 이상 데이터만 처리)
+- Apply Threshold 모듈에 히스토그램 탭 추가
+  - 기존: table 탭만 존재
+  - 변경: table 탭 + Histogram 탭 추가
+  - Histogram 탭에서 Select Data 모듈과 동일하게 히스토그램 및 통계량 표시
+  - amount_column 파라미터를 사용하여 히스토그램 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Apply Threshold 모듈 처리 수정 및 히스토그램 탭 추가
+  - ThresholdSplitOutput 처리 부분에서 Apply Threshold 모듈 제외
+  - activeTab 타입에 'histogram' 추가
+  - Apply Threshold 모듈에 Histogram 탭 버튼 추가
+  - Histogram 탭 콘텐츠 추가 (Select Data 모듈과 동일한 구조)
+
+**Reason:**
+- Apply Threshold 모듈의 특성에 맞게 View Details 수정 (Threshold 미만 데이터 미처리)
+- 사용자 요청에 따라 히스토그램을 별도 탭으로 분리하여 표시
+- Select Data 모듈과 동일한 방식으로 히스토그램 표시하여 일관성 유지
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 03:00:00
+
+### feat(ui): Add histogram visualization to Select Data and Apply Threshold modules
+
+**Description:**
+- Select Data 모듈의 View Details에 히스토그램 추가
+  - table 탭에서 컬럼 선택 시 오른쪽에 히스토그램과 통계량을 함께 표시
+  - 기존: 통계량만 표시
+  - 변경: 히스토그램 + 통계량 표시
+- Apply Threshold 모듈의 View Details에 히스토그램 추가
+  - Threshold < threshold 탭: 상단 통계량 → 히스토그램 → 아래 전체 데이터 테이블 레이아웃
+  - Threshold >= threshold 탭: 상단 통계량 → 히스토그램 → 아래 전체 데이터 테이블 레이아웃
+  - 금액 컬럼을 자동으로 찾아서 히스토그램 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Select Data 및 Apply Threshold 모듈에 히스토그램 추가
+  - Select Data 모듈: table 탭에서 선택한 컬럼에 대한 히스토그램 표시 추가
+  - Apply Threshold 모듈: belowThreshold와 aboveThreshold 각각에 히스토그램 추가
+  - HistogramPlot 컴포넌트를 사용하여 금액 컬럼의 분포를 시각화
+
+**Reason:**
+- 사용자 요청에 따라 Select Data와 Apply Threshold 모듈의 View Details에서 데이터 분포를 시각적으로 확인할 수 있도록 히스토그램 추가
+- 데이터 분석 시 분포를 한눈에 파악할 수 있어 분석 효율성 향상
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 02:30:00
+
+### style(ui): Adjust View Details font size and ensure consistent layout
+
+**Description:**
+- View Details의 모든 테이블 글자 크기 조정
+  - 테이블 헤더 및 셀 패딩: py-2 px-3 → py-1 px-2, py-1.5 px-3 → py-1 px-2, py-1.5 px-2 → py-1 px-2
+  - Apply Threshold 모듈의 테이블 헤더 패딩 조정
+  - XOL Calculator 모듈의 테이블 헤더 패딩 조정
+  - 일반 테이블의 헤더 및 셀 패딩 조정
+- Apply Threshold와 XOL Calculator 모듈 레이아웃 확인
+  - 두 모듈 모두 상단 통계량 테이블 + 아래 전체 데이터 테이블 레이아웃으로 이미 구성되어 있음
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - View Details 테이블의 모든 패딩 크기 조정
+  - Apply Threshold 모듈: th 패딩 py-1.5 px-2 → py-1 px-2
+  - XOL Calculator 모듈: th 패딩 py-1.5 px-2 → py-1 px-2
+  - 일반 테이블: th 패딩 py-2 px-3 → py-1 px-2, td 패딩 py-1.5 px-3 → py-1 px-2
+
+**Reason:**
+- 사용자 요청에 따라 View Details의 글자 크기를 더 작게 조정하여 더 많은 정보를 한 화면에 표시
+- 일관된 패딩 크기로 UI 통일성 향상
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-16 02:00:00
+
+### feat(ui): Redesign Apply Threshold and XoOL Calculator View Details layout
+
+**Description:**
+- Apply Threshold 모듈의 View Details 레이아웃 재설계
+  - 기존: 왼쪽 테이블 + 오른쪽 그래프/통계량 레이아웃
+  - 변경: 상단 통계량 테이블 + 아래 전체 데이터 테이블 레이아웃
+  - 글자 크기를 현재보다 약간 작게 조정 (text-sm → text-xs, py-2 px-3 → py-1 px-2)
+- XoOL Calculator 모듈의 View Details 첫 번째 탭에도 동일한 레이아웃 적용
+  - 상단 통계량 테이블 + 아래 전체 데이터 테이블 구조 유지
+  - 글자 크기를 현재보다 약간 작게 조정
+- StatsTable 컴포넌트 글자 크기 조정
+  - 제목: text-lg → text-sm
+  - 테이블: text-sm → text-xs
+  - 셀 패딩: py-1.5 px-3 → py-1 px-2
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Apply Threshold 및 XoOL Calculator 모듈의 View Details 레이아웃 변경
+  - Apply Threshold 모듈: ThresholdSplitOutput 처리 부분을 상단 통계량 + 아래 전체 테이블 구조로 변경
+  - XoOL Calculator 모듈: 테이블 글자 크기 조정 (text-sm → text-xs, py-2 px-3 → py-1 px-2)
+- `components/SplitDataPreviewModal.tsx` - StatsTable 컴포넌트 글자 크기 조정
+  - 제목, 테이블, 셀 패딩 크기 축소
+
+**Reason:**
+- 사용자 요청에 따라 View Details 레이아웃을 더 직관적이고 일관된 구조로 개선
+- 통계량과 데이터 테이블을 명확하게 구분하여 가독성 향상
+- 글자 크기 축소로 더 많은 정보를 한 화면에 표시 가능
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
 ## 2025-01-16 01:00:00
 
 ### feat(modules): Add Excel file support and direct input for Load Claim Data module

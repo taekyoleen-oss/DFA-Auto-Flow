@@ -2,6 +2,7 @@
 // 이 파일은 커밋/푸시에 포함되어 모든 사용자가 공유할 수 있습니다.
 
 import { ModuleType } from "./types";
+import { SAMPLE_DATA } from "./sampleData";
 
 export interface SavedSample {
   name: string;
@@ -19,6 +20,9 @@ export interface SavedSample {
   }>;
 }
 
+// claim_data.csv 샘플 데이터 가져오기
+const claimDataSample = SAMPLE_DATA.find((s) => s.name === "claim_data.csv");
+
 export const SAVED_SAMPLES: SavedSample[] = [
   {
     name: "DFA Model",
@@ -29,7 +33,7 @@ export const SAVED_SAMPLES: SavedSample[] = [
         name: "Load Claim Data",
         parameters: {
           source: "claim_data.csv",
-          fileContent: "",
+          fileContent: claimDataSample?.content || "",
         },
       },
       {

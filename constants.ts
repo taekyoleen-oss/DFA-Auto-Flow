@@ -27,12 +27,6 @@ import {
 export const TOOLBOX_MODULES = [
   // Data Preprocess
   {
-    type: ModuleType.LoadClaimData,
-    name: "Load Claim Data",
-    icon: DatabaseIcon,
-    description: "Loads claim data from a CSV file for DFA analysis.",
-  },
-  {
     type: ModuleType.Statistics,
     name: "Statistics",
     icon: BarChartIcon,
@@ -45,35 +39,28 @@ export const TOOLBOX_MODULES = [
     description: "Selects or removes columns from the data.",
   },
   {
+    type: ModuleType.LoadClaimData,
+    name: "Load Claim Data",
+    icon: DatabaseIcon,
+    description: "Loads claim data from a CSV file for DFA analysis.",
+  },
+  {
+    type: ModuleType.ApplyInflation,
+    name: "Apply Inflation",
+    icon: ChartCurveIcon,
+    description: "Applies annual inflation rate to project claim amounts to target year.",
+  },
+  {
+    type: ModuleType.FormatChange,
+    name: "Format Change",
+    icon: TableCellsIcon,
+    description: "Extracts year from date column and adds it as a new column.",
+  },
+  {
     type: ModuleType.TransitionData,
     name: "Transition Data",
     icon: ScaleIcon,
     description: "Applies mathematical transformations to numeric columns.",
-  },
-  {
-    type: ModuleType.ResampleData,
-    name: "Resample Data",
-    icon: ScaleIcon,
-    description:
-      "Resamples data to handle class imbalance (e.g., SMOTE, NearMiss).",
-  },
-  {
-    type: ModuleType.HandleMissingValues,
-    name: "Prep Missing",
-    icon: FilterIcon,
-    description: "Handles missing values by removing rows or imputing.",
-  },
-  {
-    type: ModuleType.EncodeCategorical,
-    name: "Prep Encode",
-    icon: ScaleIcon,
-    description: "Encodes categorical string columns into numbers.",
-  },
-  {
-    type: ModuleType.NormalizeData,
-    name: "Prep Normalize",
-    icon: ScaleIcon,
-    description: "Scales numeric features to a standard range.",
   },
   {
     type: ModuleType.TransformData,
@@ -301,7 +288,7 @@ export const TOOLBOX_MODULES = [
   },
   {
     type: ModuleType.DefineXolContract,
-    name: "Define XoL Contract",
+    name: "XoL Contract",
     icon: DocumentTextIcon,
     description: "Defines the terms of an XoL reinsurance contract.",
   },
@@ -318,20 +305,20 @@ export const TOOLBOX_MODULES = [
     icon: PriceTagIcon,
     description: "Prices an XoL contract using the burning cost method.",
   },
+  {
+    type: ModuleType.XolCalculator,
+    name: "XOL Calculator",
+    icon: CalculatorIcon,
+    description: "Calculates XoL results using contract terms and claim data.",
+  },
+  {
+    type: ModuleType.ExperienceModel,
+    name: "Experience Model",
+    icon: BeakerIcon,
+    description: "Applies XoL contract terms to claim data to calculate XoL claims.",
+  },
 
   // DFA Modules
-  {
-    type: ModuleType.ApplyInflation,
-    name: "Apply Inflation",
-    icon: ChartCurveIcon,
-    description: "Applies annual inflation rate to project claim amounts to target year.",
-  },
-  {
-    type: ModuleType.FormatChange,
-    name: "Format Change",
-    icon: TableCellsIcon,
-    description: "Extracts year from date column and adds it as a new column.",
-  },
   {
     type: ModuleType.SplitByThreshold,
     name: "Split By Threshold",
@@ -786,7 +773,7 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
     {
       type: ModuleType.ApplyThreshold,
       status: ModuleStatus.Pending,
-      parameters: { threshold: 100000, loss_column: "loss" },
+      parameters: { threshold: 1000000, amount_column: "클레임 금액" },
       inputs: [{ name: "data_in", type: "data" }],
       outputs: [{ name: "data_out", type: "data" }],
     },
@@ -794,11 +781,13 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       type: ModuleType.DefineXolContract,
       status: ModuleStatus.Pending,
       parameters: {
-        deductible: 250000,
-        limit: 1000000,
-        reinstatements: 1,
+        deductible: 3000000,
+        limit: 2000000,
+        reinstatements: 2,
         aggDeductible: 0,
         expenseRatio: 0.3,
+        defaultReinstatementRate: 100,
+        yearRates: [],
       },
       inputs: [],
       outputs: [{ name: "contract_out", type: "contract" }],
@@ -826,6 +815,30 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         { name: "contract_in", type: "contract" },
       ],
       outputs: [{ name: "price_out", type: "evaluation" }],
+    },
+    {
+      type: ModuleType.XolCalculator,
+      status: ModuleStatus.Pending,
+      parameters: {
+        claim_column: null,
+      },
+      inputs: [
+        { name: "contract_in", type: "contract" },
+        { name: "data_in", type: "data" },
+      ],
+      outputs: [{ name: "data_out", type: "data" }],
+    },
+    {
+      type: ModuleType.ExperienceModel,
+      status: ModuleStatus.Pending,
+      parameters: {
+        claim_column: null,
+      },
+      inputs: [
+        { name: "contract_in", type: "contract" },
+        { name: "data_in", type: "data" },
+      ],
+      outputs: [{ name: "data_out", type: "data" }],
     },
     // DFA Modules
     {

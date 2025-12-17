@@ -61,13 +61,21 @@ export const FrequencyModelPreviewModal: React.FC<FrequencyModelPreviewModalProp
   useCopyOnCtrlC(viewDetailsRef);
 
   // AIC 기준으로 정렬 (낮을수록 좋음)
-  const sortedResults = [...results].filter(r => !r.error).sort((a, b) => {
+  // 성공한 결과와 실패한 결과를 분리
+  const successfulResults = results.filter(r => !r.error);
+  const failedResults = results.filter(r => r.error);
+  
+  // 성공한 결과는 AIC 기준으로 정렬
+  const sortedSuccessfulResults = [...successfulResults].sort((a, b) => {
     const aicA = a.fitStatistics?.aic ?? Infinity;
     const aicB = b.fitStatistics?.aic ?? Infinity;
     return aicA - aicB;
   });
+  
+  // 모든 결과를 합치기 (성공한 것 먼저, 실패한 것 나중에)
+  const sortedResults = [...sortedSuccessfulResults, ...failedResults];
 
-  const recommended = sortedResults.length > 0 ? sortedResults[0] : null;
+  const recommended = sortedSuccessfulResults.length > 0 ? sortedSuccessfulResults[0] : null;
   const [showSpreadView, setShowSpreadView] = useState(false);
 
   // 통계 계산 (yearlyCounts의 count 값들 사용)
@@ -281,33 +289,40 @@ export const FrequencyModelPreviewModal: React.FC<FrequencyModelPreviewModalProp
                     {sortedResults.map((result, idx) => (
                       <tr 
                         key={idx}
-                        className={result.distributionType === localSelected ? 'bg-blue-50' : ''}
-                        onClick={() => handleSelectDistribution(result.distributionType)}
-                        style={{ cursor: 'pointer' }}
+                        className={result.distributionType === localSelected ? 'bg-blue-50' : result.error ? 'bg-red-50' : ''}
+                        onClick={() => !result.error && handleSelectDistribution(result.distributionType)}
+                        style={{ cursor: result.error ? 'not-allowed' : 'pointer' }}
                       >
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">
                           {result.distributionType}
-                          {result.distributionType === recommended?.distributionType && (
+                          {result.distributionType === recommended?.distributionType && !result.error && (
                             <span className="ml-2 text-xs text-green-600">(Recommended)</span>
+                          )}
+                          {result.error && (
+                            <span className="ml-2 text-xs text-red-600">(Error)</span>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {result.fitStatistics?.aic?.toFixed(2) || 'N/A'}
+                          {result.error ? (
+                            <span className="text-red-600 text-xs">{result.error}</span>
+                          ) : (
+                            result.fitStatistics?.aic?.toFixed(2) || 'N/A'
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {result.fitStatistics?.bic?.toFixed(2) || 'N/A'}
+                          {result.error ? '-' : (result.fitStatistics?.bic?.toFixed(2) || 'N/A')}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {result.fitStatistics?.logLikelihood?.toFixed(2) || 'N/A'}
+                          {result.error ? '-' : (result.fitStatistics?.logLikelihood?.toFixed(2) || 'N/A')}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {result.fitStatistics?.mean?.toFixed(2) || 'N/A'}
+                          {result.error ? '-' : (result.fitStatistics?.mean?.toFixed(2) || 'N/A')}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {result.fitStatistics?.variance?.toFixed(2) || 'N/A'}
+                          {result.error ? '-' : (result.fitStatistics?.variance?.toFixed(2) || 'N/A')}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900">
-                          {result.fitStatistics?.dispersion?.toFixed(2) || 'N/A'}
+                          {result.error ? '-' : (result.fitStatistics?.dispersion?.toFixed(2) || 'N/A')}
                         </td>
                       </tr>
                     ))}

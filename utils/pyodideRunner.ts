@@ -5189,595 +5189,379 @@ except Exception as e:
 }
 
 /**
- * LoadClaimData: 5년간의 클레임 데이터를 자동 생성합니다
- */
-export async function loadClaimDataPython(
-  startYear: number,
-  endYear: number,
-  claimsPerYear: number,
-  timeoutMs: number = 60000
-): Promise<{
-  rows: any[];
-  columns: Array<{ name: string; type: string }>;
-}> {
-  try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy"]),
-      60000,
-      "패키지 설치 타임아웃 (60초 초과)"
-    );
-
-    py.globals.set("js_start_year", startYear);
-    py.globals.set("js_end_year", endYear);
-    py.globals.set("js_claims_per_year", claimsPerYear);
-
-    const code = `
-import json
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import random
-
-try:
-    start_year = int(js_start_year)
-    end_year = int(js_end_year)
-    claims_per_year = int(js_claims_per_year)
-    
-    # 종목구분 리스트
-    categories = ["자동차보험", "화재보험", "상해보험", "배상책임보험", "건강보험"]
-    
-    # 사고내용 리스트
-    accident_types = [
-        "교통사고", "화재사고", "낙상사고", "물건손상", "도난사고",
-        "상해사고", "질병", "재산손해", "배상책임", "기타사고"
-    ]
-    
-    rows = []
-    
-    for year in range(start_year, end_year + 1):
-        for i in range(claims_per_year):
-            # 날짜 생성 (연도 내 랜덤)
-            month = random.randint(1, 12)
-            day = random.randint(1, 28)
-            date = datetime(year, month, day)
-            
-            # 종목구분 랜덤 선택
-            category = random.choice(categories)
-            
-            # 클레임 금액 생성 (로그정규분포 기반)
-            # 평균 500만원, 표준편차 300만원 정도
-            base_amount = np.random.lognormal(mean=13.5, sigma=0.8)
-            claim_amount = max(100000, int(base_amount))  # 최소 10만원
-            
-            # 사고내용 랜덤 선택
-            accident_content = random.choice(accident_types)
-            
-            rows.append({
-                "종목구분": category,
-                "날짜": date.strftime("%Y-%m-%d"),
-                "클레임 금액": claim_amount,
-                "기타": f"{accident_content} - {random.randint(1, 1000)}번 사고"
-            })
-    
-    df = pd.DataFrame(rows)
-    
-    # 컬럼 정보 생성
-    columns = [
-        {"name": "종목구분", "type": "string"},
-        {"name": "날짜", "type": "string"},
-        {"name": "클레임 금액", "type": "number"},
-        {"name": "기타", "type": "string"}
-    ]
-    
-    result = {
-        "rows": df.to_dict('records'),
-        "columns": columns
-    }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-`;
-
-    const resultPyObj = await withTimeout(
-      Promise.resolve(py.runPython(code)),
-      timeoutMs,
-      "LoadClaimData 실행 타임아웃 (60초 초과)"
-    );
-
-    const result = fromPython(resultPyObj);
-
-    if (result.__error__) {
-      throw new Error(
-        `Python LoadClaimData error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_start_year");
-    py.globals.delete("js_end_year");
-    py.globals.delete("js_claims_per_year");
-
-    return {
-      rows: result.rows || [],
-      columns: result.columns || [],
-    };
-  } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_start_year");
-        pyodide.globals.delete("js_end_year");
-        pyodide.globals.delete("js_claims_per_year");
-      }
-    } catch {}
-
-    const errorMessage = error.message || String(error);
-    throw new Error(`Python LoadClaimData error:\n${errorMessage}`);
-  }
-}
-
-/**
- * ApplyInflation: 연간 상승률을 적용하여 목표 연도까지 보험금을 증가시킵니다
- */
-export async function applyInflationPython(
-  rows: Record<string, any>[],
-  targetYear: number,
-  inflationRate: number,
-  amountColumn: string,
-  yearColumn: string,
-  timeoutMs: number = 60000
-): Promise<{
-  rows: any[];
-  columns: Array<{ name: string; type: string }>;
-}> {
-  try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy"]),
-      60000,
-      "패키지 설치 타임아웃 (60초 초과)"
-    );
-
-    py.globals.set("js_rows", rows);
-    py.globals.set("js_target_year", targetYear);
-    py.globals.set("js_inflation_rate", inflationRate);
-    py.globals.set("js_amount_column", amountColumn);
-    py.globals.set("js_year_column", yearColumn);
-
-    const code = `
-import json
-import pandas as pd
-import numpy as np
-from datetime import datetime
-
-try:
-    rows = js_rows.to_py()
-    target_year = int(js_target_year)
-    inflation_rate = float(js_inflation_rate) / 100.0  # %를 소수로 변환
-    amount_column = str(js_amount_column)
-    year_column = str(js_year_column)
-    
-    # rows가 비어있는지 확인
-    if not rows or len(rows) == 0:
-        raise ValueError(f"No data rows provided. Rows length: {len(rows) if rows else 0}")
-    
-    df = pd.DataFrame(rows)
-    
-    # DataFrame이 비어있는지 확인
-    if df.empty:
-        raise ValueError(f"DataFrame is empty after conversion. Rows provided: {len(rows)}")
-    
-    # 컬럼 존재 여부 확인
-    if amount_column not in df.columns:
-        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
-    if year_column not in df.columns:
-        raise ValueError(f"Year column '{year_column}' not found in data. Available columns: {list(df.columns)}")
-    
-    # Year Column이 날짜 형식인 경우 연도 추출
-    if df[year_column].dtype == 'object':
-        # 문자열인 경우 datetime으로 변환 시도
-        try:
-            df[year_column] = pd.to_datetime(df[year_column])
-            df[year_column] = df[year_column].dt.year
-        except:
-            # datetime 변환 실패 시 숫자로 변환 시도
-            df[year_column] = pd.to_numeric(df[year_column], errors='coerce')
-    else:
-        # 이미 숫자인 경우 그대로 사용
-        df[year_column] = pd.to_numeric(df[year_column], errors='coerce')
-    
-    # NaN 값 확인
-    if df[year_column].isna().any():
-        raise ValueError(f"Year column '{year_column}' contains invalid values. Please check the data.")
-    
-    # 인플레이션 적용: Amount Column * (1 + Inflation Rate) ^ (Target Year - Year Column)
-    # 컬럼 이름: 기존 금액 컬럼명 + "_infl"
-    inflated_column_name = f"{amount_column}_infl"
-    df[inflated_column_name] = (df[amount_column] * ((1 + inflation_rate) ** (target_year - df[year_column]))).astype(int)
-    
-    # 컬럼 정보 생성
-    columns = []
-    for col in df.columns:
-        col_type = "number" if pd.api.types.is_numeric_dtype(df[col]) else "string"
-        columns.append({"name": col, "type": col_type})
-    
-    js_result = {
-        "rows": df.to_dict('records'),
-        "columns": columns
-    }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    js_result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-`;
-
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
-      timeoutMs,
-      "ApplyInflation 실행 타임아웃 (60초 초과)"
-    );
-
-    const resultPyObj = py.globals.get("js_result");
-    
-    if (!resultPyObj) {
-      throw new Error("Python ApplyInflation error: No result returned from Python code");
-    }
-
-    const result = fromPython(resultPyObj);
-
-    if (!result) {
-      throw new Error("Python ApplyInflation error: Failed to convert Python result to JavaScript");
-    }
-
-    if (result.__error__) {
-      throw new Error(
-        `Python ApplyInflation error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    const finalResult = {
-      rows: result.rows || [],
-      columns: result.columns || [],
-    };
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_target_year");
-    py.globals.delete("js_inflation_rate");
-    py.globals.delete("js_amount_column");
-    py.globals.delete("js_year_column");
-    py.globals.delete("js_result");
-
-    return finalResult;
-  } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_target_year");
-        pyodide.globals.delete("js_inflation_rate");
-        pyodide.globals.delete("js_amount_column");
-        pyodide.globals.delete("js_year_column");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
-    const errorMessage = error.message || String(error);
-    throw new Error(`Python ApplyInflation error:\n${errorMessage}`);
-  }
-}
-
-/**
- * FormatChange: 날짜 열에서 연도를 추출하여 새로운 열로 추가합니다
+ * FormatChange를 Python으로 실행합니다 (날짜 형식 변경 및 연도 추출)
+ * 타임아웃: 60초
  */
 export async function formatChangePython(
-  rows: Record<string, any>[],
-  dateColumn: string,
+  data: any[],
+  date_column: string,
   timeoutMs: number = 60000
-): Promise<{
-  rows: any[];
-  columns: Array<{ name: string; type: string }>;
-}> {
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy"]),
-      60000,
-      "패키지 설치 타임아웃 (60초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    py.globals.set("js_rows", rows);
-    py.globals.set("js_date_column", dateColumn);
+    py.globals.set("js_data", data);
+    py.globals.set("js_date_column", date_column);
 
     const code = `
-import json
 import pandas as pd
-import numpy as np
 from datetime import datetime
 
-try:
-    rows = js_rows.to_py()
-    date_column = str(js_date_column)
-    
-    df = pd.DataFrame(rows)
-    
-    # 날짜 컬럼을 datetime으로 변환
-    df[date_column] = pd.to_datetime(df[date_column])
-    
-    # 연도 추출하여 새로운 컬럼 추가 (날짜 컬럼 옆에)
-    year_column = "연도"
-    df[year_column] = df[date_column].dt.year
-    
-    # 날짜 컬럼을 문자열로 변환 (원본 형식 유지)
-    df[date_column] = df[date_column].dt.strftime('%Y-%m-%d')
-    
-    # 컬럼 순서 재배치: 날짜 컬럼 다음에 연도 컬럼 배치
-    cols = df.columns.tolist()
+df = pd.DataFrame(js_data.to_py())
+date_column = js_date_column
+
+# 날짜 컬럼을 datetime으로 변환
+df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
+
+# 연도 추출하여 새로운 컬럼 추가 (날짜 컬럼 옆에)
+year_column = "연도"
+df[year_column] = df[date_column].dt.year
+
+# 날짜 컬럼을 문자열로 변환 (원본 형식 유지)
+df[date_column] = df[date_column].dt.strftime('%Y-%m-%d')
+
+# 컬럼 순서 재배치: 날짜 컬럼 다음에 연도 컬럼 배치
+cols = df.columns.tolist()
+if date_column in cols and year_column in cols:
     date_idx = cols.index(date_column)
-    # 연도 컬럼을 날짜 컬럼 다음으로 이동
     cols.remove(year_column)
     cols.insert(date_idx + 1, year_column)
     df = df[cols]
-    
-    # 컬럼 정보 생성
-    columns = []
-    for col in df.columns:
-        col_type = "number" if pd.api.types.is_numeric_dtype(df[col]) else "string"
-        columns.append({"name": col, "type": col_type})
-    
-    js_result = {
-        "rows": df.to_dict('records'),
-        "columns": columns
-    }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    js_result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
+
+result_rows = df.to_dict('records')
+result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(df[col]) else 'string'} for col in df.columns]
+
+result = {
+    'rows': result_rows,
+    'columns': result_columns
+}
+
+result
 `;
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
       timeoutMs,
-      "FormatChange 실행 타임아웃 (60초 초과)"
+      `Python FormatChange 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const resultPyObj = py.globals.get("js_result");
-    
-    if (!resultPyObj) {
-      throw new Error("Python FormatChange error: No result returned from Python code");
-    }
-
     const result = fromPython(resultPyObj);
-
-    if (!result) {
-      throw new Error("Python FormatChange error: Failed to convert Python result to JavaScript");
-    }
-
-    if (result.__error__) {
-      throw new Error(
-        `Python FormatChange error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    const finalResult = {
-      rows: result.rows || [],
-      columns: result.columns || [],
-    };
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_date_column");
-    py.globals.delete("js_result");
-
-    return finalResult;
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_date_column");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
-    throw new Error(`Python FormatChange error:\n${errorMessage}`);
+    throw new Error(`Python FormatChange error: ${errorMessage}`);
   }
 }
 
 /**
- * SplitByThreshold: Threshold 기준으로 데이터를 분리합니다
+ * ApplyInflation을 Python으로 실행합니다 (인플레이션 적용)
+ * 타임아웃: 60초
+ */
+export async function applyInflationPython(
+  data: any[],
+  target_year: number,
+  inflation_rate: number,
+  amount_column: string,
+  year_column: string,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_target_year", target_year);
+    py.globals.set("js_inflation_rate", inflation_rate);
+    py.globals.set("js_amount_column", amount_column);
+    py.globals.set("js_year_column", year_column);
+
+    const code = `
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+df = pd.DataFrame(js_data.to_py())
+target_year = js_target_year
+inflation_rate = js_inflation_rate
+amount_column = js_amount_column
+year_column = js_year_column
+
+# Year Column을 숫자로 변환 (이미 연도인 경우)
+df[year_column] = pd.to_numeric(df[year_column], errors='coerce')
+
+# 인플레이션 적용: Amount Column * (1 + Inflation Rate) ^ (Target Year - Year Column)
+# 컬럼 이름: 기존 금액 컬럼명 + "_infl"
+inflation_factor = (1 + inflation_rate / 100.0) ** (target_year - df[year_column])
+inflated_column_name = f"{amount_column}_infl"
+df[inflated_column_name] = (df[amount_column] * inflation_factor).astype(int)
+
+result_rows = df.to_dict('records')
+result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(df[col]) else 'string'} for col in df.columns]
+
+result = {
+    'rows': result_rows,
+    'columns': result_columns
+}
+
+result
+`;
+
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
+      timeoutMs,
+      `Python ApplyInflation 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    const result = fromPython(resultPyObj);
+    return result;
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python ApplyInflation error: ${errorMessage}`);
+  }
+}
+
+/**
+ * SplitByThreshold를 Python으로 실행합니다 (Threshold 기준 분리)
+ * 타임아웃: 60초
  */
 export async function splitByThresholdPython(
-  rows: Record<string, any>[],
+  data: any[],
   threshold: number,
-  amountColumn: string,
-  dateColumn: string,
+  amount_column: string,
+  date_column: string,
   timeoutMs: number = 60000
 ): Promise<{
   belowThreshold: { rows: any[]; columns: Array<{ name: string; type: string }> };
   aboveThreshold: { rows: any[]; columns: Array<{ name: string; type: string }> };
 }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy"]),
-      60000,
-      "패키지 설치 타임아웃 (60초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    py.globals.set("js_rows", rows);
+    py.globals.set("js_data", data);
     py.globals.set("js_threshold", threshold);
-    py.globals.set("js_amount_column", amountColumn);
-    py.globals.set("js_date_column", dateColumn);
+    py.globals.set("js_amount_column", amount_column);
+    py.globals.set("js_date_column", date_column);
 
     const code = `
-import json
 import pandas as pd
 import numpy as np
 from datetime import datetime
 
-try:
-    rows = js_rows.to_py()
-    threshold = float(js_threshold)
-    amount_column = str(js_amount_column)
-    date_column = str(js_date_column) if js_date_column else None
-    
-    df = pd.DataFrame(rows)
-    
-    # amount_column이 존재하는지 확인
-    if amount_column not in df.columns:
-        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
-    
-    # amount_column을 숫자로 변환
-    df[amount_column] = pd.to_numeric(df[amount_column], errors='coerce')
-    
-    # NaN 값이 있는지 확인
-    if df[amount_column].isna().any():
-        raise ValueError(f"Amount column '{amount_column}' contains non-numeric values. Please check the data.")
-    
-    # date_column이 제공된 경우에만 연도 추출
-    if date_column and date_column in df.columns:
-        # 날짜 컬럼을 datetime으로 변환
-        df[date_column] = pd.to_datetime(df[date_column])
-        df['year'] = df[date_column].dt.year
-        use_year = True
-    else:
-        # date_column이 없으면 연도 컬럼을 찾거나 생성
-        if '연도' in df.columns:
-            df['year'] = pd.to_numeric(df['연도'], errors='coerce')
-            use_year = True
-        elif 'year' in df.columns:
-            df['year'] = pd.to_numeric(df['year'], errors='coerce')
-            use_year = True
-        else:
-            # 연도 컬럼이 없으면 모든 데이터를 하나의 그룹으로 처리
-            df['year'] = 1
-            use_year = False
-    
-    # Threshold 기준으로 분리
-    below_df = df[df[amount_column] < threshold].copy()
-    above_df = df[df[amount_column] >= threshold].copy()
-    
-    # 첫 번째 출력: Threshold보다 작은 값, 연도별 합계만
-    if use_year:
-        below_yearly = below_df.groupby('year')[amount_column].sum().reset_index()
-        below_yearly.columns = ['year', 'total_amount']
-    else:
-        # 연도가 없으면 전체 합계만
-        total_sum = below_df[amount_column].sum()
-        below_yearly = pd.DataFrame({'year': [1], 'total_amount': [total_sum]})
-    
-    below_columns = [
-        {"name": "year", "type": "number"},
-        {"name": "total_amount", "type": "number"}
-    ]
-    
-    # 두 번째 출력: Threshold보다 크거나 같은 값, 원본 레이아웃 유지
-    if 'year' in above_df.columns:
-        above_df = above_df.drop(columns=['year'])
-    above_columns = []
-    for col in above_df.columns:
-        col_type = "number" if pd.api.types.is_numeric_dtype(above_df[col]) else "string"
-        above_columns.append({"name": col, "type": col_type})
-    
-    js_result = {
-        "below_threshold": {
-            "rows": below_yearly.to_dict('records'),
-            "columns": below_columns
-        },
-        "above_threshold": {
-            "rows": above_df.to_dict('records'),
-            "columns": above_columns
-        }
+df = pd.DataFrame(js_data.to_py())
+threshold = js_threshold
+amount_column = js_amount_column
+date_column = js_date_column
+
+# date_column이 있으면 날짜 컬럼을 datetime으로 변환하고 year 컬럼 추가
+if date_column and date_column != "" and date_column in df.columns:
+    df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
+    df['year'] = df[date_column].dt.year
+
+# Threshold 기준으로 분리
+below_threshold_df = df[df[amount_column] < threshold].copy()
+above_threshold_df = df[df[amount_column] >= threshold].copy()
+
+# 첫 번째 출력: Threshold보다 작은 값
+# date_column이 있으면 연도별 합계만, 없으면 원본 레이아웃 유지
+if date_column and date_column != "" and 'year' in df.columns:
+    below_yearly = below_threshold_df.groupby('year')[amount_column].sum().reset_index()
+    below_yearly.columns = ['year', 'total_amount']
+    below_result_rows = below_yearly.to_dict('records')
+    below_result_columns = [{'name': 'year', 'type': 'number'}, {'name': 'total_amount', 'type': 'number'}]
+else:
+    below_result_rows = below_threshold_df.to_dict('records')
+    below_result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(below_threshold_df[col]) else 'string'} for col in below_threshold_df.columns]
+
+# 두 번째 출력: Threshold보다 크거나 같은 값, 원본 레이아웃 유지
+# date_column이 있으면 year 컬럼 제거
+if date_column and date_column != "" and 'year' in above_threshold_df.columns:
+    above_threshold_df = above_threshold_df.drop(columns=['year'])
+above_result_rows = above_threshold_df.to_dict('records')
+above_result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(above_threshold_df[col]) else 'string'} for col in above_threshold_df.columns]
+
+result = {
+    'belowThreshold': {
+        'rows': below_result_rows,
+        'columns': below_result_columns
+    },
+    'aboveThreshold': {
+        'rows': above_result_rows,
+        'columns': above_result_columns
     }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    js_result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
+}
+
+result
 `;
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
       timeoutMs,
-      "SplitByThreshold 실행 타임아웃 (60초 초과)"
+      `Python SplitByThreshold 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    // Get result from Python global variable
-    const jsResultPyObj = py.globals.get("js_result");
-    if (!jsResultPyObj) {
-      throw new Error("Python SplitByThreshold error: No result returned from Python code.");
-    }
-
-    const result = fromPython(jsResultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python SplitByThreshold error: ${result.error_message || "Unknown error"}\n${result.error_traceback || ""}`
-      );
-    }
-
-    if (!result || !result.below_threshold || !result.above_threshold) {
-      throw new Error("Python SplitByThreshold error: Invalid result structure.");
-    }
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_threshold");
-    py.globals.delete("js_amount_column");
-    py.globals.delete("js_date_column");
-    py.globals.delete("js_result");
-
-    return {
-      belowThreshold: result.below_threshold,
-      aboveThreshold: result.above_threshold,
-    };
+    const result = fromPython(resultPyObj);
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_threshold");
-        pyodide.globals.delete("js_amount_column");
-        pyodide.globals.delete("js_date_column");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
-    throw new Error(`Python SplitByThreshold error:\n${errorMessage}`);
+    throw new Error(`Python SplitByThreshold error: ${errorMessage}`);
   }
 }
 
 /**
- * SplitByFreqServ: 클레임 데이터를 빈도와 심도로 분리합니다
+ * SimulateAggDist를 Python으로 실행합니다 (몬테카를로 시뮬레이션)
+ * 타임아웃: 120초
+ */
+export async function simulateAggDistPython(
+  distributionType: string,
+  parameters: Record<string, number>,
+  nSimulations: number,
+  timeoutMs: number = 120000
+): Promise<{
+  results: Array<{ count: number; amount: number }>;
+  rawSimulations: number[];
+  statistics: {
+    mean: number;
+    std: number;
+    min: number;
+    max: number;
+    percentile5: number;
+    percentile25: number;
+    percentile50: number;
+    percentile75: number;
+    percentile95: number;
+    percentile99: number;
+  };
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_distribution_type", distributionType);
+    py.globals.set("js_parameters", parameters);
+    py.globals.set("js_n_simulations", nSimulations);
+
+    const code = `
+import numpy as np
+from scipy import stats
+
+distribution_type = js_distribution_type
+parameters = js_parameters.to_py()
+n_simulations = js_n_simulations
+
+# 분포 객체 생성
+if distribution_type == "Lognormal":
+    dist = stats.lognorm(
+        s=parameters.get("shape", 1.0),
+        scale=parameters.get("scale", 1.0),
+        loc=parameters.get("loc", 0.0)
+    )
+elif distribution_type == "Exponential":
+    dist = stats.expon(
+        scale=parameters.get("scale", 1.0),
+        loc=parameters.get("loc", 0.0)
+    )
+elif distribution_type == "Pareto":
+    dist = stats.pareto(
+        b=parameters.get("shape", 1.0),
+        scale=parameters.get("scale", 1.0),
+        loc=parameters.get("loc", 0.0)
+    )
+elif distribution_type == "Gamma":
+    dist = stats.gamma(
+        a=parameters.get("shape", 1.0),
+        scale=parameters.get("scale", 1.0),
+        loc=parameters.get("loc", 0.0)
+    )
+else:
+    raise ValueError(f"Unsupported distribution type: {distribution_type}")
+
+# 시뮬레이션
+np.random.seed(42)
+simulated_amounts = dist.rvs(size=n_simulations)
+
+# 원본 시뮬레이션 결과 (최대 100개)
+raw_simulations = simulated_amounts[:100].tolist()
+
+# 통계량 계산
+mean = float(np.mean(simulated_amounts))
+std = float(np.std(simulated_amounts))
+min_val = float(np.min(simulated_amounts))
+max_val = float(np.max(simulated_amounts))
+
+# 퍼센타일 계산
+percentile5 = float(np.percentile(simulated_amounts, 5))
+percentile25 = float(np.percentile(simulated_amounts, 25))
+percentile50 = float(np.percentile(simulated_amounts, 50))
+percentile75 = float(np.percentile(simulated_amounts, 75))
+percentile95 = float(np.percentile(simulated_amounts, 95))
+percentile99 = float(np.percentile(simulated_amounts, 99))
+
+# 히스토그램 결과 생성 (100개 구간)
+hist, bin_edges = np.histogram(simulated_amounts, bins=100)
+results = []
+for i in range(len(hist)):
+    if hist[i] > 0:
+        # 구간의 중간값을 amount로 사용
+        amount = float((bin_edges[i] + bin_edges[i + 1]) / 2)
+        count = int(hist[i])
+        results.append({"count": count, "amount": amount})
+
+result = {
+    'results': results,
+    'rawSimulations': raw_simulations,
+    'statistics': {
+        'mean': mean,
+        'std': std,
+        'min': min_val,
+        'max': max_val,
+        'percentile5': percentile5,
+        'percentile25': percentile25,
+        'percentile50': percentile50,
+        'percentile75': percentile75,
+        'percentile95': percentile95,
+        'percentile99': percentile99
+    }
+}
+
+result
+`;
+
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
+      timeoutMs,
+      `Python SimulateAggDist 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    const result = fromPython(resultPyObj);
+    return result;
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python SimulateAggDist error: ${errorMessage}`);
+  }
+}
+
+/**
+ * SplitByFreqServ를 Python으로 실행합니다 (빈도-심도 분리)
+ * 타임아웃: 60초
  */
 export async function splitByFreqServPython(
-  rows: Record<string, any>[],
-  amountColumn: string,
-  dateColumn: string,
+  data: any[],
+  amount_column: string,
+  date_column: string,
   timeoutMs: number = 60000
 ): Promise<{
   frequencyData: { rows: any[]; columns: Array<{ name: string; type: string }> };
@@ -5786,185 +5570,97 @@ export async function splitByFreqServPython(
   yearlySeverity: Array<{ year: number; totalAmount: number; count: number; meanAmount: number }>;
 }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy"]),
-      60000,
-      "패키지 설치 타임아웃 (60초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    py.globals.set("js_rows", rows);
-    py.globals.set("js_amount_column", amountColumn);
-    py.globals.set("js_date_column", dateColumn);
+    py.globals.set("js_data", data);
+    py.globals.set("js_amount_column", amount_column);
+    py.globals.set("js_date_column", date_column);
 
     const code = `
-import json
 import pandas as pd
 import numpy as np
 from datetime import datetime
 
-try:
-    rows = js_rows.to_py()
-    amount_column = str(js_amount_column)
-    date_column = str(js_date_column) if js_date_column else None
-    
-    df = pd.DataFrame(rows)
-    
-    # amount_column이 존재하는지 확인
-    if amount_column not in df.columns:
-        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
-    
-    # amount_column을 숫자로 변환
-    df[amount_column] = pd.to_numeric(df[amount_column], errors='coerce')
-    
-    # NaN 값이 있는지 확인
-    if df[amount_column].isna().any():
-        raise ValueError(f"Amount column '{amount_column}' contains non-numeric values. Please check the data.")
-    
-    # date_column이 제공된 경우에만 연도 추출
-    if date_column and date_column in df.columns:
-        # 날짜 컬럼을 datetime으로 변환
-        df[date_column] = pd.to_datetime(df[date_column])
-        df['year'] = df[date_column].dt.year
-        use_year = True
-    else:
-        # date_column이 없으면 연도 컬럼을 찾거나 생성
-        if '연도' in df.columns:
-            df['year'] = pd.to_numeric(df['연도'], errors='coerce')
-            use_year = True
-        elif 'year' in df.columns:
-            df['year'] = pd.to_numeric(df['year'], errors='coerce')
-            use_year = True
-        else:
-            # 연도 컬럼이 없으면 모든 데이터를 하나의 그룹으로 처리
-            df['year'] = 1
-            use_year = False
-    
-    # 양수 값만 사용
-    df = df[df[amount_column] > 0].copy()
-    
-    if len(df) == 0:
-        raise ValueError("No positive values found in amount column")
-    
-    # 1. 빈도 데이터: 연도별 클레임 건수
-    if use_year:
-        yearly_freq = df.groupby('year').size().reset_index(name='count')
-        yearly_freq.columns = ['year', 'count']
-    else:
-        # 연도가 없으면 전체 건수만
-        total_count = len(df)
-        yearly_freq = pd.DataFrame({'year': [1], 'count': [total_count]})
-    
-    freq_columns = [
-        {"name": "year", "type": "number"},
-        {"name": "count", "type": "number"}
-    ]
-    
-    # 2. 심도 데이터: 보험금(amount_column)만 포함
-    severity_df = pd.DataFrame({amount_column: df[amount_column]})
-    
-    severity_columns = [
-        {"name": amount_column, "type": "number"}
-    ]
-    
-    # 3. 연도별 심도 통계: 연도별 총액, 건수, 평균
-    if use_year:
-        yearly_sev = df.groupby('year').agg({
-            amount_column: ['sum', 'count', 'mean']
-        }).reset_index()
-        yearly_sev.columns = ['year', 'totalAmount', 'count', 'meanAmount']
-    else:
-        total_amount = df[amount_column].sum()
-        total_count = len(df)
-        mean_amount = df[amount_column].mean()
-        yearly_sev = pd.DataFrame({
-            'year': [1],
-            'totalAmount': [total_amount],
-            'count': [total_count],
-            'meanAmount': [mean_amount]
-        })
-    
-    js_result = {
-        "frequency_data": {
-            "rows": yearly_freq.to_dict('records'),
-            "columns": freq_columns
-        },
-        "severity_data": {
-            "rows": severity_df.to_dict('records'),
-            "columns": severity_columns
-        },
-        "yearly_frequency": yearly_freq.to_dict('records'),
-        "yearly_severity": yearly_sev.to_dict('records')
-    }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    js_result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
+df = pd.DataFrame(js_data.to_py())
+amount_column = js_amount_column
+date_column = js_date_column
+
+# 날짜 컬럼을 datetime으로 변환
+if date_column and date_column != "" and date_column in df.columns:
+    df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
+    df['year'] = df[date_column].dt.year
+else:
+    # date_column이 없으면 year 컬럼이 이미 있을 수 있음
+    if 'year' not in df.columns and '연도' in df.columns:
+        df['year'] = df['연도']
+    elif 'year' not in df.columns:
+        raise ValueError(f"Date column '{date_column}' not found and no year column available")
+
+# 양수 값만 사용
+df = df[df[amount_column] > 0].copy()
+
+# 1. 빈도 데이터: 연도별 클레임 건수
+yearly_frequency_df = df.groupby('year').size().reset_index(name='count')
+frequency_result_rows = yearly_frequency_df.to_dict('records')
+frequency_result_columns = [{'name': 'year', 'type': 'number'}, {'name': 'count', 'type': 'number'}]
+
+# 2. 심도 데이터: 개별 클레임 금액 (원본 데이터 유지)
+severity_df = df.copy()
+if 'year' in severity_df.columns:
+    severity_df = severity_df.drop(columns=['year'])
+severity_result_rows = severity_df.to_dict('records')
+severity_result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(severity_df[col]) else 'string'} for col in severity_df.columns]
+
+# 3. 연도별 빈도 데이터 (yearlyFrequency)
+yearly_frequency = yearly_frequency_df.to_dict('records')
+
+# 4. 연도별 심도 데이터 (yearlySeverity) - 연도별 총액, 건수, 평균
+yearly_severity_df = df.groupby('year')[amount_column].agg(['sum', 'count', 'mean']).reset_index()
+yearly_severity_df.columns = ['year', 'totalAmount', 'count', 'meanAmount']
+yearly_severity = yearly_severity_df.to_dict('records')
+
+result = {
+    'frequencyData': {
+        'rows': frequency_result_rows,
+        'columns': frequency_result_columns
+    },
+    'severityData': {
+        'rows': severity_result_rows,
+        'columns': severity_result_columns
+    },
+    'yearlyFrequency': yearly_frequency,
+    'yearlySeverity': yearly_severity
+}
+
+result
 `;
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
       timeoutMs,
-      "SplitByFreqServ 실행 타임아웃 (60초 초과)"
+      `Python SplitByFreqServ 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const jsResultPyObj = py.globals.get("js_result");
-    if (!jsResultPyObj) {
-      throw new Error("Python SplitByFreqServ error: No result returned from Python code.");
-    }
-
-    const result = fromPython(jsResultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python SplitByFreqServ error: ${result.error_message || "Unknown error"}\n${result.error_traceback || ""}`
-      );
-    }
-
-    if (!result || !result.frequency_data || !result.severity_data) {
-      throw new Error("Python SplitByFreqServ error: Invalid result structure.");
-    }
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_amount_column");
-    py.globals.delete("js_date_column");
-    py.globals.delete("js_result");
-
-    return {
-      frequencyData: result.frequency_data,
-      severityData: result.severity_data,
-      yearlyFrequency: result.yearly_frequency || [],
-      yearlySeverity: result.yearly_severity || [],
-    };
+    const result = fromPython(resultPyObj);
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_amount_column");
-        pyodide.globals.delete("js_date_column");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
-    throw new Error(`Python SplitByFreqServ error:\n${errorMessage}`);
+    throw new Error(`Python SplitByFreqServ error: ${errorMessage}`);
   }
 }
 
 /**
- * FitAggregateModel: 집합 금액에 통계 분포를 적합시킵니다
+ * FitAggregateModel를 Python으로 실행합니다 (집합 모델 적합)
+ * 타임아웃: 120초
  */
 export async function fitAggregateModelPython(
-  rows: Record<string, any>[],
+  data: any[],
   distributionType: "Lognormal" | "Exponential" | "Pareto" | "Gamma",
-  amountColumn: string,
+  amount_column: string,
   timeoutMs: number = 120000
 ): Promise<{
   distributionType: string;
@@ -5976,7 +5672,6 @@ export async function fitAggregateModelPython(
     ksStatistic?: number;
     ksPValue?: number;
   };
-  yearlyAggregates: Array<{ year: number; totalAmount: number }>;
   qqPlot?: {
     theoreticalQuantiles: number[];
     sampleQuantiles: number[];
@@ -5993,414 +5688,157 @@ export async function fitAggregateModelPython(
     probabilities: number[];
     amounts: number[];
   };
+  yearlyAggregates: Array<{ year: number; totalAmount: number }>;
 }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy", "scipy", "statsmodels"]),
-      120000,
-      "패키지 설치 타임아웃 (120초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    py.globals.set("js_rows", rows);
+    py.globals.set("js_data", data);
     py.globals.set("js_distribution_type", distributionType);
-    py.globals.set("js_amount_column", amountColumn);
+    py.globals.set("js_amount_column", amount_column);
 
     const code = `
-import json
 import pandas as pd
 import numpy as np
 from scipy import stats
-from scipy.optimize import minimize
-import warnings
-warnings.filterwarnings('ignore')
+from scipy.stats import kstest
 
-try:
-    rows = js_rows.to_py()
-    distribution_type = str(js_distribution_type)
-    amount_column = str(js_amount_column)
-    
-    df = pd.DataFrame(rows)
-    
-    # 데이터 검증
-    if df.empty:
-        raise ValueError("Input data is empty")
-    
-    if amount_column not in df.columns:
-        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
-    
-    # 선택된 열의 값들을 직접 사용
-    amounts = df[amount_column].values
-    
-    # 양수 값만 사용
-    amounts = amounts[amounts > 0]
-    if len(amounts) == 0:
-        raise ValueError("No positive values found in data after filtering")
-    
-    # yearly_agg는 빈 배열로 반환 (연도별 집계 불필요)
-    yearly_agg = pd.DataFrame([], columns=['year', 'total_amount'])
-    
-    # 분포 적합 함수 (최적 loc 찾기 포함)
-    def fit_distribution_with_optimal_loc(data, dist_type):
-        """분포에 따라 최적의 loc를 찾아 적합"""
-        min_val = np.min(data)
-        
-        if dist_type == "Lognormal":
-            # Lognormal: loc은 보통 0이 적합하지만, 데이터가 음수에서 시작하면 조정 필요
-            log_data = np.log(data)
-            mu, sigma = stats.norm.fit(log_data)
-            dist = stats.lognorm
-            param_names = ["shape", "scale", "loc"]
-            s = sigma
-            scale = np.exp(mu)
-            # loc은 0이 일반적이지만, 데이터 최소값이 0보다 크면 조정
-            loc = 0 if min_val >= 0 else min_val - 1e-6
-            params = (s, scale, loc)
-            return dist, params, param_names
-            
-        elif dist_type == "Exponential":
-            # Exponential: loc은 보통 0이지만, 데이터 최소값 확인
-            # floc을 사용하지 않고 자동으로 최적 loc 찾기
-            if min_val >= 0:
-                # 최소값이 0 이상이면 floc=0 사용
-                params = stats.expon.fit(data, floc=0)
-            else:
-                # 최소값이 0보다 작으면 자동으로 loc 찾기
-                params = stats.expon.fit(data)
-            dist = stats.expon
-            param_names = ["scale", "loc"]
-            return dist, params, param_names
-            
-        elif dist_type == "Pareto":
-            # Pareto: 여러 형태 시도, 각각 최적 loc 찾기
-            best_params = None
-            best_dist = None
-            best_param_names = None
-            best_aic = np.inf
-            
-            # Pareto Type I
-            try:
-                if min_val > 0:
-                    params = stats.pareto.fit(data, floc=0)
-                else:
-                    params = stats.pareto.fit(data)
-                if params[0] > 0 and params[1] > 0:
-                    dist = stats.pareto
-                    param_names = ["shape", "scale", "loc"]
-                    # AIC 계산하여 비교
-                    n = len(data)
-                    log_likelihood = np.sum(dist.logpdf(data, *params))
-                    aic = 2 * len(params) - 2 * log_likelihood
-                    if aic < best_aic:
-                        best_params = params
-                        best_dist = dist
-                        best_param_names = param_names
-                        best_aic = aic
-            except:
-                pass
-            
-            # Lomax (Pareto Type II)
-            try:
-                if min_val >= 0:
-                    params = stats.lomax.fit(data, floc=0)
-                else:
-                    params = stats.lomax.fit(data)
-                if params[0] > 0 and params[1] > 0:
-                    dist = stats.lomax
-                    param_names = ["shape", "scale", "loc"]
-                    n = len(data)
-                    log_likelihood = np.sum(dist.logpdf(data, *params))
-                    aic = 2 * len(params) - 2 * log_likelihood
-                    if aic < best_aic:
-                        best_params = params
-                        best_dist = dist
-                        best_param_names = param_names
-                        best_aic = aic
-            except:
-                pass
-            
-            # Generalized Pareto
-            try:
-                if min_val >= 0:
-                    params = stats.genpareto.fit(data, floc=0)
-                else:
-                    params = stats.genpareto.fit(data)
-                dist = stats.genpareto
-                param_names = ["shape", "scale", "loc"]
-                n = len(data)
-                log_likelihood = np.sum(dist.logpdf(data, *params))
-                aic = 2 * len(params) - 2 * log_likelihood
-                if aic < best_aic:
-                    best_params = params
-                    best_dist = dist
-                    best_param_names = param_names
-                    best_aic = aic
-            except:
-                pass
-            
-            if best_params is None:
-                raise ValueError("Failed to fit Pareto distribution in all forms")
-            
-            return best_dist, best_params, best_param_names
-            
-        elif dist_type == "Gamma":
-            # Gamma: loc은 보통 0이지만, 데이터 최소값 확인
-            if min_val >= 0:
-                params = stats.gamma.fit(data, floc=0)
-            else:
-                params = stats.gamma.fit(data)
-            dist = stats.gamma
-            param_names = ["shape", "scale", "loc"]
-            if params[0] <= 0 or params[1] <= 0:
-                raise ValueError("Invalid Gamma parameters")
-            return dist, params, param_names
-        else:
-            raise ValueError(f"Unknown distribution type: {dist_type}")
-    
-    # 선택된 열의 데이터에 분포 적합
-    dist, params, param_names = fit_distribution_with_optimal_loc(amounts, distribution_type)
-    
-    # 파라미터 딕셔너리 생성
-    param_dict = {}
-    for i, name in enumerate(param_names):
-        if i < len(params):
-            param_dict[name] = float(params[i])
-    
-    # 적합 통계량 계산
-    # Log Likelihood 계산 - 분포 적합 후 바로 계산
-    n_obs = len(amounts)
-    log_likelihood = None
-    
-    # 직접 logpdf를 사용하여 Log Likelihood 계산
-    try:
-        # 모든 분포에 대해 직접 계산 시도
-        log_pdf_sum = np.sum(dist.logpdf(amounts, *params))
-        if np.isfinite(log_pdf_sum):
-            log_likelihood = float(log_pdf_sum)
-    except:
-        # logpdf 실패 시 개별 값으로 계산
-        try:
-            log_pdf_values = []
-            for x in amounts:
-                try:
-                    log_pdf = dist.logpdf(x, *params)
-                    if np.isfinite(log_pdf):
-                        log_pdf_values.append(log_pdf)
-                except:
-                    continue
-            if len(log_pdf_values) > 0:
-                log_likelihood = float(np.sum(log_pdf_values))
-        except:
-            pass
-    
-    # Log Likelihood가 여전히 None이면 근사값 사용
-    if log_likelihood is None or not np.isfinite(log_likelihood):
-        # 정규분포 근사 사용
-        mean_amount = np.mean(amounts)
-        std_amount = np.std(amounts)
-        if mean_amount > 0 and std_amount > 0:
-            # 정규분포 근사: log L = -n/2 * (log(2*pi*sigma^2) + 1)
-            log_likelihood = -0.5 * n_obs * (np.log(2 * np.pi * std_amount**2 + 1e-10) + 1)
-        else:
-            # 매우 간단한 근사
-            log_likelihood = -n_obs * np.log(mean_amount + 1e-10) if mean_amount > 0 else -1e10
-    
-    # 최종 보장: log_likelihood는 반드시 유한한 값이어야 함
-    if not np.isfinite(log_likelihood):
-        log_likelihood = -1e10
-    
-    # AIC, BIC - Log Likelihood가 항상 있으므로 계산 가능
-    n_params = len(params)
-    aic = 2 * n_params - 2 * log_likelihood
-    bic = n_params * np.log(n_obs) - 2 * log_likelihood
-    
-    # Kolmogorov-Smirnov 검정
-    try:
-        ks_stat, ks_pvalue = stats.kstest(amounts, lambda x: dist.cdf(x, *params))
-    except:
-        ks_stat = None
-        ks_pvalue = None
-    
-    # Log Likelihood 최종 검증 - 반드시 값이 있어야 함
-    if log_likelihood is None:
-        # 최후의 수단: 간단한 근사
-        mean_amount = np.mean(amounts)
-        log_likelihood = -n_obs * np.log(mean_amount + 1e-10) if mean_amount > 0 else -1e10
-    
-    # 유한성 검증
-    if not np.isfinite(log_likelihood):
-        log_likelihood = -1e10
-    
-    # Q-Q Plot 데이터 계산
-    qq_theoretical = None
-    qq_sample = None
-    try:
-        # scipy.stats.probplot을 사용하여 Q-Q 플롯 데이터 계산
-        (osm, osr), (slope, intercept, r) = stats.probplot(amounts, dist=dist, sparams=params)
-        qq_theoretical = [float(x) for x in osm]
-        qq_sample = [float(x) for x in osr]
-    except Exception as e:
-        # probplot 실패 시 수동 계산
-        try:
-            sorted_data = np.sort(amounts)
-            n = len(sorted_data)
-            # 이론적 분위수 계산
-            theoretical_quantiles = dist.ppf(np.linspace(0.01, 0.99, n), *params)
-            qq_theoretical = [float(x) for x in theoretical_quantiles]
-            qq_sample = [float(x) for x in sorted_data]
-        except:
-            qq_theoretical = None
-            qq_sample = None
-    
-    # P-P Plot 데이터 계산
-    pp_theoretical = None
-    pp_empirical = None
-    try:
-        sorted_data = np.sort(amounts)
-        n = len(sorted_data)
-        # 이론적 CDF
-        theoretical_cdf = dist.cdf(sorted_data, *params)
-        # 경험적 CDF
-        empirical_cdf = np.arange(1, n + 1) / n
-        pp_theoretical = [float(x) for x in theoretical_cdf]
-        pp_empirical = [float(x) for x in empirical_cdf]
-    except:
-        pp_theoretical = None
-        pp_empirical = None
-    
-    # 누적 분포 데이터 계산 (실제 데이터)
-    cumulative_distribution = None
-    try:
-        sorted_amounts = np.sort(amounts)
-        n = len(sorted_amounts)
-        # 백분위수별 금액 계산 (0%부터 100%까지)
-        percentiles = np.linspace(0, 100, 101)  # 0, 1, 2, ..., 100
-        cumulative_amounts = np.percentile(sorted_amounts, percentiles)
-        cumulative_distribution = {
-            "percentiles": [float(p) for p in percentiles],
-            "amounts": [float(a) for a in cumulative_amounts]
-        }
-    except:
-        cumulative_distribution = None
-    
-    # 이론적 누적 확률별 금액 계산 (현재 분포)
-    theoretical_cumulative = None
-    try:
-        # 백분위수 (0부터 1까지)
-        probabilities = np.linspace(0, 1, 101)  # 0, 0.01, 0.02, ..., 1.0
-        # ppf (percent point function)를 사용하여 각 확률에 해당하는 금액 계산
-        theoretical_amounts = dist.ppf(probabilities, *params)
-        theoretical_cumulative = {
-            "probabilities": [float(p) for p in probabilities],
-            "amounts": [float(a) for a in theoretical_amounts]
-        }
-    except:
-        theoretical_cumulative = None
-    
-    result = {
-        "distribution_type": distribution_type,
-        "parameters": param_dict,
-        "fit_statistics": {
-            "aic": float(aic),
-            "bic": float(bic),
-            "log_likelihood": float(log_likelihood),
-            "ks_statistic": float(ks_stat) if ks_stat is not None else None,
-            "ks_p_value": float(ks_pvalue) if ks_pvalue is not None else None
-        },
-        "yearly_aggregates": yearly_agg.to_dict('records'),
-        "qq_plot": {
-            "theoretical_quantiles": qq_theoretical,
-            "sample_quantiles": qq_sample
-        } if qq_theoretical is not None and qq_sample is not None else None,
-        "pp_plot": {
-            "theoretical_cdf": pp_theoretical,
-            "empirical_cdf": pp_empirical
-        } if pp_theoretical is not None and pp_empirical is not None else None,
-        "cumulative_distribution": cumulative_distribution,
-        "theoretical_cumulative": theoretical_cumulative
-    }
-    
-    js_result = result
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-    js_result = result
+df = pd.DataFrame(js_data.to_py())
+distribution_type = js_distribution_type
+amount_column = js_amount_column
+
+# 선택된 열에서 데이터 가져오기
+amounts = pd.to_numeric(df[amount_column], errors='coerce').dropna().values
+
+# 양수 값만 사용
+amounts = amounts[amounts > 0]
+
+if len(amounts) == 0:
+    raise ValueError(f"No valid positive values found in column '{amount_column}'")
+
+# 분포 적합
+if distribution_type == "Lognormal":
+    params = stats.lognorm.fit(amounts, floc=0)
+    dist = stats.lognorm(s=params[0], scale=params[2], loc=params[1])
+    param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
+elif distribution_type == "Exponential":
+    params = stats.expon.fit(amounts, floc=0)
+    dist = stats.expon(scale=params[1], loc=params[0])
+    param_dict = {"loc": float(params[0]), "scale": float(params[1])}
+elif distribution_type == "Pareto":
+    params = stats.pareto.fit(amounts, floc=0)
+    dist = stats.pareto(b=params[0], scale=params[2], loc=params[1])
+    param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
+elif distribution_type == "Gamma":
+    params = stats.gamma.fit(amounts, floc=0)
+    dist = stats.gamma(a=params[0], scale=params[2], loc=params[1])
+    param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
+else:
+    raise ValueError(f"Unsupported distribution type: {distribution_type}")
+
+# 통계량 계산
+log_likelihood = float(np.sum(dist.logpdf(amounts)))
+n_params = len(param_dict)
+n_obs = len(amounts)
+aic = 2 * n_params - 2 * log_likelihood
+bic = n_params * np.log(n_obs) - 2 * log_likelihood
+
+# Kolmogorov-Smirnov 테스트
+ks_stat, ks_pvalue = kstest(amounts, dist.cdf)
+ks_statistic = float(ks_stat)
+ks_p_value = float(ks_pvalue)
+
+# QQ Plot 데이터 생성 (100개 포인트)
+sorted_amounts = np.sort(amounts)
+n_points = min(100, len(sorted_amounts))
+percentiles = np.linspace(0.01, 0.99, n_points)
+theoretical_quantiles = [float(dist.ppf(p)) for p in percentiles]
+sample_quantiles = [float(np.percentile(sorted_amounts, p * 100)) for p in percentiles]
+
+# PP Plot 데이터 생성 (100개 포인트)
+theoretical_cdf = [float(dist.cdf(x)) for x in sorted_amounts[::max(1, len(sorted_amounts)//100)]]
+empirical_cdf = [float((np.searchsorted(sorted_amounts, x, side='right')) / len(sorted_amounts)) for x in sorted_amounts[::max(1, len(sorted_amounts)//100)]]
+
+# Cumulative Distribution (경험적 누적분포)
+percentiles_list = [5, 10, 25, 50, 75, 90, 95, 99]
+cumulative_percentiles = [float(p) for p in percentiles_list]
+cumulative_amounts = [float(np.percentile(amounts, p)) for p in percentiles_list]
+
+# Theoretical Cumulative (이론적 누적분포)
+theoretical_probs = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+theoretical_probs_list = [float(p) for p in theoretical_probs]
+theoretical_amounts = [float(dist.ppf(p)) for p in theoretical_probs]
+
+# Yearly Aggregates (연도별 합계) - year 컬럼이 있으면 사용, 없으면 빈 배열
+yearly_aggregates = []
+if 'year' in df.columns or '연도' in df.columns:
+    year_col = 'year' if 'year' in df.columns else '연도'
+    df_with_year = df.copy()
+    df_with_year[amount_column] = pd.to_numeric(df_with_year[amount_column], errors='coerce')
+    df_with_year = df_with_year[df_with_year[amount_column] > 0]
+    if year_col in df_with_year.columns:
+        yearly_df = df_with_year.groupby(year_col)[amount_column].sum().reset_index()
+        yearly_df.columns = ['year', 'totalAmount']
+        yearly_aggregates = yearly_df.to_dict('records')
+
+result = {
+    'distributionType': distribution_type,
+    'parameters': param_dict,
+    'fitStatistics': {
+        'aic': float(aic),
+        'bic': float(bic),
+        'logLikelihood': float(log_likelihood),
+        'ksStatistic': ks_statistic,
+        'ksPValue': ks_p_value
+    },
+    'qqPlot': {
+        'theoreticalQuantiles': theoretical_quantiles,
+        'sampleQuantiles': sample_quantiles
+    },
+    'ppPlot': {
+        'theoreticalCDF': theoretical_cdf[:100],
+        'empiricalCDF': empirical_cdf[:100]
+    },
+    'cumulativeDistribution': {
+        'percentiles': cumulative_percentiles,
+        'amounts': cumulative_amounts
+    },
+    'theoreticalCumulative': {
+        'probabilities': theoretical_probs_list,
+        'amounts': theoretical_amounts
+    },
+    'yearlyAggregates': yearly_aggregates
+}
+
+result
 `;
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
       timeoutMs,
-      "FitAggregateModel 실행 타임아웃 (120초 초과)"
+      `Python FitAggregateModel 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const resultPyObj = py.globals.get("js_result");
-    if (!resultPyObj) {
-      throw new Error("Python FitAggregateModel error: No result returned");
-    }
-
     const result = fromPython(resultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python FitAggregateModel error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_distribution_type");
-    py.globals.delete("js_amount_column");
-
-    return {
-      distributionType: result.distribution_type,
-      parameters: result.parameters,
-      fitStatistics: result.fit_statistics,
-      yearlyAggregates: result.yearly_aggregates,
-      qqPlot: result.qq_plot ? {
-        theoreticalQuantiles: result.qq_plot.theoretical_quantiles,
-        sampleQuantiles: result.qq_plot.sample_quantiles,
-      } : undefined,
-      ppPlot: result.pp_plot ? {
-        theoreticalCDF: result.pp_plot.theoretical_cdf,
-        empiricalCDF: result.pp_plot.empirical_cdf,
-      } : undefined,
-      cumulativeDistribution: result.cumulative_distribution ? {
-        percentiles: result.cumulative_distribution.percentiles,
-        amounts: result.cumulative_distribution.amounts,
-      } : undefined,
-      theoreticalCumulative: result.theoretical_cumulative ? {
-        probabilities: result.theoretical_cumulative.probabilities,
-        amounts: result.theoretical_cumulative.amounts,
-      } : undefined,
-    };
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_distribution_type");
-        pyodide.globals.delete("js_amount_column");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
-    throw new Error(`Python FitAggregateModel error:\n${errorMessage}`);
+    throw new Error(`Python FitAggregateModel error: ${errorMessage}`);
   }
 }
 
 /**
- * FitFrequencyModel: 여러 빈도 분포를 비교하여 적합시킵니다
+ * FitFrequencyModel를 Python으로 실행합니다 (빈도 모델 적합)
+ * 타임아웃: 120초
  */
 export async function fitFrequencyModelPython(
-  rows: Record<string, any>[],
-  countColumn: string,
-  frequencyTypes: string[],
+  data: any[],
+  count_column: string,
+  selected_frequency_types: string[],
   timeoutMs: number = 120000
 ): Promise<{
   results: Array<{
@@ -6414,236 +5852,184 @@ export async function fitFrequencyModelPython(
       variance?: number;
       dispersion?: number;
     };
-    yearlyCounts?: Array<{ year: number; count: number }>;
-    qqPlot?: {
-      theoreticalQuantiles: number[];
-      sampleQuantiles: number[];
-    };
-    ppPlot?: {
-      theoreticalCDF: number[];
-      empiricalCDF: number[];
-    };
+    error?: string;
   }>;
-  yearlyCounts: Array<{ year: number; count: number }>;
+  yearlyCounts: Array<{ year?: number; count: number }>;
 }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy", "scipy"]),
-      120000,
-      "패키지 설치 타임아웃 (120초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    py.globals.set("js_rows", rows);
-    py.globals.set("js_count_column", countColumn);
-    py.globals.set("js_frequency_types", frequencyTypes);
+    py.globals.set("js_data", data);
+    py.globals.set("js_count_column", count_column);
+    py.globals.set("js_frequency_types", selected_frequency_types);
 
     const code = `
-import json
 import pandas as pd
 import numpy as np
 from scipy import stats
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    rows = js_rows.to_py()
-    count_column = str(js_count_column)
-    frequency_types = js_frequency_types.to_py()
-    
-    df = pd.DataFrame(rows)
-    
-    if count_column not in df.columns:
-        raise ValueError(f"Count column '{count_column}' not found in data. Available columns: {list(df.columns)}")
-    
-    # 건수 데이터
-    counts = pd.to_numeric(df[count_column], errors='coerce').dropna().values
-    
-    if len(counts) == 0:
-        raise ValueError("No data available")
-    
-    # 빈도 모델 적합 함수
-    def fit_frequency_model(data, dist_type):
-        """빈도 분포 적합"""
-        try:
-            if dist_type == "Poisson":
-                lambda_param = np.mean(data)
-                if lambda_param <= 0:
-                    return None
-                dist = stats.poisson(lambda_param)
-                params = (lambda_param,)
-                param_names = ["lambda"]
-                log_likelihood = np.sum(dist.logpmf(data))
-                
-            elif dist_type == "NegativeBinomial":
-                mean_count = np.mean(data)
-                var_count = np.var(data)
-                if var_count > mean_count:
-                    r = mean_count ** 2 / (var_count - mean_count)
-                    p = mean_count / var_count
-                else:
-                    r = 10.0
-                    p = mean_count / (mean_count + r)
-                if r <= 0 or p <= 0 or p >= 1:
-                    return None
-                dist = stats.nbinom(r, p)
-                params = (r, p)
-                param_names = ["n", "p"]
-                log_likelihood = np.sum(dist.logpmf(data))
-                
-            else:
-                return None
+df = pd.DataFrame(js_data.to_py())
+count_column = js_count_column
+frequency_types = js_frequency_types.to_py()
+
+# 선택된 열에서 건수 데이터 가져오기
+counts = pd.to_numeric(df[count_column], errors='coerce').dropna().values
+
+# 양수 값만 사용 (건수는 0 이상이어야 함)
+counts = counts[counts >= 0]
+
+if len(counts) == 0:
+    raise ValueError(f"No valid count data found in column '{count_column}'")
+
+all_results = []
+
+for dist_type in frequency_types:
+    try:
+        if dist_type == "Poisson":
+            # 포아송 분포: lambda = mean
+            lambda_param = np.mean(counts)
+            if lambda_param <= 0:
+                all_results.append({"distribution_type": "Poisson", "error": "Mean count must be positive"})
+                continue
+            
+            dist = stats.poisson(lambda_param)
+            params = {"lambda": float(lambda_param)}
             
             # 통계량 계산
-            n_params = len(params)
-            n_obs = len(data)
+            log_likelihood = np.sum(dist.logpmf(counts))
+            n_params = 1
+            n_obs = len(counts)
             aic = 2 * n_params - 2 * log_likelihood
             bic = n_params * np.log(n_obs) - 2 * log_likelihood
-            mean_val = np.mean(data)
-            variance_val = np.var(data)
-            dispersion = variance_val / mean_val if mean_val > 0 else None
             
-            # 파라미터 딕셔너리
-            param_dict = {}
-            for i, name in enumerate(param_names):
-                if i < len(params):
-                    param_dict[name] = float(params[i])
-            
-            # Q-Q Plot 계산
-            qq_theoretical = None
-            qq_sample = None
-            try:
-                sorted_data = np.sort(data)
-                n = len(sorted_data)
-                theoretical_quantiles = dist.ppf(np.linspace(0.01, 0.99, n), *params)
-                qq_theoretical = [float(x) for x in theoretical_quantiles]
-                qq_sample = [float(x) for x in sorted_data]
-            except:
-                pass
-            
-            # P-P Plot 계산
-            pp_theoretical = None
-            pp_empirical = None
-            try:
-                sorted_data = np.sort(data)
-                n = len(sorted_data)
-                theoretical_cdf = dist.cdf(sorted_data, *params)
-                empirical_cdf = np.arange(1, n + 1) / n
-                pp_theoretical = [float(x) for x in theoretical_cdf]
-                pp_empirical = [float(x) for x in empirical_cdf]
-            except:
-                pass
-            
-            return {
-                "distributionType": dist_type,
-                "parameters": param_dict,
-                "fitStatistics": {
+            all_results.append({
+                "distribution_type": "Poisson",
+                "parameters": params,
+                "fit_statistics": {
                     "aic": float(aic),
                     "bic": float(bic),
-                    "logLikelihood": float(log_likelihood),
-                    "mean": float(mean_val),
-                    "variance": float(variance_val),
-                    "dispersion": float(dispersion) if dispersion is not None else None
-                },
-                "qqPlot": {
-                    "theoreticalQuantiles": qq_theoretical,
-                    "sampleQuantiles": qq_sample
-                } if qq_theoretical is not None else None,
-                "ppPlot": {
-                    "theoreticalCDF": pp_theoretical,
-                    "empiricalCDF": pp_empirical
-                } if pp_theoretical is not None else None
-            }
-        except Exception as e:
-            return {"error": str(e)}
-    
-    # 여러 빈도 분포 적합
-    results = []
-    
-    for dist_type in frequency_types:
-        result = fit_frequency_model(counts, dist_type)
-        if result:
-            if "error" in result:
-                results.append({
-                    "distributionType": dist_type,
-                    "error": result["error"]
-                })
-            else:
-                results.append(result)
-    
-    # yearly_counts는 입력 데이터에서 year 컬럼이 있으면 사용, 없으면 인덱스 사용
-    if 'year' in df.columns:
-        yearly_counts = [{"year": int(y), "count": int(c)} for y, c in zip(df['year'].values, counts)]
+                    "log_likelihood": float(log_likelihood),
+                    "mean": float(np.mean(counts)),
+                    "variance": float(np.var(counts)),
+                    "dispersion": float(np.var(counts) / np.mean(counts)) if np.mean(counts) > 0 else 0
+                }
+            })
+            
+        elif dist_type == "NegativeBinomial":
+            # 음이항 분포: Method of Moments
+            mean_count = np.mean(counts)
+            var_count = np.var(counts)
+            
+            if var_count <= mean_count:
+                all_results.append({"distribution_type": "NegativeBinomial", "error": "Variance must be greater than mean (overdispersion required)"})
+                continue
+            
+            # Method of moments estimators
+            r_est = mean_count ** 2 / (var_count - mean_count)
+            p_est = mean_count / var_count
+            
+            if r_est <= 0 or p_est <= 0 or p_est >= 1:
+                all_results.append({"distribution_type": "NegativeBinomial", "error": f"Invalid parameters: r={r_est:.2f}, p={p_est:.2f}"})
+                continue
+            
+            dist = stats.nbinom(r_est, p_est)
+            params = {"n": float(r_est), "p": float(p_est)}
+            
+            # 통계량 계산
+            log_likelihood = np.sum(dist.logpmf(counts))
+            n_params = 2
+            n_obs = len(counts)
+            aic = 2 * n_params - 2 * log_likelihood
+            bic = n_params * np.log(n_obs) - 2 * log_likelihood
+            
+            all_results.append({
+                "distribution_type": "NegativeBinomial",
+                "parameters": params,
+                "fit_statistics": {
+                    "aic": float(aic),
+                    "bic": float(bic),
+                    "log_likelihood": float(log_likelihood),
+                    "mean": float(np.mean(counts)),
+                    "variance": float(np.var(counts)),
+                    "dispersion": float(np.var(counts) / np.mean(counts)) if np.mean(counts) > 0 else 0
+                }
+            })
+        else:
+            all_results.append({"distribution_type": dist_type, "error": f"Unknown distribution type"})
+            
+    except Exception as e:
+        all_results.append({"distribution_type": dist_type, "error": str(e)})
+
+# yearly_counts 생성 (year 컬럼이 있으면 포함, 없으면 count만)
+yearly_counts = []
+if 'year' in df.columns:
+    for _, row in df.iterrows():
+        yearly_counts.append({"year": int(row['year']) if pd.notna(row['year']) else None, "count": int(row[count_column]) if pd.notna(row[count_column]) else 0})
+elif '연도' in df.columns:
+    for _, row in df.iterrows():
+        yearly_counts.append({"year": int(row['연도']) if pd.notna(row['연도']) else None, "count": int(row[count_column]) if pd.notna(row[count_column]) else 0})
+else:
+    for _, row in df.iterrows():
+        yearly_counts.append({"count": int(row[count_column]) if pd.notna(row[count_column]) else 0})
+
+# 결과 변환 (fit_statistics를 fitStatistics로 변환)
+formatted_results = []
+for r in all_results:
+    formatted_result = {
+        "distributionType": r["distribution_type"]
+    }
+    if "error" in r:
+        formatted_result["error"] = r["error"]
+        formatted_result["parameters"] = {}
+        formatted_result["fitStatistics"] = {}
     else:
-        yearly_counts = [{"year": i + 1, "count": int(c)} for i, c in enumerate(counts)]
-    
-    js_result = {
-        "results": results,
-        "yearly_counts": yearly_counts
-    }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    js_result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
+        formatted_result["parameters"] = r["parameters"]
+        formatted_result["fitStatistics"] = {
+            "aic": r["fit_statistics"].get("aic"),
+            "bic": r["fit_statistics"].get("bic"),
+            "logLikelihood": r["fit_statistics"].get("log_likelihood"),
+            "mean": r["fit_statistics"].get("mean"),
+            "variance": r["fit_statistics"].get("variance"),
+            "dispersion": r["fit_statistics"].get("dispersion")
+        }
+    formatted_results.append(formatted_result)
+
+result = {
+    "results": formatted_results,
+    "yearlyCounts": yearly_counts
+}
+
+result
 `;
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
       timeoutMs,
-      "FitFrequencyModel 실행 타임아웃 (120초 초과)"
+      `Python FitFrequencyModel 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const resultPyObj = py.globals.get("js_result");
-    if (!resultPyObj) {
-      throw new Error("Python FitFrequencyModel error: No result returned");
-    }
-
     const result = fromPython(resultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python FitFrequencyModel error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_count_column");
-    py.globals.delete("js_frequency_types");
-    py.globals.delete("js_result");
-
-    return {
-      results: result.results || [],
-      yearlyCounts: result.yearly_counts || [],
-    };
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_count_column");
-        pyodide.globals.delete("js_frequency_types");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
-    throw new Error(`Python FitFrequencyModel error:\n${errorMessage}`);
+    throw new Error(`Python FitFrequencyModel error: ${errorMessage}`);
   }
 }
 
 /**
- * FitSeverityModel: 여러 심도 분포를 비교하여 적합시킵니다
+ * FitSeverityModel를 Python으로 실행합니다 (심도 모델 적합)
+ * 타임아웃: 120초
  */
 export async function fitSeverityModelPython(
-  rows: Record<string, any>[],
-  amountColumn: string,
-  severityTypes: string[],
+  data: any[],
+  amount_column: string,
+  selected_severity_types: string[],
   timeoutMs: number = 120000
 ): Promise<{
   results: Array<{
@@ -6672,999 +6058,198 @@ export async function fitSeverityModelPython(
       probabilities: number[];
       amounts: number[];
     };
+    error?: string;
   }>;
 }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy", "scipy"]),
-      120000,
-      "패키지 설치 타임아웃 (120초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    py.globals.set("js_rows", rows);
-    py.globals.set("js_amount_column", amountColumn);
-    py.globals.set("js_severity_types", severityTypes);
+    py.globals.set("js_data", data);
+    py.globals.set("js_amount_column", amount_column);
+    py.globals.set("js_severity_types", selected_severity_types);
 
     const code = `
-import json
 import pandas as pd
 import numpy as np
 from scipy import stats
+from scipy.stats import kstest
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    rows = js_rows.to_py()
-    amount_column = str(js_amount_column)
-    severity_types = js_severity_types.to_py()
-    
-    df = pd.DataFrame(rows)
-    
-    if amount_column not in df.columns:
-        raise ValueError(f"Amount column '{amount_column}' not found in data. Available columns: {list(df.columns)}")
-    
-    amounts = df[amount_column].values
-    amounts = amounts[amounts > 0]
-    
-    if len(amounts) == 0:
-        raise ValueError("No positive values found in data")
-    
-    # 분포 적합 함수 (FitAggregateModel과 유사)
-    def fit_distribution_with_optimal_loc(data, dist_type):
-        """분포에 따라 최적의 loc를 찾아 적합"""
-        min_val = np.min(data)
-        
+df = pd.DataFrame(js_data.to_py())
+amount_column = js_amount_column
+severity_types = js_severity_types.to_py()
+
+# 선택된 열에서 데이터 가져오기
+amounts = pd.to_numeric(df[amount_column], errors='coerce').dropna().values
+
+# 양수 값만 사용
+amounts = amounts[amounts > 0]
+
+if len(amounts) == 0:
+    raise ValueError(f"No valid positive values found in column '{amount_column}'")
+
+all_results = []
+
+for dist_type in severity_types:
+    try:
+        # 분포 적합
         if dist_type == "Normal":
-            params = stats.norm.fit(data)
-            dist = stats.norm
-            param_names = ["mean", "std"]
-            return dist, params, param_names
-            
+            params = stats.norm.fit(amounts)
+            dist = stats.norm(loc=params[0], scale=params[1])
+            param_dict = {"loc": float(params[0]), "scale": float(params[1])}
         elif dist_type == "Lognormal":
-            log_data = np.log(data)
-            mu, sigma = stats.norm.fit(log_data)
-            dist = stats.lognorm
-            param_names = ["shape", "scale", "loc"]
-            s = sigma
-            scale = np.exp(mu)
-            loc = 0 if min_val >= 0 else min_val - 1e-6
-            params = (s, scale, loc)
-            return dist, params, param_names
-            
+            params = stats.lognorm.fit(amounts, floc=0)
+            dist = stats.lognorm(s=params[0], scale=params[2], loc=params[1])
+            param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
         elif dist_type == "Exponential":
-            if min_val >= 0:
-                params = stats.expon.fit(data, floc=0)
-            else:
-                params = stats.expon.fit(data)
-            dist = stats.expon
-            param_names = ["scale", "loc"]
-            return dist, params, param_names
-            
+            params = stats.expon.fit(amounts, floc=0)
+            dist = stats.expon(scale=params[1], loc=params[0])
+            param_dict = {"loc": float(params[0]), "scale": float(params[1])}
         elif dist_type == "Pareto":
-            if min_val > 0:
-                params = stats.pareto.fit(data, floc=0)
-            else:
-                params = stats.pareto.fit(data)
-            dist = stats.pareto
-            param_names = ["shape", "scale", "loc"]
-            return dist, params, param_names
-            
+            params = stats.pareto.fit(amounts, floc=0)
+            dist = stats.pareto(b=params[0], scale=params[2], loc=params[1])
+            param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
         elif dist_type == "Gamma":
-            if min_val >= 0:
-                params = stats.gamma.fit(data, floc=0)
-            else:
-                params = stats.gamma.fit(data)
-            dist = stats.gamma
-            param_names = ["shape", "scale", "loc"]
-            if params[0] <= 0 or params[1] <= 0:
-                raise ValueError("Invalid Gamma parameters")
-            return dist, params, param_names
-            
+            params = stats.gamma.fit(amounts, floc=0)
+            dist = stats.gamma(a=params[0], scale=params[2], loc=params[1])
+            param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
         elif dist_type == "Weibull":
-            if min_val >= 0:
-                params = stats.weibull_min.fit(data, floc=0)
-            else:
-                params = stats.weibull_min.fit(data)
-            dist = stats.weibull_min
-            param_names = ["shape", "scale", "loc"]
-            return dist, params, param_names
-            
+            params = stats.weibull_min.fit(amounts, floc=0)
+            dist = stats.weibull_min(c=params[0], scale=params[2], loc=params[1])
+            param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
         else:
-            raise ValueError(f"Unknown distribution type: {dist_type}")
-    
-    # 여러 심도 분포 적합
-    results = []
-    
-    for dist_type in severity_types:
-        try:
-            dist, params, param_names = fit_distribution_with_optimal_loc(amounts, dist_type)
-            
-            # 파라미터 딕셔너리
-            param_dict = {}
-            for i, name in enumerate(param_names):
-                if i < len(params):
-                    param_dict[name] = float(params[i])
-            
-            # Log Likelihood 계산
-            try:
-                log_likelihood = np.sum(dist.logpdf(amounts, *params))
-                if not np.isfinite(log_likelihood):
-                    log_likelihood = -1e10
-            except:
-                log_likelihood = -1e10
-            
-            # AIC, BIC
-            n_params = len(params)
-            n_obs = len(amounts)
-            aic = 2 * n_params - 2 * log_likelihood
-            bic = n_params * np.log(n_obs) - 2 * log_likelihood
-            
-            # KS 검정
-            try:
-                ks_stat, ks_pvalue = stats.kstest(amounts, lambda x: dist.cdf(x, *params))
-            except:
-                ks_stat = None
-                ks_pvalue = None
-            
-            # Q-Q Plot
-            qq_theoretical = None
-            qq_sample = None
-            try:
-                sorted_data = np.sort(amounts)
-                n = len(sorted_data)
-                theoretical_quantiles = dist.ppf(np.linspace(0.01, 0.99, n), *params)
-                qq_theoretical = [float(x) for x in theoretical_quantiles]
-                qq_sample = [float(x) for x in sorted_data]
-            except:
-                pass
-            
-            # P-P Plot
-            pp_theoretical = None
-            pp_empirical = None
-            try:
-                sorted_data = np.sort(amounts)
-                n = len(sorted_data)
-                theoretical_cdf = dist.cdf(sorted_data, *params)
-                empirical_cdf = np.arange(1, n + 1) / n
-                pp_theoretical = [float(x) for x in theoretical_cdf]
-                pp_empirical = [float(x) for x in empirical_cdf]
-            except:
-                pass
-            
-            # 누적 분포
-            cumulative_distribution = None
-            try:
-                sorted_amounts = np.sort(amounts)
-                n = len(sorted_amounts)
-                percentiles = np.linspace(0, 100, 101)
-                cumulative_amounts = np.percentile(sorted_amounts, percentiles)
-                cumulative_distribution = {
-                    "percentiles": [float(p) for p in percentiles],
-                    "amounts": [float(a) for a in cumulative_amounts]
-                }
-            except:
-                pass
-            
-            # 이론적 누적 분포
-            theoretical_cumulative = None
-            try:
-                probabilities = np.linspace(0, 1, 101)
-                theoretical_amounts = dist.ppf(probabilities, *params)
-                theoretical_cumulative = {
-                    "probabilities": [float(p) for p in probabilities],
-                    "amounts": [float(a) for a in theoretical_amounts]
-                }
-            except:
-                pass
-            
-            results.append({
-                "distributionType": dist_type,
-                "parameters": param_dict,
-                "fitStatistics": {
-                    "aic": float(aic),
-                    "bic": float(bic),
-                    "logLikelihood": float(log_likelihood),
-                    "ksStatistic": float(ks_stat) if ks_stat is not None else None,
-                    "ksPValue": float(ks_pvalue) if ks_pvalue is not None else None
-                },
-                "qqPlot": {
-                    "theoreticalQuantiles": qq_theoretical,
-                    "sampleQuantiles": qq_sample
-                } if qq_theoretical is not None else None,
-                "ppPlot": {
-                    "theoreticalCDF": pp_theoretical,
-                    "empiricalCDF": pp_empirical
-                } if pp_theoretical is not None else None,
-                "cumulativeDistribution": cumulative_distribution,
-                "theoreticalCumulative": theoretical_cumulative
-            })
-        except Exception as e:
-            results.append({
-                "distributionType": dist_type,
-                "error": str(e)
-            })
-    
-    js_result = {
-        "results": results
+            all_results.append({"distribution_type": dist_type, "error": f"Unsupported distribution type: {dist_type}"})
+            continue
+
+        # 통계량 계산
+        log_likelihood = float(np.sum(dist.logpdf(amounts)))
+        n_params = len(param_dict)
+        n_obs = len(amounts)
+        aic = 2 * n_params - 2 * log_likelihood
+        bic = n_params * np.log(n_obs) - 2 * log_likelihood
+
+        # Kolmogorov-Smirnov 테스트
+        ks_stat, ks_pvalue = kstest(amounts, dist.cdf)
+        ks_statistic = float(ks_stat)
+        ks_p_value = float(ks_pvalue)
+
+        # QQ Plot 데이터 생성 (100개 포인트)
+        sorted_amounts = np.sort(amounts)
+        n_points = min(100, len(sorted_amounts))
+        percentiles = np.linspace(0.01, 0.99, n_points)
+        theoretical_quantiles = [float(dist.ppf(p)) for p in percentiles]
+        sample_quantiles = [float(np.percentile(sorted_amounts, p * 100)) for p in percentiles]
+
+        # PP Plot 데이터 생성 (100개 포인트)
+        theoretical_cdf = [float(dist.cdf(x)) for x in sorted_amounts[::max(1, len(sorted_amounts)//100)]]
+        empirical_cdf = [float((np.searchsorted(sorted_amounts, x, side='right')) / len(sorted_amounts)) for x in sorted_amounts[::max(1, len(sorted_amounts)//100)]]
+
+        # Cumulative Distribution (경험적 누적분포)
+        percentiles_list = [5, 10, 25, 50, 75, 90, 95, 99]
+        cumulative_percentiles = [float(p) for p in percentiles_list]
+        cumulative_amounts = [float(np.percentile(amounts, p)) for p in percentiles_list]
+
+        # Theoretical Cumulative (이론적 누적분포)
+        theoretical_probs = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99]
+        theoretical_probs_list = [float(p) for p in theoretical_probs]
+        theoretical_amounts = [float(dist.ppf(p)) for p in theoretical_probs]
+
+        all_results.append({
+            "distribution_type": dist_type,
+            "parameters": param_dict,
+            "fit_statistics": {
+                "aic": float(aic),
+                "bic": float(bic),
+                "log_likelihood": float(log_likelihood),
+                "ks_statistic": ks_statistic,
+                "ks_pvalue": ks_p_value
+            },
+            "qq_plot": {
+                "theoretical_quantiles": theoretical_quantiles,
+                "sample_quantiles": sample_quantiles
+            },
+            "pp_plot": {
+                "theoretical_cdf": theoretical_cdf[:100],
+                "empirical_cdf": empirical_cdf[:100]
+            },
+            "cumulative_distribution": {
+                "percentiles": cumulative_percentiles,
+                "amounts": cumulative_amounts
+            },
+            "theoretical_cumulative": {
+                "probabilities": theoretical_probs_list,
+                "amounts": theoretical_amounts
+            }
+        })
+    except Exception as e:
+        all_results.append({"distribution_type": dist_type, "error": str(e)})
+
+# 결과 변환 (fit_statistics를 fitStatistics로 변환)
+formatted_results = []
+for r in all_results:
+    formatted_result = {
+        "distributionType": r["distribution_type"]
     }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    js_result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-`;
+    if "error" in r:
+        formatted_result["error"] = r["error"]
+        formatted_result["parameters"] = {}
+        formatted_result["fitStatistics"] = {}
+    else:
+        formatted_result["parameters"] = r["parameters"]
+        formatted_result["fitStatistics"] = {
+            "aic": r["fit_statistics"].get("aic"),
+            "bic": r["fit_statistics"].get("bic"),
+            "logLikelihood": r["fit_statistics"].get("log_likelihood"),
+            "ksStatistic": r["fit_statistics"].get("ks_statistic"),
+            "ksPValue": r["fit_statistics"].get("ks_pvalue")
+        }
+        formatted_result["qqPlot"] = {
+            "theoreticalQuantiles": r["qq_plot"]["theoretical_quantiles"],
+            "sampleQuantiles": r["qq_plot"]["sample_quantiles"]
+        }
+        formatted_result["ppPlot"] = {
+            "theoreticalCDF": r["pp_plot"]["theoretical_cdf"],
+            "empiricalCDF": r["pp_plot"]["empirical_cdf"]
+        }
+        formatted_result["cumulativeDistribution"] = {
+            "percentiles": r["cumulative_distribution"]["percentiles"],
+            "amounts": r["cumulative_distribution"]["amounts"]
+        }
+        formatted_result["theoreticalCumulative"] = {
+            "probabilities": r["theoretical_cumulative"]["probabilities"],
+            "amounts": r["theoretical_cumulative"]["amounts"]
+        }
+    formatted_results.append(formatted_result)
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
-      timeoutMs,
-      "FitSeverityModel 실행 타임아웃 (120초 초과)"
-    );
-
-    const resultPyObj = py.globals.get("js_result");
-    if (!resultPyObj) {
-      throw new Error("Python FitSeverityModel error: No result returned");
-    }
-
-    const result = fromPython(resultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python FitSeverityModel error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_amount_column");
-    py.globals.delete("js_severity_types");
-    py.globals.delete("js_result");
-
-    return {
-      results: result.results || [],
-    };
-  } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_amount_column");
-        pyodide.globals.delete("js_severity_types");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
-    const errorMessage = error.message || String(error);
-    throw new Error(`Python FitSeverityModel error:\n${errorMessage}`);
-  }
+result = {
+    "results": formatted_results
 }
 
-/**
- * FitFrequencySeverityModel: 빈도-심도 모델을 적합시킵니다
- */
-export async function fitFrequencySeverityModelPython(
-  rows: Record<string, any>[],
-  frequencyType: "Poisson" | "NegativeBinomial",
-  severityType: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull",
-  amountColumn: string,
-  dateColumn: string,
-  timeoutMs: number = 120000
-): Promise<{
-  frequencyModel: {
-    type: string;
-    parameters: Record<string, number>;
-    fitStatistics: {
-      aic?: number;
-      bic?: number;
-      logLikelihood?: number;
-    };
-  };
-  severityModel: {
-    type: string;
-    parameters: Record<string, number>;
-    fitStatistics: {
-      aic?: number;
-      bic?: number;
-      logLikelihood?: number;
-      ksStatistic?: number;
-      ksPValue?: number;
-    };
-  };
-  aggregateDistribution: {
-    mean: number;
-    stdDev: number;
-    percentiles: Record<string, number>;
-  };
-}> {
-  try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy", "scipy", "statsmodels"]),
-      120000,
-      "패키지 설치 타임아웃 (120초 초과)"
-    );
-
-    py.globals.set("js_rows", rows);
-    py.globals.set("js_frequency_type", frequencyType);
-    py.globals.set("js_severity_type", severityType);
-    py.globals.set("js_amount_column", amountColumn);
-    py.globals.set("js_date_column", dateColumn);
-
-    const code = `
-import json
-import pandas as pd
-import numpy as np
-from scipy import stats
-from scipy.optimize import minimize
-import warnings
-warnings.filterwarnings('ignore')
-
-try:
-    rows = js_rows.to_py()
-    frequency_type = str(js_frequency_type)
-    severity_type = str(js_severity_type)
-    amount_column = str(js_amount_column)
-    date_column = str(js_date_column)
-    
-    df = pd.DataFrame(rows)
-    
-    # 날짜 컬럼을 datetime으로 변환
-    df[date_column] = pd.to_datetime(df[date_column])
-    df['year'] = df[date_column].dt.year
-    
-    # 빈도 모델: 연도별 클레임 건수
-    yearly_counts = df.groupby('year').size().reset_index(name='count')
-    counts = yearly_counts['count'].values
-    
-    # 빈도 분포 적합
-    if frequency_type == "Poisson":
-        lambda_param = np.mean(counts)
-        freq_params = {"lambda": float(lambda_param)}
-        freq_dist = stats.poisson(lambda_param)
-        freq_log_likelihood = np.sum(freq_dist.logpmf(counts))
-        
-    elif frequency_type == "NegativeBinomial":
-        # Negative Binomial 적합
-        mean_count = np.mean(counts)
-        var_count = np.var(counts)
-        if var_count > mean_count:
-            r = mean_count ** 2 / (var_count - mean_count)
-            p = mean_count / var_count
-        else:
-            r = 10.0
-            p = mean_count / (mean_count + r)
-        freq_params = {"n": float(r), "p": float(p)}
-        freq_dist = stats.nbinom(r, p)
-        freq_log_likelihood = np.sum(freq_dist.logpmf(counts))
-        
-    else:
-        raise ValueError(f"Unknown frequency type: {frequency_type}")
-    
-    # 빈도 모델 통계량
-    n_freq_params = len(freq_params)
-    n_freq_obs = len(counts)
-    freq_aic = 2 * n_freq_params - 2 * freq_log_likelihood
-    freq_bic = n_freq_params * np.log(n_freq_obs) - 2 * freq_log_likelihood
-    
-    # 심도 모델: 개별 클레임 금액
-    amounts = df[amount_column].values
-    amounts = amounts[amounts > 0]  # 양수만
-    
-    # 심도 분포 적합
-    if severity_type == "Normal":
-        params = stats.norm.fit(amounts)
-        sev_dist = stats.norm
-        param_names = ["mean", "std"]
-        
-    elif severity_type == "Lognormal":
-        log_amounts = np.log(amounts)
-        params = stats.norm.fit(log_amounts)
-        sev_dist = stats.lognorm
-        param_names = ["shape", "scale", "loc"]
-        params = (params[1], np.exp(params[0]), 0)
-        
-    elif severity_type == "Pareto":
-        params, _ = stats.pareto.fit(amounts, floc=0)
-        sev_dist = stats.pareto
-        param_names = ["shape", "scale", "loc"]
-        
-    elif severity_type == "Gamma":
-        params = stats.gamma.fit(amounts, floc=0)
-        sev_dist = stats.gamma
-        param_names = ["shape", "scale", "loc"]
-        
-    elif severity_type == "Exponential":
-        params = stats.expon.fit(amounts, floc=0)
-        sev_dist = stats.expon
-        param_names = ["scale", "loc"]
-        
-    elif severity_type == "Weibull":
-        params = stats.weibull_min.fit(amounts, floc=0)
-        sev_dist = stats.weibull_min
-        param_names = ["shape", "scale", "loc"]
-        
-    else:
-        raise ValueError(f"Unknown severity type: {severity_type}")
-    
-    # 심도 파라미터 딕셔너리
-    sev_param_dict = {}
-    for i, name in enumerate(param_names):
-        if i < len(params):
-            sev_param_dict[name] = float(params[i])
-    
-    # 심도 모델 통계량
-    try:
-        sev_log_likelihood = np.sum(sev_dist.logpdf(amounts, *params))
-    except:
-        sev_log_likelihood = None
-    
-    n_sev_params = len(params)
-    n_sev_obs = len(amounts)
-    sev_aic = None
-    sev_bic = None
-    if sev_log_likelihood is not None:
-        sev_aic = 2 * n_sev_params - 2 * sev_log_likelihood
-        sev_bic = n_sev_params * np.log(n_sev_obs) - 2 * sev_log_likelihood
-    
-    # Kolmogorov-Smirnov 검정
-    try:
-        sev_ks_stat, sev_ks_pvalue = stats.kstest(amounts, lambda x: sev_dist.cdf(x, *params))
-    except:
-        sev_ks_stat = None
-        sev_ks_pvalue = None
-    
-    # 집계 분포: 빈도 * 심도의 기대값과 분산
-    # E[Total] = E[N] * E[X]
-    # Var[Total] = E[N] * Var[X] + Var[N] * E[X]^2
-    if frequency_type == "Poisson":
-        E_N = lambda_param
-        Var_N = lambda_param
-    else:  # NegativeBinomial
-        E_N = r * (1 - p) / p
-        Var_N = r * (1 - p) / (p ** 2)
-    
-    # 심도 기대값과 분산
-    if severity_type == "Normal":
-        E_X = params[0]
-        Var_X = params[1] ** 2
-    elif severity_type == "Lognormal":
-        E_X = np.exp(params[0] + params[1]**2 / 2)
-        Var_X = (np.exp(params[1]**2) - 1) * np.exp(2 * params[0] + params[1]**2)
-    else:
-        # 근사값 사용
-        E_X = np.mean(amounts)
-        Var_X = np.var(amounts)
-    
-    E_Total = E_N * E_X
-    Var_Total = E_N * Var_X + Var_N * (E_X ** 2)
-    Std_Total = np.sqrt(Var_Total)
-    
-    # 백분위수 계산 (시뮬레이션 기반)
-    np.random.seed(42)
-    n_sim = 10000
-    simulated_totals = []
-    for _ in range(n_sim):
-        n_claims = freq_dist.rvs()
-        if n_claims > 0:
-            claim_amounts = sev_dist.rvs(n_claims, *params)
-            total = np.sum(claim_amounts)
-        else:
-            total = 0
-        simulated_totals.append(total)
-    
-    percentiles = {
-        "5": float(np.percentile(simulated_totals, 5)),
-        "25": float(np.percentile(simulated_totals, 25)),
-        "50": float(np.percentile(simulated_totals, 50)),
-        "75": float(np.percentile(simulated_totals, 75)),
-        "95": float(np.percentile(simulated_totals, 95)),
-        "99": float(np.percentile(simulated_totals, 99))
-    }
-    
-    result = {
-        "frequency_model": {
-            "type": frequency_type,
-            "parameters": freq_params,
-            "fit_statistics": {
-                "aic": float(freq_aic),
-                "bic": float(freq_bic),
-                "log_likelihood": float(freq_log_likelihood)
-            }
-        },
-        "severity_model": {
-            "type": severity_type,
-            "parameters": sev_param_dict,
-            "fit_statistics": {
-                "aic": float(sev_aic) if sev_aic is not None else None,
-                "bic": float(sev_bic) if sev_bic is not None else None,
-                "log_likelihood": float(sev_log_likelihood) if sev_log_likelihood is not None else None,
-                "ks_statistic": float(sev_ks_stat) if sev_ks_stat is not None else None,
-                "ks_p_value": float(sev_ks_pvalue) if sev_ks_pvalue is not None else None
-            }
-        },
-        "aggregate_distribution": {
-            "mean": float(E_Total),
-            "std_dev": float(Std_Total),
-            "percentiles": percentiles
-        }
-    }
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
+result
 `;
 
     const resultPyObj = await withTimeout(
-      Promise.resolve(py.runPython(code)),
+      py.runPython(code),
       timeoutMs,
-      "FitFrequencySeverityModel 실행 타임아웃 (120초 초과)"
+      `Python FitSeverityModel 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
     const result = fromPython(resultPyObj);
-
-    if (result.__error__) {
-      throw new Error(
-        `Python FitFrequencySeverityModel error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_rows");
-    py.globals.delete("js_frequency_type");
-    py.globals.delete("js_severity_type");
-    py.globals.delete("js_amount_column");
-    py.globals.delete("js_date_column");
-
-    return {
-      frequencyModel: result.frequency_model,
-      severityModel: result.severity_model,
-      aggregateDistribution: result.aggregate_distribution,
-    };
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_rows");
-        pyodide.globals.delete("js_frequency_type");
-        pyodide.globals.delete("js_severity_type");
-        pyodide.globals.delete("js_amount_column");
-        pyodide.globals.delete("js_date_column");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
-    throw new Error(`Python FitFrequencySeverityModel error:\n${errorMessage}`);
+    throw new Error(`Python FitSeverityModel error: ${errorMessage}`);
   }
 }
 
 /**
- * SimulateAggDist: 선택된 분포를 사용하여 몬테카를로 시뮬레이션을 수행합니다
- */
-export async function simulateAggDistPython(
-  distributionType: "Lognormal" | "Exponential" | "Pareto" | "Gamma",
-  parameters: Record<string, number>,
-  nSimulations: number,
-  timeoutMs: number = 120000
-): Promise<{
-  results: Array<{ count: number; amount: number }>;
-  statistics: {
-    mean: number;
-    std: number;
-    min: number;
-    max: number;
-    percentile5: number;
-    percentile25: number;
-    percentile50: number;
-    percentile75: number;
-    percentile95: number;
-    percentile99: number;
-  };
-}> {
-  try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy", "scipy"]),
-      120000,
-      "패키지 설치 타임아웃 (120초 초과)"
-    );
-
-    py.globals.set("js_distribution_type", distributionType);
-    py.globals.set("js_parameters", parameters);
-    py.globals.set("js_n_simulations", nSimulations);
-
-    const code = `
-import json
-import pandas as pd
-import numpy as np
-from scipy import stats
-import warnings
-warnings.filterwarnings('ignore')
-
-try:
-    distribution_type = str(js_distribution_type)
-    parameters = js_parameters.to_py()
-    n_simulations = int(js_n_simulations)
-    
-    # 파라미터 안전하게 가져오기 (유효성 검사 포함)
-    def safe_get(param_dict, key, default, min_val=1e-6):
-        """안전하게 파라미터를 가져오고 최소값 보장"""
-        value = param_dict.get(key, default)
-        try:
-            value = float(value)
-            if np.isnan(value) or np.isinf(value):
-                value = default
-            # 최소값 보장 (양수 파라미터)
-            if value < min_val:
-                value = max(min_val, default)
-        except (TypeError, ValueError):
-            value = max(min_val, default)
-        return value
-    
-    # 분포 객체 생성
-    if distribution_type == "Lognormal":
-        s = safe_get(parameters, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
-        loc = float(parameters.get("loc", 0.0))
-        # 최종 검증
-        if s <= 0 or scale <= 0:
-            raise ValueError(f"Invalid Lognormal parameters: shape={s}, scale={scale}. Both must be positive.")
-        dist = stats.lognorm(
-            s=s,
-            scale=scale,
-            loc=loc
-        )
-    elif distribution_type == "Exponential":
-        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
-        loc = float(parameters.get("loc", 0.0))
-        # 최종 검증
-        if scale <= 0:
-            raise ValueError(f"Invalid Exponential parameter: scale={scale}. Must be positive.")
-        dist = stats.expon(
-            scale=scale,
-            loc=loc
-        )
-    elif distribution_type == "Pareto":
-        shape = safe_get(parameters, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
-        loc = float(parameters.get("loc", 0.0))
-        # 최종 검증
-        if shape <= 0 or scale <= 0:
-            raise ValueError(f"Invalid Pareto parameters: shape={shape}, scale={scale}. Both must be positive.")
-        dist = stats.pareto(
-            b=shape,
-            scale=scale,
-            loc=loc
-        )
-    elif distribution_type == "Gamma":
-        shape = safe_get(parameters, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(parameters, "scale", 1.0, min_val=1e-6)
-        loc = float(parameters.get("loc", 0.0))
-        # 최종 검증
-        if shape <= 0 or scale <= 0:
-            raise ValueError(f"Invalid Gamma parameters: shape={shape}, scale={scale}. Both must be positive.")
-        dist = stats.gamma(
-            a=shape,
-            scale=scale,
-            loc=loc
-        )
-    else:
-        raise ValueError(f"Unknown distribution type: {distribution_type}")
-    
-    # 몬테카를로 시뮬레이션
-    np.random.seed(42)  # 재현성을 위한 시드 설정
-    simulated_amounts = dist.rvs(size=n_simulations)
-    
-    # 결과를 count와 amount로 변환 (히스토그램 형태)
-    # 금액을 구간별로 그룹화
-    min_amount = float(np.min(simulated_amounts))
-    max_amount = float(np.max(simulated_amounts))
-    
-    # 구간 수 결정 (적절한 수의 구간)
-    n_bins = min(100, max(10, int(np.sqrt(n_simulations))))
-    bins = np.linspace(min_amount, max_amount, n_bins + 1)
-    
-    # 히스토그램 계산
-    counts, bin_edges = np.histogram(simulated_amounts, bins=bins)
-    
-    # 결과 생성: 각 구간의 중간값과 빈도
-    results = []
-    for i in range(len(counts)):
-        if counts[i] > 0:
-            bin_center = (bin_edges[i] + bin_edges[i + 1]) / 2
-            results.append({
-                "count": int(counts[i]),
-                "amount": float(bin_center)
-            })
-    
-    # 통계량 계산
-    mean_amount = float(np.mean(simulated_amounts))
-    std_amount = float(np.std(simulated_amounts))
-    min_amount = float(np.min(simulated_amounts))
-    max_amount = float(np.max(simulated_amounts))
-    
-    percentiles = np.percentile(simulated_amounts, [5, 25, 50, 75, 95, 99])
-    
-    statistics = {
-        "mean": mean_amount,
-        "std": std_amount,
-        "min": min_amount,
-        "max": max_amount,
-        "percentile5": float(percentiles[0]),
-        "percentile25": float(percentiles[1]),
-        "percentile50": float(percentiles[2]),
-        "percentile75": float(percentiles[3]),
-        "percentile95": float(percentiles[4]),
-        "percentile99": float(percentiles[5])
-    }
-    
-    # 원본 시뮬레이션 결과 (최대 100개)
-    raw_simulations = simulated_amounts.tolist()[:100]
-    
-    result = {
-        "results": results,
-        "raw_simulations": raw_simulations,
-        "statistics": statistics
-    }
-    
-    js_result = result
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-    js_result = result
-`;
-
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
-      timeoutMs,
-      "SimulateAggDist 실행 타임아웃 (120초 초과)"
-    );
-
-    const resultPyObj = py.globals.get("js_result");
-    if (!resultPyObj) {
-      throw new Error("Python SimulateAggDist error: No result returned");
-    }
-
-    const result = fromPython(resultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python SimulateAggDist error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_distribution_type");
-    py.globals.delete("js_parameters");
-    py.globals.delete("js_n_simulations");
-
-    return {
-      results: result.results,
-      rawSimulations: result.raw_simulations || undefined,
-      statistics: result.statistics,
-    };
-  } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_distribution_type");
-        pyodide.globals.delete("js_parameters");
-        pyodide.globals.delete("js_n_simulations");
-      }
-    } catch {}
-
-    const errorMessage = error.message || String(error);
-    throw new Error(`Python SimulateAggDist error:\n${errorMessage}`);
-  }
-}
-
-export async function combineLossModelPython(
-  aggDistSimulations: number[],
-  freqServSimulations: number[],
-  timeoutMs: number = 120000
-): Promise<{
-  combinedStatistics: {
-    mean: number;
-    stdDev: number;
-    min: number;
-    max: number;
-    skewness?: number;
-    kurtosis?: number;
-  };
-  var: Record<string, number>;
-  tvar: Record<string, number>;
-  percentiles: Record<string, number>;
-  aggDistPercentiles: Record<string, number>;
-  freqServPercentiles: Record<string, number>;
-  aggregateLossDistribution: {
-    percentiles: number[];
-    amounts: number[];
-  };
-}> {
-  const py = await loadPyodide(30000);
-
-  try {
-    // Set JavaScript arrays as Python globals
-    py.globals.set("js_agg_dist_simulations", aggDistSimulations);
-    py.globals.set("js_freq_serv_simulations", freqServSimulations);
-
-    const code = `
-import json
-import numpy as np
-from scipy import stats
-
-try:
-    # Get JavaScript arrays from globals (set via py.globals.set)
-    # In Pyodide, variables set via globals.set are directly accessible in Python namespace
-    agg_dist_simulations = js_agg_dist_simulations.to_py()
-    freq_serv_simulations = js_freq_serv_simulations.to_py()
-    
-    # Convert to numpy arrays
-    agg_dist_array = np.array(agg_dist_simulations)
-    freq_serv_array = np.array(freq_serv_simulations)
-    
-    # Ensure both arrays have the same length
-    min_len = min(len(agg_dist_array), len(freq_serv_array))
-    agg_dist_array = agg_dist_array[:min_len]
-    freq_serv_array = freq_serv_array[:min_len]
-    
-    # Combine the two simulations (element-wise addition)
-    combined_simulations = agg_dist_array + freq_serv_array
-    
-    # Calculate statistics
-    mean = float(np.mean(combined_simulations))
-    std_dev = float(np.std(combined_simulations, ddof=1))
-    min_val = float(np.min(combined_simulations))
-    max_val = float(np.max(combined_simulations))
-    
-    # Calculate skewness and kurtosis
-    try:
-        skewness = float(stats.skew(combined_simulations))
-        kurtosis = float(stats.kurtosis(combined_simulations))
-    except:
-        skewness = 0.0
-        kurtosis = 0.0
-    
-    # 각 모듈의 퍼센타일 계산
-    percentile_levels = [5, 10, 25, 50, 75, 90, 95, 99, 99.5, 99.9]
-    
-    agg_dist_percentiles = {}
-    for level in percentile_levels:
-        agg_dist_percentiles[str(level)] = float(np.percentile(agg_dist_array, level))
-    
-    freq_serv_percentiles = {}
-    for level in percentile_levels:
-        freq_serv_percentiles[str(level)] = float(np.percentile(freq_serv_array, level))
-    
-    # 합산된 결과의 퍼센타일 계산
-    percentiles_dict = {}
-    for level in percentile_levels:
-        percentiles_dict[str(level)] = float(np.percentile(combined_simulations, level))
-    
-    # Calculate VaR (Value at Risk) at different confidence levels
-    var_dict = {
-        "90": float(np.percentile(combined_simulations, 90)),
-        "95": float(np.percentile(combined_simulations, 95)),
-        "99": float(np.percentile(combined_simulations, 99)),
-        "99.5": float(np.percentile(combined_simulations, 99.5)),
-        "99.9": float(np.percentile(combined_simulations, 99.9))
-    }
-    
-    # Calculate TVaR (Tail Value at Risk / Conditional VaR)
-    # TVaR = E[X | X > VaR]
-    tvar_dict = {}
-    for conf_level, var_value in var_dict.items():
-        threshold = var_value
-        tail_values = combined_simulations[combined_simulations > threshold]
-        if len(tail_values) > 0:
-            tvar_dict[conf_level] = float(np.mean(tail_values))
-        else:
-            tvar_dict[conf_level] = var_value
-    
-    # Create cumulative distribution for visualization
-    sorted_simulations = np.sort(combined_simulations)
-    n = len(sorted_simulations)
-    percentiles_list = np.linspace(0, 100, 101)
-    amounts_list = [float(np.percentile(sorted_simulations, p)) for p in percentiles_list]
-    
-    result = {
-        "combined_statistics": {
-            "mean": mean,
-            "stdDev": std_dev,
-            "min": min_val,
-            "max": max_val,
-            "skewness": skewness,
-            "kurtosis": kurtosis
-        },
-        "var": var_dict,
-        "tvar": tvar_dict,
-        "percentiles": percentiles_dict,
-        "agg_dist_percentiles": agg_dist_percentiles,
-        "freq_serv_percentiles": freq_serv_percentiles,
-        "aggregate_loss_distribution": {
-            "percentiles": [float(p) for p in percentiles_list],
-            "amounts": amounts_list
-        }
-    }
-    
-    js_result = result
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-    js_result = result
-`;
-
-    py.globals.set("js_agg_dist_simulations", aggDistSimulations);
-    py.globals.set("js_freq_serv_simulations", freqServSimulations);
-
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
-      timeoutMs,
-      "CombineLossModel 실행 타임아웃 (120초 초과)"
-    );
-
-    const resultPyObj = py.globals.get("js_result");
-    if (!resultPyObj) {
-      throw new Error("Python CombineLossModel error: No result returned");
-    }
-
-    const result = fromPython(resultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python CombineLossModel error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_agg_dist_simulations");
-    py.globals.delete("js_freq_serv_simulations");
-
-    return {
-      combinedStatistics: result.combined_statistics,
-      var: result.var,
-      tvar: result.tvar,
-      percentiles: result.percentiles,
-      aggDistPercentiles: result.agg_dist_percentiles || {},
-      freqServPercentiles: result.freq_serv_percentiles || {},
-      aggregateLossDistribution: result.aggregate_loss_distribution,
-    };
-  } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_agg_dist_simulations");
-        pyodide.globals.delete("js_freq_serv_simulations");
-      }
-    } catch {}
-
-    const errorMessage = error.message || String(error);
-    throw new Error(`Python CombineLossModel error:\n${errorMessage}`);
-  }
-}
-
-/**
- * SimulateFreqServ: 빈도-심도 모델을 사용한 몬테카를로 시뮬레이션
- * 빈도 분포에서 빈도 갯수를 샘플링하고, 각 빈도 갯수에 대해 심도 분포에서 심도를 합산
+ * SimulateFreqServ를 Python으로 실행합니다 (빈도-심도 시뮬레이션)
+ * 타임아웃: 120초
  */
 export async function simulateFreqServPython(
   frequencyType: "Poisson" | "NegativeBinomial",
@@ -7690,234 +6275,318 @@ export async function simulateFreqServPython(
   };
 }> {
   try {
-    const py = await loadPyodide(30000);
-
-    await withTimeout(
-      py.loadPackage(["pandas", "numpy", "scipy"]),
-      120000,
-      "패키지 설치 타임아웃 (120초 초과)"
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
     );
 
-    // 파라미터 딕셔너리에 type 추가
-    const frequencyParamsWithType = { ...frequencyParams, type: frequencyType };
-    const severityParamsWithType = { ...severityParams, type: severityType };
-    
-    py.globals.set("js_frequency_params", frequencyParamsWithType);
-    py.globals.set("js_severity_params", severityParamsWithType);
+    py.globals.set("js_frequency_type", frequencyType);
+    py.globals.set("js_frequency_params", frequencyParams);
+    py.globals.set("js_severity_type", severityType);
+    py.globals.set("js_severity_params", severityParams);
     py.globals.set("js_n_simulations", nSimulations);
 
     const code = `
-import json
-import pandas as pd
 import numpy as np
 from scipy import stats
-import warnings
-warnings.filterwarnings('ignore')
 
-try:
-    frequency_params = js_frequency_params.to_py()
-    severity_params = js_severity_params.to_py()
-    n_simulations = int(js_n_simulations)
+frequency_type = js_frequency_type
+frequency_params = js_frequency_params.to_py()
+severity_type = js_severity_type
+severity_params = js_severity_params.to_py()
+n_simulations = js_n_simulations
+
+# 빈도 분포 객체 생성
+if frequency_type == "Poisson":
+    lambda_param = frequency_params.get("lambda", 1.0)
+    freq_dist = stats.poisson(lambda_param)
+elif frequency_type == "NegativeBinomial":
+    n = frequency_params.get("n", 1.0)
+    p = frequency_params.get("p", 0.5)
+    freq_dist = stats.nbinom(n, p)
+else:
+    raise ValueError(f"Unsupported frequency distribution type: {frequency_type}")
+
+# 심도 분포 객체 생성
+if severity_type == "Normal":
+    loc = severity_params.get("loc", 0.0)
+    scale = severity_params.get("scale", 1.0)
+    sev_dist = stats.norm(loc=loc, scale=scale)
+elif severity_type == "Lognormal":
+    s = severity_params.get("shape", 1.0)
+    scale = severity_params.get("scale", 1.0)
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.lognorm(s=s, scale=scale, loc=loc)
+elif severity_type == "Exponential":
+    scale = severity_params.get("scale", 1.0)
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.expon(scale=scale, loc=loc)
+elif severity_type == "Pareto":
+    shape = severity_params.get("shape", 1.0)
+    scale = severity_params.get("scale", 1.0)
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.pareto(b=shape, scale=scale, loc=loc)
+elif severity_type == "Gamma":
+    shape = severity_params.get("shape", 1.0)
+    scale = severity_params.get("scale", 1.0)
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.gamma(a=shape, scale=scale, loc=loc)
+elif severity_type == "Weibull":
+    shape = severity_params.get("shape", 1.0)
+    scale = severity_params.get("scale", 1.0)
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.weibull_min(c=shape, scale=scale, loc=loc)
+else:
+    raise ValueError(f"Unsupported severity distribution type: {severity_type}")
+
+# 몬테카를로 시뮬레이션
+np.random.seed(42)
+simulated_totals = []
+
+for i in range(n_simulations):
+    # 빈도 분포에서 건수 샘플링
+    n_claims = max(0, int(freq_dist.rvs()))
     
-    # 파라미터 안전하게 가져오기
-    def safe_get(param_dict, key, default, min_val=1e-6):
-        """안전하게 파라미터를 가져오고 최소값 보장"""
-        value = param_dict.get(key, default)
-        try:
-            value = float(value)
-            if np.isnan(value) or np.isinf(value):
-                value = default
-            if value < min_val:
-                value = max(min_val, default)
-        except (TypeError, ValueError):
-            value = max(min_val, default)
-        return value
-    
-    # 빈도 분포 객체 생성
-    freq_type = frequency_params.get("type", "Poisson")
-    
-    if freq_type == "Poisson":
-        lambda_param = safe_get(frequency_params, "lambda", 1.0, min_val=1e-6)
-        freq_dist = stats.poisson(lambda_param)
-    elif freq_type == "NegativeBinomial":
-        n = safe_get(frequency_params, "n", 10.0, min_val=1e-6)
-        p = safe_get(frequency_params, "p", 0.5, min_val=1e-6)
-        if p >= 1.0:
-            p = 0.99
-        freq_dist = stats.nbinom(n, p)
+    # 각 건수에 대해 심도 분포에서 금액 샘플링
+    if n_claims > 0:
+        claim_amounts = sev_dist.rvs(size=n_claims)
+        total_loss = float(np.sum(claim_amounts))
     else:
-        raise ValueError(f"Unknown frequency distribution: {freq_type}")
+        total_loss = 0.0
     
-    # 심도 분포 객체 생성
-    sev_type = severity_params.get("type", "Lognormal")
-    
-    if sev_type == "Normal":
-        mean = safe_get(severity_params, "mean", 1.0, min_val=1e-6)
-        std = safe_get(severity_params, "std", 1.0, min_val=1e-6)
-        loc = float(severity_params.get("loc", 0.0))
-        sev_dist = stats.norm(loc=mean, scale=std)
-    elif sev_type == "Lognormal":
-        s = safe_get(severity_params, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(severity_params, "scale", 1.0, min_val=1e-6)
-        loc = float(severity_params.get("loc", 0.0))
-        sev_dist = stats.lognorm(s=s, scale=scale, loc=loc)
-    elif sev_type == "Exponential":
-        scale = safe_get(severity_params, "scale", 1.0, min_val=1e-6)
-        loc = float(severity_params.get("loc", 0.0))
-        sev_dist = stats.expon(scale=scale, loc=loc)
-    elif sev_type == "Pareto":
-        shape = safe_get(severity_params, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(severity_params, "scale", 1.0, min_val=1e-6)
-        loc = float(severity_params.get("loc", 0.0))
-        sev_dist = stats.pareto(b=shape, scale=scale, loc=loc)
-    elif sev_type == "Gamma":
-        shape = safe_get(severity_params, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(severity_params, "scale", 1.0, min_val=1e-6)
-        loc = float(severity_params.get("loc", 0.0))
-        sev_dist = stats.gamma(a=shape, scale=scale, loc=loc)
-    elif sev_type == "Weibull":
-        shape = safe_get(severity_params, "shape", 1.0, min_val=1e-6)
-        scale = safe_get(severity_params, "scale", 1.0, min_val=1e-6)
-        loc = float(severity_params.get("loc", 0.0))
-        sev_dist = stats.weibull_min(c=shape, scale=scale, loc=loc)
-    else:
-        raise ValueError(f"Unknown severity distribution: {sev_type}")
-    
-    # 몬테카를로 시뮬레이션
-    np.random.seed(42)
-    aggregate_losses = []
-    
-    for i in range(n_simulations):
-        frequency_count = int(freq_dist.rvs())
-        frequency_count = max(0, frequency_count)
-        
-        if frequency_count == 0:
-            total_loss = 0.0
-        else:
-            severities = sev_dist.rvs(size=frequency_count)
-            severities = np.maximum(severities, 0.0)
-            total_loss = float(np.sum(severities))
-        
-        aggregate_losses.append(total_loss)
-    
-    aggregate_losses = np.array(aggregate_losses)
-    
-    # 결과를 count와 amount로 변환 (히스토그램 형태)
-    min_amount = float(np.min(aggregate_losses))
-    max_amount = float(np.max(aggregate_losses))
-    
-    # 구간 수 결정
-    n_bins = min(100, max(10, int(np.sqrt(n_simulations))))
-    bins = np.linspace(min_amount, max_amount, n_bins + 1)
-    
-    # 히스토그램 계산
-    counts, bin_edges = np.histogram(aggregate_losses, bins=bins)
-    
-    # 결과 생성: 각 구간의 중간값과 빈도
-    results = []
-    for i in range(len(counts)):
-        if counts[i] > 0:
-            bin_center = (bin_edges[i] + bin_edges[i + 1]) / 2
-            results.append({
-                "count": int(counts[i]),
-                "amount": float(bin_center)
-            })
-    
-    # 통계량 계산
-    mean_amount = float(np.mean(aggregate_losses))
-    std_amount = float(np.std(aggregate_losses))
-    min_amount = float(np.min(aggregate_losses))
-    max_amount = float(np.max(aggregate_losses))
-    
-    percentiles = np.percentile(aggregate_losses, [5, 25, 50, 75, 95, 99])
-    
-    statistics = {
-        "mean": mean_amount,
-        "std": std_amount,
-        "min": min_amount,
-        "max": max_amount,
-        "percentile5": float(percentiles[0]),
-        "percentile25": float(percentiles[1]),
-        "percentile50": float(percentiles[2]),
-        "percentile75": float(percentiles[3]),
-        "percentile95": float(percentiles[4]),
-        "percentile99": float(percentiles[5])
+    simulated_totals.append(total_loss)
+
+simulated_totals = np.array(simulated_totals)
+
+# 원본 시뮬레이션 결과 (최대 100개)
+raw_simulations = simulated_totals[:100].tolist()
+
+# 통계량 계산
+mean = float(np.mean(simulated_totals))
+std = float(np.std(simulated_totals))
+min_val = float(np.min(simulated_totals))
+max_val = float(np.max(simulated_totals))
+
+# 퍼센타일 계산
+percentile5 = float(np.percentile(simulated_totals, 5))
+percentile25 = float(np.percentile(simulated_totals, 25))
+percentile50 = float(np.percentile(simulated_totals, 50))
+percentile75 = float(np.percentile(simulated_totals, 75))
+percentile95 = float(np.percentile(simulated_totals, 95))
+percentile99 = float(np.percentile(simulated_totals, 99))
+
+# 히스토그램 결과 생성 (100개 구간)
+hist, bin_edges = np.histogram(simulated_totals, bins=100)
+results = []
+for i in range(len(hist)):
+    if hist[i] > 0:
+        # 구간의 중간값을 amount로 사용
+        amount = float((bin_edges[i] + bin_edges[i + 1]) / 2)
+        count = int(hist[i])
+        results.append({"count": count, "amount": amount})
+
+result = {
+    'results': results,
+    'rawSimulations': raw_simulations,
+    'statistics': {
+        'mean': mean,
+        'std': std,
+        'min': min_val,
+        'max': max_val,
+        'percentile5': percentile5,
+        'percentile25': percentile25,
+        'percentile50': percentile50,
+        'percentile75': percentile75,
+        'percentile95': percentile95,
+        'percentile99': percentile99
     }
-    
-    # 원본 시뮬레이션 결과 (최대 100개)
-    raw_simulations = aggregate_losses.tolist()[:100]
-    
-    result = {
-        "results": results,
-        "raw_simulations": raw_simulations,
-        "statistics": statistics
-    }
-    
-    js_result = result
-    
-except Exception as e:
-    import traceback
-    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
-    result = {
-        "__error__": True,
-        "error_type": type(e).__name__,
-        "error_message": str(e),
-        "error_traceback": error_traceback
-    }
-    js_result = result
+}
+
+result
 `;
 
-    await withTimeout(
-      Promise.resolve(py.runPython(code)),
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
       timeoutMs,
-      "SimulateFreqServ 실행 타임아웃 (120초 초과)"
+      `Python SimulateFreqServ 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const resultPyObj = py.globals.get("js_result");
-    if (!resultPyObj) {
-      throw new Error("Python SimulateFreqServ error: No result returned");
-    }
-
     const result = fromPython(resultPyObj);
-
-    if (result && result.__error__) {
-      throw new Error(
-        `Python SimulateFreqServ error: ${result.error_message}\n${result.error_traceback}`
-      );
-    }
-
-    py.globals.delete("js_frequency_params");
-    py.globals.delete("js_severity_params");
-    py.globals.delete("js_n_simulations");
-    py.globals.delete("js_result");
-
-    return {
-      results: result.results || [],
-      rawSimulations: result.raw_simulations || [],
-      statistics: {
-        mean: result.statistics?.mean || 0,
-        std: result.statistics?.std || 0,
-        min: result.statistics?.min || 0,
-        max: result.statistics?.max || 0,
-        percentile5: result.statistics?.percentile5 || 0,
-        percentile25: result.statistics?.percentile25 || 0,
-        percentile50: result.statistics?.percentile50 || 0,
-        percentile75: result.statistics?.percentile75 || 0,
-        percentile95: result.statistics?.percentile95 || 0,
-        percentile99: result.statistics?.percentile99 || 0,
-      },
-    };
+    return result;
   } catch (error: any) {
-    try {
-      if (pyodide) {
-        pyodide.globals.delete("js_frequency_params");
-        pyodide.globals.delete("js_severity_params");
-        pyodide.globals.delete("js_n_simulations");
-        pyodide.globals.delete("js_result");
-      }
-    } catch {}
-
     const errorMessage = error.message || String(error);
     throw new Error(`Python SimulateFreqServ error: ${errorMessage}`);
+  }
+}
+
+/**
+ * CombineLossModel를 Python으로 실행합니다 (두 시뮬레이션 결과 합산)
+ * 타임아웃: 120초
+ */
+export async function combineLossModelPython(
+  aggDistSimulations: number[],
+  freqServSimulations: number[],
+  timeoutMs: number = 120000
+): Promise<{
+  combinedStatistics: {
+    mean: number;
+    stdDev: number;
+    min: number;
+    max: number;
+    skewness?: number;
+    kurtosis?: number;
+  };
+  var: Record<string, number>;
+  tvar: Record<string, number>;
+  percentiles: Record<string, number>;
+  aggDistPercentiles: Record<string, number>;
+  freqServPercentiles: Record<string, number>;
+  aggregateLossDistribution: {
+    percentiles: number[];
+    amounts: number[];
+  };
+}> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_agg_dist", aggDistSimulations);
+    py.globals.set("js_freq_serv", freqServSimulations);
+
+    const code = `
+import numpy as np
+from scipy import stats
+
+agg_dist = np.array(js_agg_dist.to_py())
+freq_serv = np.array(js_freq_serv.to_py())
+
+# 두 시뮬레이션 결과 합산 (각각의 시뮬레이션 결과를 합침)
+# 두 배열의 길이가 다를 수 있으므로, 더 짧은 배열의 길이에 맞춰서 합산
+min_len = min(len(agg_dist), len(freq_serv))
+combined = agg_dist[:min_len] + freq_serv[:min_len]
+
+# 합산된 통계량 계산
+mean = float(np.mean(combined))
+std_dev = float(np.std(combined))
+min_val = float(np.min(combined))
+max_val = float(np.max(combined))
+
+# 왜도 (skewness)
+if std_dev > 0:
+    skewness = float(stats.skew(combined))
+else:
+    skewness = 0.0
+
+# 첨도 (kurtosis) - excess kurtosis
+if std_dev > 0:
+    kurtosis = float(stats.kurtosis(combined))
+else:
+    kurtosis = 0.0
+
+# 퍼센타일 계산
+percentiles_dict = {}
+percentile_levels = [50, 75, 90, 95, 99, 99.5, 99.9]
+for p in percentile_levels:
+    percentiles_dict[str(int(p))] = float(np.percentile(combined, p))
+    if p == 99.5:
+        percentiles_dict["99.5"] = float(np.percentile(combined, 99.5))
+    elif p == 99.9:
+        percentiles_dict["99.9"] = float(np.percentile(combined, 99.9))
+
+# VaR (Value at Risk) - 특정 신뢰수준에서의 손실값
+var_dict = {}
+var_levels = [90, 95, 99, 99.5, 99.9]
+for level in var_levels:
+    var_dict[str(int(level))] = float(np.percentile(combined, level))
+    if level == 99.5:
+        var_dict["99.5"] = float(np.percentile(combined, 99.5))
+    elif level == 99.9:
+        var_dict["99.9"] = float(np.percentile(combined, 99.9))
+
+# TVaR (Tail Value at Risk, Conditional VaR) - VaR 이상의 평균값
+tvar_dict = {}
+for level in var_levels:
+    var_value = np.percentile(combined, level)
+    tail_values = combined[combined >= var_value]
+    if len(tail_values) > 0:
+        tvar_dict[str(int(level))] = float(np.mean(tail_values))
+    else:
+        tvar_dict[str(int(level))] = float(var_value)
+    if level == 99.5:
+        var_value_995 = np.percentile(combined, 99.5)
+        tail_values_995 = combined[combined >= var_value_995]
+        if len(tail_values_995) > 0:
+            tvar_dict["99.5"] = float(np.mean(tail_values_995))
+        else:
+            tvar_dict["99.5"] = float(var_value_995)
+    elif level == 99.9:
+        var_value_999 = np.percentile(combined, 99.9)
+        tail_values_999 = combined[combined >= var_value_999]
+        if len(tail_values_999) > 0:
+            tvar_dict["99.9"] = float(np.mean(tail_values_999))
+        else:
+            tvar_dict["99.9"] = float(var_value_999)
+
+# Aggregate Distribution 퍼센타일
+agg_dist_percentiles = {}
+for p in percentile_levels:
+    agg_dist_percentiles[str(int(p))] = float(np.percentile(agg_dist[:min_len], p))
+    if p == 99.5:
+        agg_dist_percentiles["99.5"] = float(np.percentile(agg_dist[:min_len], 99.5))
+    elif p == 99.9:
+        agg_dist_percentiles["99.9"] = float(np.percentile(agg_dist[:min_len], 99.9))
+
+# Frequency-Severity 퍼센타일
+freq_serv_percentiles = {}
+for p in percentile_levels:
+    freq_serv_percentiles[str(int(p))] = float(np.percentile(freq_serv[:min_len], p))
+    if p == 99.5:
+        freq_serv_percentiles["99.5"] = float(np.percentile(freq_serv[:min_len], 99.5))
+    elif p == 99.9:
+        freq_serv_percentiles["99.9"] = float(np.percentile(freq_serv[:min_len], 99.9))
+
+# Aggregate Loss Distribution (누적분포)
+percentiles_list = [0.01, 0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 0.995, 0.999]
+percentiles_array = [float(p * 100) for p in percentiles_list]
+amounts_array = [float(np.percentile(combined, p * 100)) for p in percentiles_list]
+
+result = {
+    'combinedStatistics': {
+        'mean': mean,
+        'stdDev': std_dev,
+        'min': min_val,
+        'max': max_val,
+        'skewness': skewness,
+        'kurtosis': kurtosis
+    },
+    'var': var_dict,
+    'tvar': tvar_dict,
+    'percentiles': percentiles_dict,
+    'aggDistPercentiles': agg_dist_percentiles,
+    'freqServPercentiles': freq_serv_percentiles,
+    'aggregateLossDistribution': {
+        'percentiles': percentiles_array,
+        'amounts': amounts_array
+    }
+}
+
+result
+`;
+
+    const resultPyObj = await withTimeout(
+      py.runPython(code),
+      timeoutMs,
+      `Python CombineLossModel 타임아웃 (${timeoutMs / 1000}초 초과)`
+    );
+
+    const result = fromPython(resultPyObj);
+    return result;
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python CombineLossModel error: ${errorMessage}`);
   }
 }

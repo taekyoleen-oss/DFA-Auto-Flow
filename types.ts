@@ -57,6 +57,8 @@ export enum ModuleType {
   DefineXolContract = "DefineXolContract",
   CalculateCededLoss = "CalculateCededLoss",
   PriceXolContract = "PriceXolContract",
+  XolCalculator = "XolCalculator",
+  ExperienceModel = "ExperienceModel",
 
   // DFA Modules
   LoadClaimData = "LoadClaimData",
@@ -337,6 +339,7 @@ export interface XolContractOutput {
   reinstatements: number;
   aggDeductible: number;
   expenseRatio: number;
+  reinstatementPremiums: number[];
 }
 
 export interface FinalXolPriceOutput {

@@ -823,6 +823,8 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
           "Calculates the ceded loss for each claim based on contract terms.",
         PriceXolContract:
           "Prices an XoL contract using the burning cost method based on historical data.",
+        XolCalculator:
+          "Calculates XoL results using contract terms and claim data.",
       };
 
       const detailedModulesString = DEFAULT_MODULES.map((defaultModule) => {
@@ -1160,12 +1162,23 @@ ${header}
             }
             const moduleInfo = TOOLBOX_MODULES.find((tm) => tm.type === m.type);
             const defaultName = moduleInfo ? moduleInfo.name : m.type;
+            // XoL Contract 모듈의 경우 기본값을 강제 적용
+            const shouldUseDefaultParams = m.type === ModuleType.DefineXolContract;
+            
             return {
               ...defaultModule,
               id: moduleId,
               name: m.name || defaultName,
               position: m.position,
               status: ModuleStatus.Pending,
+              parameters: shouldUseDefaultParams
+                ? {
+                    ...defaultModule.parameters, // 기본값 우선 적용
+                  }
+                : {
+                    ...defaultModule.parameters,
+                    ...(m.parameters || {}), // 샘플의 parameters로 덮어쓰기
+                  },
             };
           }
         );
@@ -1605,9 +1618,87 @@ ${header}
     if (initialModelStr && modules.length === 0) {
       try {
         const initialModel = JSON.parse(initialModelStr);
-        handleLoadSample(initialModel.name);
+        
+        // Convert initial model format to app format
+        const newModules: CanvasModule[] = initialModel.modules.map(
+          (m: any, index: number) => {
+            const moduleId = `module-${Date.now()}-${index}`;
+            const defaultModule = DEFAULT_MODULES.find(
+              (dm) => dm.type === m.type
+            );
+            if (!defaultModule) {
+              addLog(
+                "ERROR",
+                `Module type "${m.type}" not found in DEFAULT_MODULES.`
+              );
+              throw new Error(`Module type "${m.type}" not found`);
+            }
+            const moduleInfo = TOOLBOX_MODULES.find((tm) => tm.type === m.type);
+            const defaultName = moduleInfo ? moduleInfo.name : m.type;
+            // XoL Contract 모듈의 경우 기본값을 강제 적용
+            const shouldUseDefaultParams = m.type === ModuleType.DefineXolContract;
+            
+            return {
+              ...defaultModule,
+              id: moduleId,
+              name: m.name || defaultName,
+              position: m.position,
+              status: ModuleStatus.Pending,
+              parameters: shouldUseDefaultParams
+                ? {
+                    ...defaultModule.parameters, // 기본값 우선 적용
+                  }
+                : {
+                    ...defaultModule.parameters,
+                    ...(m.parameters || {}), // 초기 모델의 parameters로 덮어쓰기
+                  },
+            };
+          }
+        );
+
+        const newConnections: Connection[] = initialModel.connections
+          .map((conn: any, index: number) => {
+            // 인덱스 유효성 검사
+            if (
+              typeof conn.fromModuleIndex !== "number" ||
+              typeof conn.toModuleIndex !== "number" ||
+              conn.fromModuleIndex < 0 ||
+              conn.toModuleIndex < 0 ||
+              conn.fromModuleIndex >= newModules.length ||
+              conn.toModuleIndex >= newModules.length
+            ) {
+              console.warn(
+                `Invalid connection at index ${index}: fromModuleIndex=${conn.fromModuleIndex}, toModuleIndex=${conn.toModuleIndex}, modules.length=${newModules.length}`
+              );
+              return null;
+            }
+
+            const fromModule = newModules[conn.fromModuleIndex];
+            const toModule = newModules[conn.toModuleIndex];
+            if (!fromModule || !toModule) {
+              console.warn(
+                `Module not found for connection at index ${index}: fromModule=${!!fromModule}, toModule=${!!toModule}`
+              );
+              return null;
+            }
+            return {
+              id: `connection-${Date.now()}-${index}`,
+              from: { moduleId: fromModule.id, portName: conn.fromPort },
+              to: { moduleId: toModule.id, portName: conn.toPort },
+            };
+          })
+          .filter((conn): conn is Connection => conn !== null);
+
+        resetModules(newModules);
+        _setConnections(newConnections);
+        setSelectedModuleIds([]);
+        setIsDirty(false);
+        setProjectName(initialModel.name);
+        addLog("SUCCESS", `Initial model "${initialModel.name}" loaded successfully.`);
+        setTimeout(() => handleFitToView(), 100);
       } catch (error) {
         console.error("Failed to load initial model:", error);
+        addLog("ERROR", `Failed to load initial model: ${error}`);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2230,11 +2321,44 @@ ${header}
       allModules: CanvasModule[],
       allConnections: Connection[]
     ): boolean => {
+      const module = allModules.find((m) => m.id === moduleId);
+      if (!module) return false;
+
       const upstreamConnections = allConnections.filter(
         (c) => c.to.moduleId === moduleId
       );
       if (upstreamConnections.length === 0) return true; // No dependencies
 
+      // XOL Calculator 모듈의 경우: data_in과 contract_in 모두 필수
+      if (module.type === ModuleType.XolCalculator) {
+        const dataConnection = upstreamConnections.find(
+          (c) => c.to.portName === "data_in"
+        );
+        const contractConnection = upstreamConnections.find(
+          (c) => c.to.portName === "contract_in"
+        );
+        
+        if (!dataConnection) return false; // data_in이 없으면 실행 불가
+        if (!contractConnection) return false; // contract_in이 없으면 실행 불가
+
+        const dataSourceModule = allModules.find(
+          (m) => m.id === dataConnection.from.moduleId
+        );
+        if (!dataSourceModule || dataSourceModule.status !== ModuleStatus.Success) {
+          return false; // data_in 소스 모듈이 성공적으로 실행되지 않았으면 실행 불가
+        }
+
+        const contractSourceModule = allModules.find(
+          (m) => m.id === contractConnection.from.moduleId
+        );
+        if (!contractSourceModule || contractSourceModule.status !== ModuleStatus.Success) {
+          return false; // contract_in 소스 모듈이 성공적으로 실행되지 않았으면 실행 불가
+        }
+
+        return true;
+      }
+
+      // 다른 모듈들은 모든 upstream 연결을 체크
       return upstreamConnections.every((conn) => {
         const sourceModule = allModules.find(
           (m) => m.id === conn.from.moduleId
@@ -2520,7 +2644,52 @@ ${header}
       return null;
     };
 
+    // DefineXolContract 모듈이 연결된 다른 모듈이 실행될 때 자동으로 실행되도록 추가
+    const autoRunXolContract = (moduleId: string) => {
+      const module = currentModules.find((m) => m.id === moduleId);
+      if (!module) return;
+      
+      // XOL Calculator 모듈인 경우 contract_in 포트에 연결된 DefineXolContract를 자동 실행
+      if (module.type === ModuleType.XolCalculator) {
+        const contractConnection = connections.find(
+          (c) => c.to.moduleId === moduleId && c.to.portName === "contract_in"
+        );
+        if (contractConnection) {
+          const contractSource = currentModules.find(
+            (m) => m.id === contractConnection.from.moduleId
+          );
+          if (
+            contractSource?.type === ModuleType.DefineXolContract &&
+            contractSource.status !== ModuleStatus.Success &&
+            !runQueue.includes(contractSource.id)
+          ) {
+            // DefineXolContract를 먼저 실행하도록 큐의 앞에 추가
+            runQueue.unshift(contractSource.id);
+            // DefineXolContract의 의존성도 확인
+            autoRunXolContract(contractSource.id);
+          }
+        }
+      }
+      
+      // 다른 모듈들도 DefineXolContract를 입력으로 사용하는지 확인
+      const inputConnections = connections.filter((c) => c.to.moduleId === moduleId);
+      for (const conn of inputConnections) {
+        const sourceModule = currentModules.find((m) => m.id === conn.from.moduleId);
+        if (sourceModule?.type === ModuleType.DefineXolContract) {
+          // DefineXolContract가 아직 실행되지 않았으면 실행 큐에 추가
+          if (!runQueue.includes(sourceModule.id) && sourceModule.status !== ModuleStatus.Success) {
+            runQueue.unshift(sourceModule.id); // 먼저 실행되도록 앞에 추가
+            // 재귀적으로 의존성 확인
+            autoRunXolContract(sourceModule.id);
+          }
+        }
+      }
+    };
+
     for (const moduleId of runQueue) {
+      // DefineXolContract 자동 실행 체크
+      autoRunXolContract(moduleId);
+      
       const module = currentModules.find((m) => m.id === moduleId)!;
       const moduleName = module.name;
 
@@ -7474,12 +7643,15 @@ ${header}
         } else if (module.type === ModuleType.ApplyThreshold) {
           const inputData = getSingleInputData(module.id) as DataPreview;
           if (!inputData) throw new Error("Input data not available.");
-          const { threshold, loss_column } = module.parameters;
-          if (!loss_column || typeof threshold !== "number")
-            throw new Error("Threshold and Loss Column must be set.");
+          const { threshold, amount_column } = module.parameters;
+          if (!amount_column || typeof threshold !== "number")
+            throw new Error("Threshold and Amount Column must be set.");
 
           const newRows = (inputData.rows || []).filter(
-            (row) => (row[loss_column] as number) >= threshold
+            (row) => {
+              const value = row[amount_column];
+              return value !== null && value !== undefined && (value as number) >= threshold;
+            }
           );
           newOutputData = {
             ...inputData,
@@ -7493,7 +7665,34 @@ ${header}
             reinstatements,
             aggDeductible,
             expenseRatio,
+            defaultReinstatementRate = 100,
+            yearRates = [],
           } = module.parameters;
+          
+          // Calculate reinstatement premiums based on default rate and year-specific rates
+          // All reinstatements use default rate, except for years specified in yearRates
+          const currentReinstatements = reinstatements || 5;
+          const yearRateDict: Record<number, number> = {};
+          
+          // Build dictionary from yearRates array
+          if (Array.isArray(yearRates)) {
+            yearRates.forEach((yr: { year: number; rate: number }) => {
+              if (yr && typeof yr.year === 'number' && typeof yr.rate === 'number') {
+                yearRateDict[yr.year] = yr.rate;
+              }
+            });
+          }
+          
+          // Calculate premiums: use year-specific rate if available, otherwise use default rate
+          const premiums: number[] = [];
+          for (let i = 1; i <= currentReinstatements; i++) {
+            if (yearRateDict[i] !== undefined) {
+              premiums.push(yearRateDict[i]);
+            } else {
+              premiums.push(defaultReinstatementRate);
+            }
+          }
+          
           newOutputData = {
             type: "XolContractOutput",
             deductible,
@@ -7501,6 +7700,7 @@ ${header}
             reinstatements,
             aggDeductible,
             expenseRatio,
+            reinstatementPremiums: premiums,
           };
         } else if (module.type === ModuleType.CalculateCededLoss) {
           const dataConnection = connections.find(
@@ -7544,6 +7744,90 @@ ${header}
           const newColumns = [...inputData.columns];
           if (!newColumns.some((c) => c.name === "ceded_loss")) {
             newColumns.push({ name: "ceded_loss", type: "number" });
+          }
+
+          newOutputData = { ...inputData, columns: newColumns, rows: newRows };
+        } else if (module.type === ModuleType.XolCalculator) {
+          const dataConnection = connections.find(
+            (c) => c.to.moduleId === module.id && c.to.portName === "data_in"
+          );
+          if (!dataConnection)
+            throw new Error("Data input must be connected.");
+
+          const dataSource = currentModules.find(
+            (m) => m.id === dataConnection.from.moduleId
+          );
+          if (!dataSource || dataSource.outputData?.type !== "DataPreview")
+            throw new Error("Input data is not valid.");
+
+          const contractConnection = connections.find(
+            (c) =>
+              c.to.moduleId === module.id && c.to.portName === "contract_in"
+          );
+          if (!contractConnection)
+            throw new Error("Contract input must be connected.");
+
+          const contractSource = currentModules.find(
+            (m) => m.id === contractConnection.from.moduleId
+          );
+          if (
+            !contractSource ||
+            contractSource.outputData?.type !== "XolContractOutput"
+          )
+            throw new Error("Input contract is not valid. Please ensure XoL Contract module is executed.");
+
+          const inputData = dataSource.outputData;
+          const contract = contractSource.outputData;
+          const { claim_column } = module.parameters;
+
+          if (!claim_column) {
+            throw new Error("클레임 행을 선택해주세요.");
+          }
+
+          // XoL Claim(Incl. Limit) 계산: Max(min(클레임-Deductible, Limit), 0)
+          // XoL Claim(Incl. Agg/Reinst) 계산: Aggregated Deductible과 Reinstatements를 고려
+          let cumulativeAggLoss = 0;
+          const newRows = (inputData.rows || []).map((row) => {
+            const claim = row[claim_column] as number;
+            
+            // XoL Claim(Incl. Limit): Max(min(클레임-Deductible, Limit), 0)
+            const xolClaimLimit = Math.max(
+              Math.min(claim - contract.deductible, contract.limit),
+              0
+            );
+            
+            // XoL Claim(Incl. Agg/Reinst): Aggregated Deductible과 Reinstatements 고려
+            cumulativeAggLoss += claim;
+            let xolClaimAggReinst = 0;
+            
+            if (cumulativeAggLoss > contract.aggDeductible) {
+              const excessOverAgg = cumulativeAggLoss - contract.aggDeductible;
+              // 각 reinstatement의 limit을 고려하여 계산
+              let remainingExcess = excessOverAgg;
+              let totalCovered = 0;
+              
+              for (let i = 0; i < contract.reinstatements && remainingExcess > 0; i++) {
+                const covered = Math.min(remainingExcess, contract.limit);
+                totalCovered += covered;
+                remainingExcess -= covered;
+              }
+              
+              xolClaimAggReinst = totalCovered;
+            }
+            
+            return { 
+              ...row, 
+              "XoL Claim(Incl. Limit)": xolClaimLimit,
+              "XoL Claim(Incl. Agg/Reinst)": xolClaimAggReinst
+            };
+          });
+
+          const newColumns = [...inputData.columns];
+          if (!newColumns.some((c) => c.name === "XoL Claim(Incl. Limit)")) {
+            newColumns.push({ name: "XoL Claim(Incl. Limit)", type: "number" });
+          }
+          if (!newColumns.some((c) => c.name === "XoL Claim(Incl. Agg/Reinst)")) {
+            newColumns.push({ name: "XoL Claim(Incl. Agg/Reinst)", type: "number" });
           }
 
           newOutputData = { ...inputData, columns: newColumns, rows: newRows };
@@ -8350,6 +8634,12 @@ ${header}
                             const toIndex = modules.findIndex(
                               (m) => m.id === c.to.moduleId
                             );
+                            if (fromIndex < 0 || toIndex < 0) {
+                              console.warn(
+                                `Invalid connection: fromModuleId=${c.from.moduleId}, toModuleId=${c.to.moduleId}`
+                              );
+                              return null;
+                            }
                             return {
                               fromModuleIndex: fromIndex,
                               fromPort: c.from.portName,
@@ -8357,10 +8647,12 @@ ${header}
                               toPort: c.to.portName,
                             };
                           })
-                          .filter(
-                            (c) =>
-                              c.fromModuleIndex >= 0 && c.toModuleIndex >= 0
-                          ),
+                          .filter((c) => c !== null) as Array<{
+                            fromModuleIndex: number;
+                            fromPort: string;
+                            toModuleIndex: number;
+                            toPort: string;
+                          }>,
                       };
 
                       // 같은 이름의 모델이 있으면 제거하고 새로 추가
@@ -8739,6 +9031,8 @@ ${header}
             module={viewingDataForModule}
             projectName={projectName}
             onClose={handleCloseModal}
+            allModules={modules}
+            allConnections={connections}
           />
           </ErrorBoundary>
         )}

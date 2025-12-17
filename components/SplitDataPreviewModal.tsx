@@ -11,12 +11,39 @@ type SortConfig = {
 } | null;
 
 // A component to display descriptive statistics for a dataset
-const StatsTable: React.FC<{ title: string; data: DataPreview }> = ({ title, data }) => {
-    const allColumns = useMemo(() => data.columns, [data]);
+export const StatsTable: React.FC<{ 
+    title: string; 
+    data: DataPreview;
+    targetColumn?: string; // XOL Calculator의 경우 대상 클레임 컬럼만 통계량 산출
+    excludePercentiles?: boolean; // 백분위수 제외 여부
+}> = ({ title, data, targetColumn, excludePercentiles = false }) => {
+    const allColumns = useMemo(() => {
+        if (targetColumn) {
+            // 대상 컬럼만 필터링 (연도 컬럼 제외)
+            return data.columns.filter(col => 
+                col.name === targetColumn && 
+                col.type === 'number' &&
+                col.name !== '연도' && 
+                col.name !== 'year' && 
+                col.name.toLowerCase() !== 'year'
+            );
+        }
+        return data.columns;
+    }, [data.columns, targetColumn]);
     const rows = useMemo(() => data.rows || [], [data.rows]);
 
     // fix: Moved statDisplay before useMemo hook to be accessible and defined the correct type for 'results'.
-    const statDisplay = [
+    const statDisplay = excludePercentiles ? [
+        { key: 'count', label: 'Count' },
+        { key: 'mean', label: 'Mean' },
+        { key: 'std', label: 'Std Dev' },
+        { key: 'min', label: 'Min' },
+        { key: 'max', label: 'Max' },
+        { key: 'mode', label: 'Mode' },
+        { key: 'nulls', label: 'Null' },
+        { key: 'skewness', label: 'Skew' },
+        { key: 'kurtosis', label: 'Kurt' },
+    ] as const : [
         { key: 'count', label: 'Count' },
         { key: 'mean', label: 'Mean' },
         { key: 'std', label: 'Std Dev' },
@@ -35,8 +62,15 @@ const StatsTable: React.FC<{ title: string; data: DataPreview }> = ({ title, dat
         type StatKey = typeof statDisplay[number]['key'];
         const results: Record<string, Partial<Record<StatKey, number | string>>> = {};
         if (rows.length === 0) return results;
+        
+        // 연도 컬럼 제외
+        const filteredColumns = allColumns.filter(col => 
+            col.name !== '연도' && 
+            col.name !== 'year' && 
+            col.name.toLowerCase() !== 'year'
+        );
 
-        allColumns.forEach(col => {
+        filteredColumns.forEach(col => {
             const allValues = rows.map(r => r[col.name]);
             const isNull = (v: any) => v === null || v === undefined || v === '';
             const nonNullValues = allValues.filter(v => !isNull(v));
@@ -75,45 +109,51 @@ const StatsTable: React.FC<{ title: string; data: DataPreview }> = ({ title, dat
 
                     const numericMode = Number(mode);
 
-                    results[col.name] = {
+                    const baseStats: any = {
                         ...results[col.name],
                         mean,
                         std,
                         min: numericValues[0],
-                        '25%': getQuantile(0.25),
-                        '50%': getQuantile(0.5),
-                        '75%': getQuantile(0.75),
                         max: numericValues[numericValues.length - 1],
                         mode: isNaN(numericMode) ? mode : numericMode,
                         skewness,
                         kurtosis,
                     };
+
+                    // 백분위수는 excludePercentiles가 false일 때만 추가
+                    if (!excludePercentiles) {
+                        baseStats['25%'] = getQuantile(0.25);
+                        baseStats['50%'] = getQuantile(0.5);
+                        baseStats['75%'] = getQuantile(0.75);
+                    }
+
+                    results[col.name] = baseStats;
                 }
             }
         });
         return results;
-    }, [allColumns, rows]);
+    }, [allColumns, rows, excludePercentiles]);
 
     return (
         <div>
-            <h3 className="text-lg font-semibold mb-2 text-gray-700">{title} ({data.totalRowCount} rows)</h3>
+            <h3 className="text-sm font-semibold mb-2 text-gray-700">{title} ({data.totalRowCount} rows)</h3>
             {allColumns.length === 0 ? (
-                <p className="text-sm text-gray-500">No columns to display statistics for.</p>
+                <p className="text-xs text-gray-500">No columns to display statistics for.</p>
             ) : (
                 <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                    <table className="w-full text-sm text-left table-auto">
+                    <table className="w-full text-xs text-left table-auto">
                         <thead className="bg-gray-50">
                             <tr>
-                                <th className="py-1.5 px-3 font-semibold text-gray-600">Metric</th>
+                                <th className="py-1 px-2 font-semibold text-gray-600">Metric</th>
                                 {allColumns.map(col => (
-                                    <th key={col.name} className="py-1.5 px-3 font-semibold text-gray-600 text-right truncate" title={col.name}>{col.name}</th>
+                                    <th key={col.name} className="py-1 px-2 font-semibold text-gray-600 text-right truncate" title={col.name}>{col.name}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
                             {statDisplay.map(({ key, label }) => (
                                 <tr key={key} className="border-b border-gray-200 last:border-b-0">
-                                    <td className="py-1.5 px-3 font-medium text-gray-500">{label}</td>
+                                    <td className="py-1 px-2 font-medium text-gray-500">{label}</td>
                                     {allColumns.map(col => {
                                         const value = stats[col.name]?.[key];
                                         let displayValue = 'N/A';
@@ -125,7 +165,7 @@ const StatsTable: React.FC<{ title: string; data: DataPreview }> = ({ title, dat
                                             }
                                         }
                                         return (
-                                            <td key={`${key}-${col.name}`} className="py-1.5 px-3 font-mono text-right text-gray-700">
+                                            <td key={`${key}-${col.name}`} className="py-1 px-2 font-mono text-right text-gray-700">
                                                 {displayValue}
                                             </td>
                                         );
