@@ -3036,9 +3036,22 @@ ${header}
               );
             }
 
+            // 커스텀 파라미터가 있으면 사용, 없으면 기본 파라미터 사용
+            const customParameters = (module.parameters.custom_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
+            const finalParameters: Record<string, number> = {};
+            
+            for (const [paramName, defaultValue] of Object.entries(selectedResult.parameters)) {
+              const paramConfig = customParameters[paramName];
+              if (paramConfig && paramConfig.useCustom) {
+                finalParameters[paramName] = paramConfig.value;
+              } else {
+                finalParameters[paramName] = defaultValue;
+              }
+            }
+
             const result = await simulateAggDistPython(
               selectedResult.distributionType,
-              selectedResult.parameters,
+              finalParameters,
               nSimulations,
               120000
             );
@@ -3256,7 +3269,17 @@ ${header}
               frequencyType = selected;
               const selectedResult = frequencyInput.results.find(r => r.distributionType === selected);
               if (selectedResult && !selectedResult.error) {
-                frequencyParams = selectedResult.parameters;
+                // 커스텀 파라미터가 있으면 사용, 없으면 기본 파라미터 사용
+                const customFrequencyParams = (module.parameters.custom_frequency_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
+                frequencyParams = {};
+                for (const [paramName, defaultValue] of Object.entries(selectedResult.parameters)) {
+                  const paramConfig = customFrequencyParams[paramName];
+                  if (paramConfig && paramConfig.useCustom) {
+                    frequencyParams[paramName] = paramConfig.value;
+                  } else {
+                    frequencyParams[paramName] = defaultValue;
+                  }
+                }
               }
             }
           }
@@ -3267,7 +3290,17 @@ ${header}
               severityType = selected;
               const selectedResult = severityInput.results.find(r => r.distributionType === selected);
               if (selectedResult && !selectedResult.error) {
-                severityParams = selectedResult.parameters;
+                // 커스텀 파라미터가 있으면 사용, 없으면 기본 파라미터 사용
+                const customSeverityParams = (module.parameters.custom_severity_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
+                severityParams = {};
+                for (const [paramName, defaultValue] of Object.entries(selectedResult.parameters)) {
+                  const paramConfig = customSeverityParams[paramName];
+                  if (paramConfig && paramConfig.useCustom) {
+                    severityParams[paramName] = paramConfig.value;
+                  } else {
+                    severityParams[paramName] = defaultValue;
+                  }
+                }
               }
             }
           }

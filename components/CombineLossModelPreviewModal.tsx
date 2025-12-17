@@ -211,11 +211,11 @@ export const CombineLossModelPreviewModal: React.FC<
               Percentiles
             </h3>
             <div className="bg-gray-800 rounded-lg p-4">
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
                 {Object.entries(percentiles).map(([level, value]) => (
-                  <div key={level} className="text-center">
-                    <p className="text-sm text-gray-400">{level}%</p>
-                    <p className="text-lg font-bold text-white">
+                  <div key={level} className="text-center py-2">
+                    <p className="text-xs text-gray-400 mb-2">{level}%</p>
+                    <p className="text-sm font-bold text-white">
                       {value.toLocaleString(undefined, {
                         maximumFractionDigits: 2,
                       })}

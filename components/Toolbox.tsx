@@ -101,32 +101,11 @@ const categorizedModules = [
   },
   {
     name: "Claim Analysis",
-    subCategories: [
-      {
-        name: "Operations",
-        modules: TOOLBOX_MODULES.filter((m) =>
-          analysisOpTypes.includes(m.type)
-        ),
-      },
-      {
-        name: "Supervised Learning",
-        modules: TOOLBOX_MODULES.filter((m) =>
-          supervisedLearningTypes.includes(m.type)
-        ),
-      },
-      {
-        name: "Unsupervised Learning",
-        modules: TOOLBOX_MODULES.filter((m) =>
-          unsupervisedModelTypes.includes(m.type)
-        ),
-      },
-    ],
+    subCategories: [],
   },
   {
     name: "Tradition Analysis",
-    modules: TOOLBOX_MODULES.filter((m) =>
-      traditionAnalysisTypes.includes(m.type)
-    ),
+    modules: [],
   },
   {
     name: "Reinsurance Analysis",

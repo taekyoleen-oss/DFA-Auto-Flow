@@ -2988,16 +2988,35 @@ const renderParameters = (
       let availableSeverityTypes: string[] = [];
       let selectedFrequency: string | undefined;
       let selectedSeverity: string | undefined;
+      let defaultFrequencyParams: Record<string, number> = {};
+      let defaultSeverityParams: Record<string, number> = {};
       
       if (frequencyInput && frequencyInput.type === "FrequencyModelOutput") {
         availableFrequencyTypes = frequencyInput.results?.map((r: any) => r.distributionType) || [];
         selectedFrequency = frequencyInput.selectedDistribution || availableFrequencyTypes[0];
+        
+        if (selectedFrequency) {
+          const selectedResult = frequencyInput.results?.find((r: any) => r.distributionType === selectedFrequency);
+          if (selectedResult) {
+            defaultFrequencyParams = selectedResult.parameters || {};
+          }
+        }
       }
       
       if (severityInput && severityInput.type === "SeverityModelOutput") {
         availableSeverityTypes = severityInput.results?.map((r: any) => r.distributionType) || [];
         selectedSeverity = severityInput.selectedDistribution || availableSeverityTypes[0];
+        
+        if (selectedSeverity) {
+          const selectedResult = severityInput.results?.find((r: any) => r.distributionType === selectedSeverity);
+          if (selectedResult) {
+            defaultSeverityParams = selectedResult.parameters || {};
+          }
+        }
       }
+
+      const customFrequencyParams = (module.parameters.custom_frequency_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
+      const customSeverityParams = (module.parameters.custom_severity_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
 
       const simulationCountOptions = [
         { value: 100, label: "100" },
@@ -3009,6 +3028,64 @@ const renderParameters = (
       
       const currentCount = module.parameters.simulation_count as number || 10000;
       const customCount = module.parameters.custom_count as string || "";
+      
+      const renderParameterInput = (
+        paramName: string,
+        defaultValue: number,
+        customParams: Record<string, { useCustom: boolean; value: number }>,
+        onUpdate: (newParams: Record<string, { useCustom: boolean; value: number }>) => void
+      ) => {
+        const paramConfig = customParams[paramName] || { useCustom: false, value: defaultValue };
+        const useCustom = paramConfig.useCustom;
+        const displayValue = useCustom ? paramConfig.value : defaultValue;
+        
+        return (
+          <div key={paramName} className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-gray-300 font-medium">{paramName}</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useCustom}
+                  onChange={(e) => {
+                    const newCustomParams = { ...customParams };
+                    newCustomParams[paramName] = {
+                      useCustom: e.target.checked,
+                      value: e.target.checked ? defaultValue : displayValue
+                    };
+                    onUpdate(newCustomParams);
+                  }}
+                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-400">Use Custom</span>
+              </label>
+            </div>
+            {useCustom ? (
+              <input
+                type="number"
+                value={displayValue}
+                onChange={(e) => {
+                  const newValue = parseFloat(e.target.value);
+                  if (!isNaN(newValue)) {
+                    const newCustomParams = { ...customParams };
+                    newCustomParams[paramName] = {
+                      useCustom: true,
+                      value: newValue
+                    };
+                    onUpdate(newCustomParams);
+                  }
+                }}
+                step="any"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-300 text-sm">
+                {defaultValue.toFixed(6)}
+              </div>
+            )}
+          </div>
+        );
+      };
       
       return (
         <div className="space-y-4">
@@ -3022,6 +3099,25 @@ const renderParameters = (
                   {selectedFrequency || "Not selected"}
                 </p>
               </div>
+              
+              {/* Frequency Parameters */}
+              {selectedFrequency && Object.keys(defaultFrequencyParams).length > 0 && (
+                <div className="mt-3">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Frequency Parameters
+                  </label>
+                  <div className="space-y-2">
+                    {Object.entries(defaultFrequencyParams).map(([paramName, defaultValue]) =>
+                      renderParameterInput(
+                        paramName,
+                        defaultValue,
+                        customFrequencyParams,
+                        (newParams) => onParamChange("custom_frequency_parameters", newParams)
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
@@ -3040,6 +3136,25 @@ const renderParameters = (
                   {selectedSeverity || "Not selected"}
                 </p>
               </div>
+              
+              {/* Severity Parameters */}
+              {selectedSeverity && Object.keys(defaultSeverityParams).length > 0 && (
+                <div className="mt-3">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Severity Parameters
+                  </label>
+                  <div className="space-y-2">
+                    {Object.entries(defaultSeverityParams).map(([paramName, defaultValue]) =>
+                      renderParameterInput(
+                        paramName,
+                        defaultValue,
+                        customSeverityParams,
+                        (newParams) => onParamChange("custom_severity_parameters", newParams)
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
@@ -3139,12 +3254,22 @@ const renderParameters = (
       const sourceData = getConnectedDataSource(module.id);
       let availableDistributions: string[] = [];
       let selectedDistribution: string | undefined;
+      let defaultParameters: Record<string, number> = {};
       
       if (sourceData && sourceData.type === "AggregateModelOutput") {
         availableDistributions = sourceData.results?.map(r => r.distributionType) || [];
         selectedDistribution = sourceData.selectedDistribution || 
           (availableDistributions.length > 0 ? availableDistributions[0] : undefined);
+        
+        if (selectedDistribution) {
+          const selectedResult = sourceData.results?.find(r => r.distributionType === selectedDistribution);
+          if (selectedResult) {
+            defaultParameters = selectedResult.parameters || {};
+          }
+        }
       }
+      
+      const customParameters = (module.parameters.custom_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
       
       const simulationCountOptions = [
         { value: 100, label: "100" },
@@ -3187,6 +3312,70 @@ const renderParameters = (
               </p>
             </div>
           )}
+          
+          {/* Distribution Parameters */}
+          {selectedDistribution && Object.keys(defaultParameters).length > 0 && (
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Distribution Parameters
+              </label>
+              <div className="space-y-2">
+                {Object.entries(defaultParameters).map(([paramName, defaultValue]) => {
+                  const paramConfig = customParameters[paramName] || { useCustom: false, value: defaultValue };
+                  const useCustom = paramConfig.useCustom;
+                  const displayValue = useCustom ? paramConfig.value : defaultValue;
+                  
+                  return (
+                    <div key={paramName} className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm text-gray-300 font-medium">{paramName}</label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useCustom}
+                            onChange={(e) => {
+                              const newCustomParams = { ...customParameters };
+                              newCustomParams[paramName] = {
+                                useCustom: e.target.checked,
+                                value: e.target.checked ? defaultValue : displayValue
+                              };
+                              onParamChange("custom_parameters", newCustomParams);
+                            }}
+                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                          />
+                          <span className="text-xs text-gray-400">Use Custom</span>
+                        </label>
+                      </div>
+                      {useCustom ? (
+                        <input
+                          type="number"
+                          value={displayValue}
+                          onChange={(e) => {
+                            const newValue = parseFloat(e.target.value);
+                            if (!isNaN(newValue)) {
+                              const newCustomParams = { ...customParameters };
+                              newCustomParams[paramName] = {
+                                useCustom: true,
+                                value: newValue
+                              };
+                              onParamChange("custom_parameters", newCustomParams);
+                            }
+                          }}
+                          step="any"
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <div className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-300 text-sm">
+                          Default: {typeof defaultValue === 'number' ? defaultValue.toFixed(6) : defaultValue}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
           <PropertySelect
             label="Simulation Count"
             value={currentCount}
