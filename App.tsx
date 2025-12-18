@@ -82,6 +82,7 @@ import {
   CheckIcon,
   ArrowPathIcon,
   StarIcon,
+  ArrowDownTrayIcon,
 } from "./components/icons";
 import useHistoryState from "./hooks/useHistoryState";
 import { DataPreviewModal } from "./components/DataPreviewModal";
@@ -8692,7 +8693,7 @@ ${header}
             title="Save Pipeline"
           >
             {saveButtonText === "Save" ? (
-              <CodeBracketIcon className="h-4 w-4" />
+              <ArrowDownTrayIcon className="h-4 w-4" />
             ) : (
               <CheckIcon className="h-4 w-4" />
             )}

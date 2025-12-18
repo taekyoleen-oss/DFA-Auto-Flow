@@ -1,16 +1,49 @@
 # Change History
 
+## 2025-12-19 07:27:15
+
+### feat(ui): Update Save button icon and XoL Loss Model sample
+
+**Description:**
+- Save 버튼 아이콘 변경
+  - Save 버튼의 아이콘을 CodeBracketIcon에서 ArrowDownTrayIcon으로 변경하여 저장 기능에 맞게 수정
+- XoL Loss Model 샘플 업데이트
+  - ApplyThreshold 모듈 추가 (임계값 1,000,000 적용)
+  - 모듈 위치 및 파라미터 업데이트
+  - 연결 관계 업데이트 (ApplyThreshold가 ApplyInflation과 SplitByFreqServ 사이에 위치)
+  - 파일 내용에 포함된 클레임 데이터 사용
+
+**Files Affected:**
+- `App.tsx` - Save 버튼 아이콘 변경 (ArrowDownTrayIcon import 및 사용)
+- `savedSamples.ts` - XoL Loss Model 샘플 업데이트
+
+**Reason:**
+- 사용자 요청에 따라 Save 버튼 아이콘을 저장 기능에 맞게 수정
+- XoL Loss Model 샘플을 최신 내용으로 업데이트
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
 ## 2025-01-16 09:00:00
 
-### feat(xol): Add XoL Pricing module and improve XOL Calculator UI
+### feat(xol): Add XoL Pricing module and improve XoL Calculator UI
 
 **Description:**
 - XoL Pricing 모듈 추가
   - XoL Pricing 카테고리에 새로운 모듈 추가
-  - XOL Calculator의 출력 데이터를 입력으로 받아 Net Premium 및 Gross Premium 계산
+  - XoL Calculator의 출력 데이터를 입력으로 받아 Net Premium 및 Gross Premium 계산
   - Expense Rate 파라미터 지원 (기본값: 0.2)
   - View Details에 입력값, 계산 수식, 계산 결과 표시
-- XOL Calculator View Details 개선
+- XoL Calculator View Details 개선
   - '연도별 XoL 적용' 탭 레이아웃 재설계: 테이블 상단, 통계 및 그래프 하단
   - 통계 정보 섹션 추가: XoL Claim 평균, 표준편차, XoL Premium Rate 평균, Reluctance Factor
   - XoL Premium Rate 컬럼 계산 로직 추가
@@ -24,11 +57,11 @@
 - `components/Toolbox.tsx` - XoL Pricing 모듈 추가
 - `components/PropertiesPanel.tsx` - XoL Pricing 속성 패널 추가, Expense Ratio → Reluctance Factor 이름 변경
 - `App.tsx` - XoL Pricing 모듈 실행 로직 추가, 모달 닫기 기능 수정
-- `components/DataPreviewModal.tsx` - XOL Calculator View Details 레이아웃 개선, XoL Premium Rate 계산 추가
+- `components/DataPreviewModal.tsx` - XoL Calculator View Details 레이아웃 개선, XoL Premium Rate 계산 추가
 - `components/XolPricingPreviewModal.tsx` - 새로 생성, View Details 모달 구현
 
 **Reason:**
-- 사용자 요청에 따라 XoL Pricing 모듈 추가 및 XOL Calculator UI 개선
+- 사용자 요청에 따라 XoL Pricing 모듈 추가 및 XoL Calculator UI 개선
 - XoL Premium Rate 계산 기능 추가로 더 정확한 프리미엄 계산 지원
 
 **Commit Hash:** c959f76ca21ec5f06c9f1a9fb8c387e0587d0b2d
@@ -107,10 +140,10 @@ git reset --hard c9082c251c79f3966136e044e126341d703b6391
 
 ## 2025-01-16 07:30:00
 
-### feat(ui): Add horizontal scroll to XOL Calculator table and change histogram to bar chart
+### feat(ui): Add horizontal scroll to XoL Calculator table and change histogram to bar chart
 
 **Description:**
-- XOL Calculator 모듈의 View Details 테이블에 좌우 스크롤 추가
+- XoL Calculator 모듈의 View Details 테이블에 좌우 스크롤 추가
   - 테이블 컨테이너에 `overflow-x-auto` 추가하여 좌우 스크롤 가능
   - 테이블에 `minWidth: 'max-content'` 스타일 추가하여 컬럼이 많을 때 스크롤 활성화
 - XoL Claim(Incl. Agg/Reinst) 탭의 히스토그램을 연도별 막대그래프로 변경
@@ -121,7 +154,7 @@ git reset --hard c9082c251c79f3966136e044e126341d703b6391
   - XoL Claim(Incl. Limit) 탭은 기존 히스토그램 유지
 
 **Files Affected:**
-- `components/DataPreviewModal.tsx` - XOL Calculator 테이블 스크롤 및 그래프 변경
+- `components/DataPreviewModal.tsx` - XoL Calculator 테이블 스크롤 및 그래프 변경
   - 테이블 컨테이너에 overflow-x-auto 추가
   - 테이블에 minWidth 스타일 추가
   - XoL Claim(Incl. Agg/Reinst) 탭의 히스토그램을 연도별 막대그래프로 변경
@@ -144,10 +177,10 @@ git reset --hard <커밋해시>
 
 ## 2025-01-16 07:00:00
 
-### feat(ui): Add XoL Claim(Incl. Agg/Reinst) column to XOL Calculator second tab
+### feat(ui): Add XoL Claim(Incl. Agg/Reinst) column to XoL Calculator second tab
 
 **Description:**
-- XOL Calculator 모듈의 두 번째 탭(XoL Claim(Incl. Agg/Reinst))에 새로운 열 추가
+- XoL Calculator 모듈의 두 번째 탭(XoL Claim(Incl. Agg/Reinst))에 새로운 열 추가
   - 테이블 열 구성: 연도, 클레임 금액_infl, XoL Claim(Incl. Limit), XoL Claim(Incl. Agg/Reinst)
   - XoL Claim(Incl. Agg/Reinst) 계산 수식:
     - XoL Claim(Incl. Limit) >= Limit*(Reinstatements+1) + Aggregate Deductible 이라면
@@ -180,10 +213,10 @@ git reset --hard <커밋해시>
 
 ## 2025-01-16 06:30:00
 
-### feat(ui): Add year aggregation for XOL Calculator second tab with specific columns
+### feat(ui): Add year aggregation for XoL Calculator second tab with specific columns
 
 **Description:**
-- XOL Calculator 모듈의 두 번째 탭(XoL Claim(Incl. Agg/Reinst))에 연도별 집계 기능 추가
+- XoL Calculator 모듈의 두 번째 탭(XoL Claim(Incl. Agg/Reinst))에 연도별 집계 기능 추가
   - 두 번째 탭 선택 시 기존 테이블을 연도별로 집계하여 표시
   - 테이블 열 구성: 연도, 클레임 금액_infl, XoL Claim(Incl. Limit)
   - 연도 컬럼(연도, year 등)을 자동으로 찾아서 연도별로 집계
@@ -193,12 +226,12 @@ git reset --hard <커밋해시>
   - 연도 컬럼이 없는 경우 빈 데이터 표시
 
 **Files Affected:**
-- `components/DataPreviewModal.tsx` - XOL Calculator 모듈의 getXolData 함수 수정
+- `components/DataPreviewModal.tsx` - XoL Calculator 모듈의 getXolData 함수 수정
   - 두 번째 탭(aggreinst) 선택 시 연도별 집계 로직 추가
   - 연도별 합계 계산 및 새로운 데이터 구조 생성
 
 **Reason:**
-- 사용자 요청에 따라 XOL Calculator 모듈의 두 번째 탭에서 연도별 집계 데이터를 확인할 수 있도록 개선
+- 사용자 요청에 따라 XoL Calculator 모듈의 두 번째 탭에서 연도별 집계 데이터를 확인할 수 있도록 개선
 - 연도별 트렌드를 쉽게 파악할 수 있도록 집계 기능 제공
 
 **Commit Hash:** (will be updated after commit)
@@ -243,18 +276,18 @@ git reset --hard <커밋해시>
 
 ## 2025-01-16 05:30:00
 
-### fix(ui): Remove top statistics table from XOL Calculator View Details
+### fix(ui): Remove top statistics table from XoL Calculator View Details
 
 **Description:**
-- XOL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
+- XoL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
   - 기존: 상단에 StatsTable 표시
   - 변경: 상단 통계량 테이블 제거, 테이블과 통계량/히스토그램만 표시
 
 **Files Affected:**
-- `components/DataPreviewModal.tsx` - XOL Calculator 모듈의 상단 StatsTable 제거
+- `components/DataPreviewModal.tsx` - XoL Calculator 모듈의 상단 StatsTable 제거
 
 **Reason:**
-- 사용자 요청에 따라 XOL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
+- 사용자 요청에 따라 XoL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
 - 선택된 열의 통계량과 히스토그램만 표시하여 더 간결한 레이아웃 제공
 
 **Commit Hash:** (will be updated after commit)
@@ -271,10 +304,10 @@ git reset --hard <커밋해시>
 
 ## 2025-01-16 05:00:00
 
-### feat(ui): Update XOL Calculator View Details with table, statistics, and histogram layout
+### feat(ui): Update XoL Calculator View Details with table, statistics, and histogram layout
 
 **Description:**
-- XOL Calculator 모듈의 View Details 레이아웃 수정
+- XoL Calculator 모듈의 View Details 레이아웃 수정
   - 왼쪽: 데이터 테이블 (컬럼 클릭 가능)
   - 오른쪽: 선택된 열의 통계량 표시
   - 아래: 선택된 열의 히스토그램 표시 (숫자형 컬럼인 경우)
@@ -282,13 +315,13 @@ git reset --hard <커밋해시>
   - 컬럼 클릭 시 선택된 컬럼에 대한 통계량과 히스토그램 자동 표시
 
 **Files Affected:**
-- `components/DataPreviewModal.tsx` - XOL Calculator 모듈 View Details 레이아웃 수정
+- `components/DataPreviewModal.tsx` - XoL Calculator 모듈 View Details 레이아웃 수정
   - 왼쪽/오른쪽 레이아웃으로 변경 (테이블 + 통계량)
   - 선택된 열의 히스토그램을 아래에 추가
   - 상하 스크롤 가능하도록 컨테이너 구조 변경
 
 **Reason:**
-- 사용자 요청에 따라 XOL Calculator 모듈의 View Details를 더 직관적인 레이아웃으로 개선
+- 사용자 요청에 따라 XoL Calculator 모듈의 View Details를 더 직관적인 레이아웃으로 개선
 - 테이블, 통계량, 히스토그램을 한 화면에서 확인할 수 있도록 개선
 - 상하 스크롤을 통해 모든 정보를 쉽게 탐색 가능
 
@@ -451,15 +484,15 @@ git reset --hard <커밋해시>
 - View Details의 모든 테이블 글자 크기 조정
   - 테이블 헤더 및 셀 패딩: py-2 px-3 → py-1 px-2, py-1.5 px-3 → py-1 px-2, py-1.5 px-2 → py-1 px-2
   - Apply Threshold 모듈의 테이블 헤더 패딩 조정
-  - XOL Calculator 모듈의 테이블 헤더 패딩 조정
+  - XoL Calculator 모듈의 테이블 헤더 패딩 조정
   - 일반 테이블의 헤더 및 셀 패딩 조정
-- Apply Threshold와 XOL Calculator 모듈 레이아웃 확인
+- Apply Threshold와 XoL Calculator 모듈 레이아웃 확인
   - 두 모듈 모두 상단 통계량 테이블 + 아래 전체 데이터 테이블 레이아웃으로 이미 구성되어 있음
 
 **Files Affected:**
 - `components/DataPreviewModal.tsx` - View Details 테이블의 모든 패딩 크기 조정
   - Apply Threshold 모듈: th 패딩 py-1.5 px-2 → py-1 px-2
-  - XOL Calculator 모듈: th 패딩 py-1.5 px-2 → py-1 px-2
+  - XoL Calculator 모듈: th 패딩 py-1.5 px-2 → py-1 px-2
   - 일반 테이블: th 패딩 py-2 px-3 → py-1 px-2, td 패딩 py-1.5 px-3 → py-1 px-2
 
 **Reason:**
