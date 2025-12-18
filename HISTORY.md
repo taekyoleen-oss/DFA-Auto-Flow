@@ -21,16 +21,16 @@
 - 사용자 요청에 따라 Save 버튼 아이콘을 저장 기능에 맞게 수정
 - XoL Loss Model 샘플을 최신 내용으로 업데이트
 
-**Commit Hash:** 84e0fe5a8e1b8c3f4d5e6f7a8b9c0d1e2f3a4b5c
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard 84e0fe5a8e1b8c3f4d5e6f7a8b9c0d1e2f3a4b5c
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard 84e0fe5a8e1b8c3f4d5e6f7a8b9c0d1e2f3a4b5c
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 09:00:00
