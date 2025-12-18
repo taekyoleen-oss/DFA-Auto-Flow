@@ -532,30 +532,60 @@ export const Canvas: React.FC<CanvasProps> = ({
         if (dragFromIsInput && !dropOnIsInput) { // Drag from INPUT to OUTPUT
             const fromPort = toModule.outputs.find(p => p.name === portName);
             const toPort = fromModule.inputs.find(p => p.name === dragConnection.from.portName);
-            if (fromPort && toPort && fromPort.type === toPort.type) {
-                const newConnection: Connection = {
-                    id: `conn-${Date.now()}`,
-                    from: { moduleId: toModule.id, portName: fromPort.name },
-                    to: { moduleId: fromModule.id, portName: toPort.name },
-                };
-                setConnections(prev => [
-                    ...prev.filter(c => !(c.to.moduleId === fromModule.id && c.to.portName === toPort.name)),
-                    newConnection,
-                ]);
+            if (fromPort && toPort) {
+                // 포트 타입이 일치하거나, 특별한 경우 허용
+                const isTypeMatch = fromPort.type === toPort.type;
+                // XoL Calculator의 data_in 포트는 "evaluation" 타입의 SimulateAggDistOutput도 받을 수 있음
+                const isXolCalculatorSpecialCase = 
+                  fromModule.type === ModuleType.XolCalculator && 
+                  toPort.name === "data_in" && 
+                  toPort.type === "data" && 
+                  fromPort.type === "evaluation";
+                
+                if (isTypeMatch || isXolCalculatorSpecialCase) {
+                    const newConnection: Connection = {
+                        id: `conn-${Date.now()}`,
+                        from: { moduleId: toModule.id, portName: fromPort.name },
+                        to: { moduleId: fromModule.id, portName: toPort.name },
+                    };
+                    setConnections(prev => [
+                        ...prev.filter(c => !(c.to.moduleId === fromModule.id && c.to.portName === toPort.name)),
+                        newConnection,
+                    ]);
+                }
             }
         } else if (!dragFromIsInput && dropOnIsInput) { // Drag from OUTPUT to INPUT
             const fromPort = fromModule.outputs.find(p => p.name === dragConnection.from.portName);
             const toPort = toModule.inputs.find(p => p.name === portName);
-            if (fromPort && toPort && fromPort.type === toPort.type) {
-                const newConnection: Connection = {
-                    id: `conn-${Date.now()}`,
-                    from: { moduleId: fromModule.id, portName: fromPort.name },
-                    to: { moduleId: toModule.id, portName: toPort.name },
-                };
-                setConnections(prev => [
-                    ...prev.filter(c => !(c.to.moduleId === toModule.id && c.to.portName === toPort.name)),
-                    newConnection,
-                ]);
+            if (fromPort && toPort) {
+                // 포트 타입이 일치하거나, 특별한 경우 허용
+                const isTypeMatch = fromPort.type === toPort.type;
+                // XoL Calculator의 data_in 포트는 "evaluation" 타입의 SimulateAggDistOutput도 받을 수 있음
+                const isXolCalculatorSpecialCase = 
+                  toModule.type === ModuleType.XolCalculator && 
+                  toPort.name === "data_in" && 
+                  toPort.type === "data" && 
+                  (fromPort.type === "evaluation" || fromPort.type === "data");
+                // Simulate Freq-Sev의 output_2 (data 타입)는 XoL Calculator와 연결 가능
+                const isSimulateFreqServXolCase =
+                  fromModule.type === ModuleType.SimulateFreqServ &&
+                  fromPort.name === "output_2" &&
+                  fromPort.type === "data" &&
+                  toModule.type === ModuleType.XolCalculator &&
+                  toPort.name === "data_in" &&
+                  toPort.type === "data";
+                
+                if (isTypeMatch || isXolCalculatorSpecialCase || isSimulateFreqServXolCase) {
+                    const newConnection: Connection = {
+                        id: `conn-${Date.now()}`,
+                        from: { moduleId: fromModule.id, portName: fromPort.name },
+                        to: { moduleId: toModule.id, portName: toPort.name },
+                    };
+                    setConnections(prev => [
+                        ...prev.filter(c => !(c.to.moduleId === toModule.id && c.to.portName === toPort.name)),
+                        newConnection,
+                    ]);
+                }
             }
         }
     }

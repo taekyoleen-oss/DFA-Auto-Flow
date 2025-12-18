@@ -12,7 +12,39 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
   module, 
   onClose 
 }) => {
-  const output = module.outputData as SimulateAggDistOutput;
+  // SimulateFreqServOutput 또는 SimulateAggDistOutput 모두 처리
+  let output: SimulateAggDistOutput | null = null;
+  let outputFormat: "xol" | "dfa" | undefined = undefined;
+  let claimLevelData: Array<{ simulationNumber: number; claimAmount: number }> | undefined = undefined;
+  
+  if ((module.outputData as any)?.type === 'SimulateFreqServOutput') {
+    const freqServOutput = module.outputData as any;
+    outputFormat = freqServOutput.outputFormat;
+    // dfaOutput은 항상 생성되므로 우선 사용
+    if (freqServOutput.dfaOutput) {
+      output = freqServOutput.dfaOutput;
+      claimLevelData = freqServOutput.dfaOutput.claimLevelData || [];
+    } else {
+      // dfaOutput이 없는 경우 (이론적으로는 발생하지 않아야 함)
+      output = {
+        type: "SimulateAggDistOutput",
+        simulationCount: 0,
+        results: [],
+        statistics: {
+          mean: 0, std: 0, min: 0, max: 0,
+          percentile5: 0, percentile25: 0, percentile50: 0,
+          percentile75: 0, percentile95: 0, percentile99: 0,
+        },
+        outputFormat: outputFormat,
+        claimLevelData: [],
+      };
+    }
+  } else if (module.outputData?.type === 'SimulateAggDistOutput') {
+    output = module.outputData as SimulateAggDistOutput;
+    outputFormat = output.outputFormat;
+    claimLevelData = output.claimLevelData || [];
+  }
+  
   if (!output || output.type !== 'SimulateAggDistOutput') {
     return (
       <div 
@@ -38,20 +70,47 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
 
   const { results, statistics, simulationCount } = output;
   const [showSpreadView, setShowSpreadView] = useState(false);
+  const isXolFormat = outputFormat === "xol";
+  
+  // XoL 형식일 때 claimLevelData가 너무 크면 성능 문제 방지를 위해 제한
+  const displayClaimLevelData = useMemo(() => {
+    if (!isXolFormat || !claimLevelData || claimLevelData.length === 0) {
+      return [];
+    }
+    // 최대 10,000개만 표시 (성능 최적화)
+    return claimLevelData.slice(0, 10000);
+  }, [isXolFormat, claimLevelData]);
 
   // Spread View용 데이터 변환
   const spreadViewData = useMemo(() => {
-    if (!results || results.length === 0) return [];
-    return results.map(result => ({
-      amount: result.amount,
-      count: result.count,
-    }));
-  }, [results]);
+    if (isXolFormat && displayClaimLevelData && displayClaimLevelData.length > 0) {
+      return displayClaimLevelData.map(item => ({
+        "시뮬레이션 번호": item.simulationNumber,
+        "보험금": item.claimAmount,
+      }));
+    } else if (!results || results.length === 0) {
+      return [];
+    } else {
+      return results.map(result => ({
+        amount: result.amount,
+        count: result.count,
+      }));
+    }
+  }, [results, isXolFormat, displayClaimLevelData]);
 
-  const spreadViewColumns = [
-    { name: 'amount', type: 'number' },
-    { name: 'count', type: 'number' },
-  ];
+  const spreadViewColumns = useMemo(() => {
+    if (isXolFormat && displayClaimLevelData && displayClaimLevelData.length > 0) {
+      return [
+        { name: '시뮬레이션 번호', type: 'number' },
+        { name: '보험금', type: 'number' },
+      ];
+    } else {
+      return [
+        { name: 'amount', type: 'number' },
+        { name: 'count', type: 'number' },
+      ];
+    }
+  }, [isXolFormat, displayClaimLevelData]);
 
   // 히스토그램 차트 데이터 계산
   const histogramChartData = useMemo(() => {
@@ -226,8 +285,42 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
               </div>
             </div>
 
-            {/* Raw Simulation Results Table (up to 100) */}
-            {output.rawSimulations && output.rawSimulations.length > 0 && (
+            {/* Raw Simulation Results Table */}
+            {isXolFormat && displayClaimLevelData && displayClaimLevelData.length > 0 ? (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                  사고별 집계 (XoL 사용)
+                  <span className="text-sm font-normal text-gray-500 ml-2">
+                    {claimLevelData && claimLevelData.length > 10000 
+                      ? `(표시: ${displayClaimLevelData.length.toLocaleString('ko-KR')}건 / 총 ${claimLevelData.length.toLocaleString('ko-KR')}건)`
+                      : `(총 ${displayClaimLevelData.length.toLocaleString('ko-KR')}건)`
+                    }
+                  </span>
+                </h3>
+                <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="px-4 py-2 text-right font-semibold text-gray-700">시뮬레이션 번호</th>
+                        <th className="px-4 py-2 text-right font-semibold text-gray-700">보험금</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayClaimLevelData.map((item, index) => (
+                        <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-4 py-2 text-right font-mono text-gray-600">
+                            {item.simulationNumber}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono text-gray-800">
+                            {item.claimAmount.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : output.rawSimulations && output.rawSimulations.length > 0 ? (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <h3 className="text-lg font-semibold text-gray-800 mb-4">
                   Simulation Results (Raw Values)
@@ -260,7 +353,7 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
                   </table>
                 </div>
               </div>
-            )}
+            ) : null}
 
             {/* Histogram Results Chart */}
             <div className="bg-white border border-gray-200 rounded-lg p-4">

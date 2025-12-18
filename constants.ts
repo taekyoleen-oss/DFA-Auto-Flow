@@ -307,7 +307,7 @@ export const TOOLBOX_MODULES = [
   },
   {
     type: ModuleType.XolCalculator,
-    name: "XOL Calculator",
+    name: "XoL Calculator",
     icon: CalculatorIcon,
     description: "Calculates XoL results using contract terms and claim data.",
   },
@@ -914,8 +914,9 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       type: ModuleType.SimulateAggDist,
       status: ModuleStatus.Pending,
       parameters: {
-        simulation_count: 10000,
+        simulation_count: 1000,
         custom_count: "",
+        random_state: 43,
       },
       inputs: [{ name: "model_in", type: "evaluation" }],
       outputs: [{ name: "simulation_out", type: "evaluation" }],
@@ -961,14 +962,19 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         severity_type: "Lognormal",
         amount_column: "클레임 금액",
         date_column: "날짜",
-        simulation_count: 10000,
+        simulation_count: 1000,
         custom_count: "",
+        random_state: 43,
+        output_format: "dfa",
       },
       inputs: [
         { name: "frequency_in", type: "distribution" },
         { name: "severity_in", type: "distribution" },
       ],
-      outputs: [{ name: "model_out", type: "evaluation" }],
+      outputs: [
+        { name: "output_1", type: "evaluation" }, // 연도별 집계(DFA 사용)
+        { name: "output_2", type: "data" }, // 사고별 집계(XoL 사용)
+      ],
     },
     {
       type: ModuleType.CombineLossModel,

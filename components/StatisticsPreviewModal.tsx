@@ -4,6 +4,7 @@ import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
+import { useModalCopy } from '../hooks/useModalCopy';
 
 interface StatisticsPreviewModalProps {
     module: CanvasModule;
@@ -137,6 +138,7 @@ export const StatisticsPreviewModal: React.FC<StatisticsPreviewModalProps> = ({ 
     const [isInterpreting, setIsInterpreting] = useState(false);
     const [aiInterpretation, setAiInterpretation] = useState<string | null>(null);
     const [showSpreadView, setShowSpreadView] = useState(false);
+    const { contentRef, handleContextMenu, ContextMenuComponent } = useModalCopy();
 
     const output = module.outputData as StatisticsOutput;
     if (!output || output.type !== 'StatisticsOutput') return null;
@@ -261,6 +263,7 @@ ${correlationText}
             <div 
                 className="bg-white text-gray-900 rounded-lg shadow-xl w-full max-w-6xl max-h-[90vh] flex flex-col"
                 onClick={e => e.stopPropagation()}
+                onContextMenu={handleContextMenu}
             >
                 <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                     <h2 className="text-xl font-bold text-gray-800">Statistics Preview: {module.name}</h2>
@@ -279,7 +282,7 @@ ${correlationText}
                         </button>
                     </div>
                 </header>
-                <main className="flex-grow p-4 overflow-auto flex flex-col gap-6">
+                <main ref={contentRef} className="flex-grow p-4 overflow-auto flex flex-col gap-6">
                     <div className="flex justify-end font-sans">
                         <button
                             onClick={handleInterpret}
@@ -363,6 +366,7 @@ ${correlationText}
                     title={`Spread View: ${module.name} - Statistics`}
                 />
             )}
+            {ContextMenuComponent}
         </div>
     );
 };

@@ -7,6 +7,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { calculatePCA } from '../utils/pcaCalculator'; // JavaScript 기반 (ml-pca 사용)
 import { DataTable, StatsTable } from './SplitDataPreviewModal';
 import { SpreadViewModal } from './SpreadViewModal';
+import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
 
 interface DataPreviewModalProps {
     module: CanvasModule;
@@ -711,8 +712,75 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     
     const [activeThresholdTab, setActiveThresholdTab] = useState<'below' | 'above'>('below');
     const [activeTab, setActiveTab] = useState<'table' | 'visualization' | 'histogram'>('table');
-    const [activeXolTab, setActiveXolTab] = useState<'limit' | 'aggreinst'>('limit'); // XOL Calculator 탭
+    const [activeXolTab, setActiveXolTab] = useState<'limit' | 'aggreinst'>('limit'); // XoL Calculator 탭
     const [showSpreadView, setShowSpreadView] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+    
+    // 복사 기능 - 모달이 열려있을 때만 작동
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+                const activeElement = document.activeElement;
+                const isEditingText =
+                    activeElement &&
+                    (activeElement.tagName === "INPUT" ||
+                        activeElement.tagName === "TEXTAREA" ||
+                        (activeElement as HTMLElement).isContentEditable);
+                
+                if (!isEditingText && contentRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const text = contentRef.current.innerText || contentRef.current.textContent || '';
+                    if (text.trim()) {
+                        navigator.clipboard.writeText(text).catch(console.error);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown, true);
+        return () => window.removeEventListener('keydown', handleKeyDown, true);
+    }, []);
+    
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+    
+    const handleCopy = useCallback(async () => {
+        if (contentRef.current) {
+            const text = contentRef.current.innerText || contentRef.current.textContent || '';
+            if (text.trim()) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    setContextMenu(null);
+                } catch (err) {
+                    console.error('Failed to copy:', err);
+                }
+            }
+        }
+    }, []);
+    
+    // 컨텍스트 메뉴 외부 클릭 시 닫기
+    useEffect(() => {
+        if (!contextMenu) return;
+        
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as Element;
+            if (contextMenu && !target.closest('.context-menu')) {
+                setContextMenu(null);
+            }
+        };
+        
+        document.addEventListener('click', handleClickOutside, true);
+        document.addEventListener('mousedown', handleClickOutside, true);
+        
+        return () => {
+            document.removeEventListener('click', handleClickOutside, true);
+            document.removeEventListener('mousedown', handleClickOutside, true);
+        };
+    }, [contextMenu]);
     
     // Spread View용 데이터 계산 (thresholdOutput이 있는 경우)
     const spreadViewData = useMemo(() => {
@@ -751,7 +819,7 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     
     const data = getPreviewData();
     
-    // XOL Calculator 모듈의 경우 탭별 데이터 필터링
+    // XoL Calculator 모듈의 경우 탭별 데이터 필터링
     const getXolData = (): DataPreview | null => {
         if (!data || module.type !== ModuleType.XolCalculator) return data;
         
@@ -772,13 +840,28 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
                 ? contractModule.outputData as any
                 : null;
             
-            // 연도 컬럼 찾기
-            const yearColumn = data.columns.find(col => 
-                col.name === '연도' || 
-                col.name === 'year' || 
-                col.name.toLowerCase() === 'year' ||
-                col.name.toLowerCase().includes('year')
-            );
+            // 연도 컬럼 찾기: 파라미터에서 지정된 컬럼 또는 자동 감지
+            let yearColumn = null;
+            const year_column = (module as any).parameters?.year_column;
+            
+            if (year_column) {
+                // 파라미터에서 지정된 경우
+                yearColumn = data.columns.find(col => col.name === year_column);
+            } else {
+                // 자동 감지: 시뮬레이션 데이터인 경우 시뮬레이션 번호를 연도로 사용
+                const hasSimulationNumber = data.columns.some(col => col.name === "시뮬레이션 번호");
+                if (hasSimulationNumber) {
+                    yearColumn = data.columns.find(col => col.name === "시뮬레이션 번호");
+                } else {
+                    // 일반 데이터인 경우 연도 컬럼 찾기
+                    yearColumn = data.columns.find(col => 
+                        col.name === '연도' || 
+                        col.name === 'year' || 
+                        col.name.toLowerCase() === 'year' ||
+                        col.name.toLowerCase().includes('year')
+                    );
+                }
+            }
             
             // 클레임 금액_infl 컬럼 찾기
             const claimAmountColumn = data.columns.find(col => 
@@ -858,58 +941,53 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
                         row[xolLimitColumnName] = totals.xolLimit;
                     }
                     
-                    // XoL Claim(Incl. Agg/Reinst) 계산
+                    // XoL Claim(Incl. Agg/Reinst) 계산: min(max(XoL Claim(Incl. Limit)-Agg Deductible,0), Limit*(Reinstatements+1))
                     let xolClaimAggReinst = 0;
                     if (contract && xolLimitColumnName) {
-                        const maxValue = contract.limit * (contract.reinstatements + 1) + contract.aggDeductible;
-                        xolClaimAggReinst = totals.xolLimit >= maxValue 
-                            ? maxValue 
-                            : totals.xolLimit;
+                        xolClaimAggReinst = Math.min(
+                            Math.max(totals.xolLimit - contract.aggDeductible, 0),
+                            contract.limit * (contract.reinstatements + 1)
+                        );
                         row['XoL Claim(Incl. Agg/Reinst)'] = xolClaimAggReinst;
                     }
                     
                     // XoL Premium Rate 계산
-                    if (contract && xolClaimAggReinst > 0) {
-                        // 1. Agg Deductible 제외
-                        const afterAggDed = xolClaimAggReinst - contract.aggDeductible;
+                    if (contract && xolClaimAggReinst > 0 && contract.limit > 0) {
+                        // 1. LimitCount = XoL Claim(Incl. Agg/Reinst) / Limit
+                        const limitCount = xolClaimAggReinst / contract.limit;
                         
-                        if (afterAggDed > 0 && contract.limit > 0) {
-                            // 2. Limit로 나누기 (몇 개의 limit로 나뉘는지)
-                            const limitCount = afterAggDed / contract.limit;
-                            
-                            // 3. 각 limit 단위에 대한 복원 비율 계산
-                            let totalReinstatementRate = 0;
-                            const fullLimitCount = Math.floor(limitCount);
-                            const partialLimit = limitCount - fullLimitCount; // 마지막 부분 limit
-                            
-                            // 전체 limit 단위들에 대한 복원 비율
-                            // 각 limit 단위는 1차, 2차, 3차... 복원에 해당
-                            for (let i = 0; i < fullLimitCount; i++) {
-                                if (i < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[i] !== undefined) {
-                                    // 각 limit 단위를 limit로 나눈 값(1)에 복원 비율을 곱함
-                                    // 복원 비율은 백분율이므로 100으로 나눔
-                                    totalReinstatementRate += 1 * (contract.reinstatementPremiums[i] / 100);
-                                }
-                                // 복원 횟수를 초과하면 0 (복원 안됨)
+                        // 2. 각각의 Limit 단위에 대해 복원보험료 비율 계산
+                        let totalReinstatementRate = 0;
+                        const fullLimitCount = Math.floor(limitCount);
+                        const partialLimit = limitCount - fullLimitCount; // 마지막 부분 limit
+                        
+                        // 각 Limit 단위에 대해 복원 비율 계산
+                        // 1차복원, 2차복원, ... 각각에 대해 복원비율을 Limit 단위에 곱함
+                        for (let i = 0; i < fullLimitCount; i++) {
+                            if (i < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[i] !== undefined) {
+                                // 각 Limit 단위(1)에 복원 비율을 곱함
+                                // 복원 비율은 백분율이므로 100으로 나눔
+                                totalReinstatementRate += 1 * (contract.reinstatementPremiums[i] / 100);
                             }
-                            
-                            // 부분 limit에 대한 복원 비율 (마지막 limit)
-                            if (partialLimit > 0) {
-                                const reinstatementIndex = fullLimitCount; // 부분 limit의 복원 차수
-                                if (reinstatementIndex < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[reinstatementIndex] !== undefined) {
-                                    // 부분 limit을 limit로 나눈 값(partialLimit)에 복원 비율을 곱함
-                                    totalReinstatementRate += partialLimit * (contract.reinstatementPremiums[reinstatementIndex] / 100);
-                                }
-                                // 복원 횟수를 초과하면 0 (복원 안됨)
-                            }
-                            
-                            // 4. 최초 보험료 비율 1에 모든 복원 비율을 더함
-                            const xolPremiumRate = 1 + totalReinstatementRate;
-                            row['XoL Premium Rate'] = xolPremiumRate;
-                        } else {
-                            // Agg Deductible을 빼면 0 이하인 경우
-                            row['XoL Premium Rate'] = 1;
+                            // 복원 횟수를 초과하면 0 (복원 안됨)
                         }
+                        
+                        // 부분 limit에 대한 복원 비율 (마지막 limit)
+                        if (partialLimit > 0) {
+                            const reinstatementIndex = fullLimitCount; // 부분 limit의 복원 차수
+                            if (reinstatementIndex < contract.reinstatements && contract.reinstatementPremiums && contract.reinstatementPremiums[reinstatementIndex] !== undefined) {
+                                // 부분 limit에 복원 비율을 곱함
+                                totalReinstatementRate += partialLimit * (contract.reinstatementPremiums[reinstatementIndex] / 100);
+                            }
+                            // 복원 횟수를 초과하면 0 (복원 안됨)
+                        }
+                        
+                        // 최초 보험료 비율 1에 모든 복원 비율을 더함
+                        const xolPremiumRate = 1 + totalReinstatementRate;
+                        row['XoL Premium Rate'] = xolPremiumRate;
+                    } else {
+                        // XoL Claim(Incl. Agg/Reinst)가 0이거나 Limit이 0인 경우
+                        row['XoL Premium Rate'] = 1;
                     }
                     
                     return row;
@@ -952,7 +1030,17 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     
     const xolData = module.type === ModuleType.XolCalculator ? getXolData() : data;
     const columns = Array.isArray((module.type === ModuleType.XolCalculator ? xolData : data)?.columns) ? (module.type === ModuleType.XolCalculator ? xolData : data)!.columns : [];
-    const rows = Array.isArray((module.type === ModuleType.XolCalculator ? xolData : data)?.rows) ? (module.type === ModuleType.XolCalculator ? xolData : data)!.rows : [];
+    const allRows = Array.isArray((module.type === ModuleType.XolCalculator ? xolData : data)?.rows) ? (module.type === ModuleType.XolCalculator ? xolData : data)!.rows : [];
+    
+    // XoL Calculator의 첫 번째 탭(limit)의 경우 표시 행 수 제한 (성능 최적화)
+    // 실제 데이터 처리는 전체를 사용하지만, 표시는 제한
+    const MAX_DISPLAY_ROWS_LIMIT_TAB = 1000;
+    const rows = useMemo(() => {
+        if (module.type === ModuleType.XolCalculator && activeXolTab === 'limit' && allRows.length > MAX_DISPLAY_ROWS_LIMIT_TAB) {
+            return allRows.slice(0, MAX_DISPLAY_ROWS_LIMIT_TAB);
+        }
+        return allRows;
+    }, [module.type, activeXolTab, allRows]);
     
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
     // LoadClaimData/ApplyInflation/FormatChange/SelectData 모듈의 경우 적절한 컬럼을 기본 선택
@@ -1288,13 +1376,14 @@ const PCAScoreVisualization: React.FC<{
 
     const selectedColumnData = useMemo(() => {
         try {
-            if (!selectedColumn || !Array.isArray(rows)) return null;
-            return rows.map(row => row[selectedColumn]);
+            if (!selectedColumn || !Array.isArray(allRows)) return null;
+            // 통계 계산 시 전체 데이터 사용 (XoL Calculator의 경우)
+            return allRows.map(row => row[selectedColumn]);
         } catch (error) {
             console.error('Error getting selected column data:', error);
             return null;
         }
-    }, [selectedColumn, rows]);
+    }, [selectedColumn, allRows]);
     
     const selectedColInfo = useMemo(() => {
         try {
@@ -1417,7 +1506,7 @@ const PCAScoreVisualization: React.FC<{
                             </button>
                         </div>
                     </header>
-                    <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
+                    <main ref={contentRef} className="flex-grow p-4 overflow-auto flex flex-col gap-4">
                         <div className="flex-shrink-0 border-b border-gray-200">
                             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
                                 <button
@@ -1444,184 +1533,190 @@ const PCAScoreVisualization: React.FC<{
                         </div>
                         
                         {activeThresholdTab === 'below' && belowData && (
-                            <div className="flex-grow flex flex-col gap-4 overflow-hidden">
-                                {/* 상단: 통계량 테이블 */}
-                                {belowData && belowData.rows && belowData.rows.length > 0 && (
-                                    <div className="flex-shrink-0">
-                                        <StatsTable 
-                                            title={`Statistics (Threshold < ${threshold.toLocaleString()})`} 
-                                            data={belowData} 
-                                        />
-                                    </div>
-                                )}
-                                
-                                {/* 히스토그램 */}
-                                {amountColumn && belowRows && belowRows.length > 0 && (
-                                    <div className="flex-shrink-0 border border-gray-200 rounded-lg">
-                                        <h3 className="text-sm font-semibold text-gray-800 mb-2 p-2 border-b border-gray-200">
-                                            Histogram: {amountColumn}
-                                        </h3>
-                                        <div className="h-64 p-4">
-                                            <HistogramPlot rows={belowRows} column={amountColumn} />
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {/* 아래 전체: 데이터 테이블 */}
-                                {belowData && (
-                                    <>
-                                        <div className="flex justify-between items-center flex-shrink-0">
-                                            <div className="text-xs text-gray-600">
-                                                Showing {Math.min((belowData.rows || []).length, 1000)} of {belowData.totalRowCount.toLocaleString()} rows and {belowData.columns.length} columns.
+                            <div className="flex gap-2 h-full">
+                                {/* 왼쪽: 데이터 테이블 */}
+                                <div className="flex-1 flex flex-col gap-1 min-w-0">
+                                    {belowData && (
+                                        <>
+                                            <div className="flex justify-between items-center flex-shrink-0 px-1">
+                                                <div className="text-xs text-gray-600">
+                                                    Showing {Math.min((belowData.rows || []).length, 1000)} of {belowData.totalRowCount.toLocaleString()} rows and {belowData.columns.length} columns.
+                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex-grow overflow-auto border border-gray-200 rounded-lg">
-                                            <table className="min-w-full text-xs text-left">
-                                                <thead className="bg-gray-50 sticky top-0">
-                                                    <tr>
-                                                        {belowData.columns.map(col => (
-                                                            <th 
-                                                                key={col.name} 
-                                                                className="py-1 px-2 font-semibold text-gray-600"
-                                                            >
-                                                                <span className="truncate" title={col.name}>{col.name}</span>
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {(belowData.rows || []).slice(0, 1000).map((row, rowIndex) => (
-                                                        <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                            {belowData.columns.map(col => {
-                                                                const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
-                                                                const isNumeric = col.type === 'number' && !isYearColumn;
-                                                                const value = row[col.name];
-                                                                
-                                                                let displayValue: string;
-                                                                if (value === null || value === undefined || value === '') {
-                                                                    displayValue = '';
-                                                                } else if (isNumeric) {
-                                                                    const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                                                                    if (!isNaN(numValue)) {
-                                                                        displayValue = numValue.toLocaleString('ko-KR', { 
-                                                                            maximumFractionDigits: 2,
-                                                                            minimumFractionDigits: 0
-                                                                        });
+                                            <div className="flex-1 border border-gray-200 rounded-lg overflow-auto">
+                                                <table className="min-w-full text-xs text-left">
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            {belowData.columns.map(col => (
+                                                                <th 
+                                                                    key={col.name} 
+                                                                    className="py-1 px-1.5 font-semibold text-gray-600"
+                                                                >
+                                                                    <span className="truncate" title={col.name}>{col.name}</span>
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {(belowData.rows || []).slice(0, 1000).map((row, rowIndex) => (
+                                                            <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
+                                                                {belowData.columns.map(col => {
+                                                                    const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                                    const isNumeric = col.type === 'number' && !isYearColumn;
+                                                                    const value = row[col.name];
+                                                                    
+                                                                    let displayValue: string;
+                                                                    if (value === null || value === undefined || value === '') {
+                                                                        displayValue = '';
+                                                                    } else if (isNumeric) {
+                                                                        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                                        if (!isNaN(numValue)) {
+                                                                            displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                                maximumFractionDigits: 2,
+                                                                                minimumFractionDigits: 0
+                                                                            });
+                                                                        } else {
+                                                                            displayValue = String(value);
+                                                                        }
                                                                     } else {
                                                                         displayValue = String(value);
                                                                     }
-                                                                } else {
-                                                                    displayValue = String(value);
-                                                                }
-                                                                
-                                                                return (
-                                                                    <td 
-                                                                        key={col.name} 
-                                                                        className={`py-1 px-2 font-mono truncate hover:bg-gray-50 ${isNumeric ? 'text-right' : 'text-left'}`}
-                                                                        title={String(row[col.name])}
-                                                                    >
-                                                                        {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                                                    
+                                                                    return (
+                                                                        <td 
+                                                                            key={col.name} 
+                                                                            className={`py-1 px-1.5 font-mono truncate hover:bg-gray-50 ${isNumeric ? 'text-right' : 'text-left'}`}
+                                                                            title={String(row[col.name])}
+                                                                        >
+                                                                            {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                         </div>
-                                    </>
-                                )}
+                                        </>
+                                    )}
+                                </div>
+                                
+                                {/* 오른쪽: 속성에서 정한 열에 대한 통계량 */}
+                                <div className="w-96 flex-shrink-0">
+                                    {(() => {
+                                        const amountColumnName = module.parameters?.amount_column || '클레임 금액';
+                                        const columnData = belowRows.map((r: any) => r[amountColumnName]).filter((v: any) => v !== null && v !== undefined);
+                                        const columnInfo = belowColumns.find((c: ColumnInfo) => c.name === amountColumnName);
+                                        const isNumeric = columnInfo?.type === 'number';
+                                        
+                                        return (
+                                            <div className="h-full border border-gray-200 rounded-lg p-3 overflow-auto">
+                                                <h3 className="text-sm font-semibold text-gray-800 mb-3">
+                                                    통계량: {amountColumnName}
+                                                </h3>
+                                            <ColumnStatistics 
+                                                    data={columnData} 
+                                                    columnName={amountColumnName} 
+                                                    isNumeric={isNumeric} 
+                                            />
+                                        </div>
+                                        );
+                                    })()}
+                                </div>
                             </div>
                         )}
                         
                         {activeThresholdTab === 'above' && aboveData && (
-                            <div className="flex-grow flex flex-col gap-4 overflow-hidden">
-                                {/* 상단: 통계량 테이블 */}
-                                {aboveData && aboveData.rows && aboveData.rows.length > 0 && (
-                                    <div className="flex-shrink-0">
-                                        <StatsTable 
-                                            title={`Statistics (Threshold >= ${threshold.toLocaleString()})`} 
-                                            data={aboveData} 
-                                        />
-                                    </div>
-                                )}
-                                
-                                {/* 히스토그램 */}
-                                {aboveAmountColumn && aboveRows && aboveRows.length > 0 && (
-                                    <div className="flex-shrink-0 border border-gray-200 rounded-lg">
-                                        <h3 className="text-sm font-semibold text-gray-800 mb-2 p-2 border-b border-gray-200">
-                                            Histogram: {aboveAmountColumn}
-                                        </h3>
-                                        <div className="h-64 p-4">
-                                            <HistogramPlot rows={aboveRows} column={aboveAmountColumn} />
-                                        </div>
-                                    </div>
-                                )}
-                                
-                                {/* 아래 전체: 데이터 테이블 */}
-                                {aboveData && (
-                                    <>
-                                        <div className="flex justify-between items-center flex-shrink-0">
-                                            <div className="text-xs text-gray-600">
-                                                Showing {Math.min((aboveData.rows || []).length, 1000)} of {aboveData.totalRowCount.toLocaleString()} rows and {aboveData.columns.length} columns.
+                            <div className="flex gap-2 h-full">
+                                {/* 왼쪽: 데이터 테이블 */}
+                                <div className="flex-1 flex flex-col gap-1 min-w-0">
+                                    {aboveData && (
+                                        <>
+                                            <div className="flex justify-between items-center flex-shrink-0 px-1">
+                                                <div className="text-xs text-gray-600">
+                                                    Showing {Math.min((aboveData.rows || []).length, 1000)} of {aboveData.totalRowCount.toLocaleString()} rows and {aboveData.columns.length} columns.
+                                </div>
                                             </div>
-                                        </div>
-                                        <div className="flex-grow overflow-auto border border-gray-200 rounded-lg">
-                                            <table className="min-w-full text-xs text-left">
-                                                <thead className="bg-gray-50 sticky top-0">
-                                                    <tr>
-                                                        {aboveData.columns.map(col => (
-                                                            <th 
-                                                                key={col.name} 
-                                                                className="py-1 px-2 font-semibold text-gray-600"
-                                                            >
-                                                                <span className="truncate" title={col.name}>{col.name}</span>
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {(aboveData.rows || []).slice(0, 1000).map((row, rowIndex) => (
-                                                        <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                            {aboveData.columns.map(col => {
-                                                                const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
-                                                                const isNumeric = col.type === 'number' && !isYearColumn;
-                                                                const value = row[col.name];
-                                                                
-                                                                let displayValue: string;
-                                                                if (value === null || value === undefined || value === '') {
-                                                                    displayValue = '';
-                                                                } else if (isNumeric) {
-                                                                    const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                                                                    if (!isNaN(numValue)) {
-                                                                        displayValue = numValue.toLocaleString('ko-KR', { 
-                                                                            maximumFractionDigits: 2,
-                                                                            minimumFractionDigits: 0
-                                                                        });
+                                            <div className="flex-1 border border-gray-200 rounded-lg overflow-auto">
+                                                <table className="min-w-full text-xs text-left">
+                                                    <thead className="bg-gray-50 sticky top-0">
+                                                        <tr>
+                                                            {aboveData.columns.map(col => (
+                                                                <th 
+                                                                    key={col.name} 
+                                                                    className="py-1 px-1.5 font-semibold text-gray-600"
+                                                                >
+                                                                    <span className="truncate" title={col.name}>{col.name}</span>
+                                                                </th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {(aboveData.rows || []).slice(0, 1000).map((row, rowIndex) => (
+                                                            <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
+                                                                {aboveData.columns.map(col => {
+                                                                    const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                                    const isNumeric = col.type === 'number' && !isYearColumn;
+                                                                    const value = row[col.name];
+                                                                    
+                                                                    let displayValue: string;
+                                                                    if (value === null || value === undefined || value === '') {
+                                                                        displayValue = '';
+                                                                    } else if (isNumeric) {
+                                                                        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                                        if (!isNaN(numValue)) {
+                                                                            displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                                maximumFractionDigits: 2,
+                                                                                minimumFractionDigits: 0
+                                                                            });
+                                                                        } else {
+                                                                            displayValue = String(value);
+                                                                        }
                                                                     } else {
                                                                         displayValue = String(value);
                                                                     }
-                                                                } else {
-                                                                    displayValue = String(value);
-                                                                }
-                                                                
-                                                                return (
-                                                                    <td 
-                                                                        key={col.name} 
-                                                                        className={`py-1 px-2 font-mono truncate hover:bg-gray-50 ${isNumeric ? 'text-right' : 'text-left'}`}
-                                                                        title={String(row[col.name])}
-                                                                    >
-                                                                        {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
+                                                                    
+                                                                    return (
+                                                                        <td 
+                                                                            key={col.name} 
+                                                                            className={`py-1 px-1.5 font-mono truncate hover:bg-gray-50 ${isNumeric ? 'text-right' : 'text-left'}`}
+                                                                            title={String(row[col.name])}
+                                                                        >
+                                                                            {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                         </div>
-                                    </>
-                                )}
+                                        </>
+                                    )}
+                                </div>
+                                
+                                {/* 오른쪽: 속성에서 정한 열에 대한 통계량 */}
+                                <div className="w-96 flex-shrink-0">
+                                    {(() => {
+                                        const amountColumnName = module.parameters?.amount_column || '클레임 금액';
+                                        const columnData = aboveRows.map((r: any) => r[amountColumnName]).filter((v: any) => v !== null && v !== undefined);
+                                        const columnInfo = aboveColumns.find((c: ColumnInfo) => c.name === amountColumnName);
+                                        const isNumeric = columnInfo?.type === 'number';
+                                        
+                                        return (
+                                            <div className="h-full border border-gray-200 rounded-lg p-3 overflow-auto">
+                                                <h3 className="text-sm font-semibold text-gray-800 mb-3">
+                                                    통계량: {amountColumnName}
+                                                </h3>
+                                            <ColumnStatistics 
+                                                    data={columnData} 
+                                                    columnName={amountColumnName} 
+                                                    isNumeric={isNumeric} 
+                                            />
+                                        </div>
+                                        );
+                                    })()}
+                                </div>
                             </div>
                         )}
                     </main>
@@ -1660,6 +1755,7 @@ const PCAScoreVisualization: React.FC<{
             <div 
                 className="bg-white text-gray-900 rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col"
                 onClick={e => e.stopPropagation()}
+                onContextMenu={handleContextMenu}
             >
                 <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
                     <h2 className="text-xl font-bold text-gray-800">Data Preview: {module.name}</h2>
@@ -1675,9 +1771,13 @@ const PCAScoreVisualization: React.FC<{
                         </button>
                         <button
                             onClick={() => {
+                                // CSV 다운로드 시 전체 데이터 사용
+                                const rowsForExport = module.type === ModuleType.XolCalculator && activeXolTab === 'limit' 
+                                    ? allRows 
+                                    : rows;
                                 const csvContent = [
                                     columns.map(c => c.name).join(','),
-                                    ...rows.map(row => 
+                                    ...rowsForExport.map(row => 
                                         columns.map(col => {
                                             const val = row[col.name];
                                             if (val === null || val === undefined) return '';
@@ -1707,7 +1807,7 @@ const PCAScoreVisualization: React.FC<{
                     </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
-                    {/* XOL Calculator 모듈의 경우 별도 탭 구성 */}
+                    {/* XoL Calculator 모듈의 경우 별도 탭 구성 */}
                     {module.type === ModuleType.XolCalculator ? (
                         <div className="flex-shrink-0 border-b border-gray-200">
                             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
@@ -1774,7 +1874,7 @@ const PCAScoreVisualization: React.FC<{
                         </div>
                     )}
 
-                    {/* XOL Calculator 모듈의 경우 탭별 콘텐츠 표시 */}
+                    {/* XoL Calculator 모듈의 경우 탭별 콘텐츠 표시 */}
                     {module.type === ModuleType.XolCalculator ? (
                         <div className="flex-grow flex flex-col gap-4 overflow-auto">
                             {!xolData && (
@@ -1786,70 +1886,70 @@ const PCAScoreVisualization: React.FC<{
                                 <>
                                     {/* XoL Claim(Incl. Agg/Reinst) 탭의 경우 특별한 레이아웃 */}
                                     {activeXolTab === 'aggreinst' ? (
-                                        <>
-                                            <div className="flex justify-between items-center flex-shrink-0">
+                                <>
+                                    <div className="flex justify-between items-center flex-shrink-0">
                                                 <div className="text-xs text-gray-600">
                                                     Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.
-                                                </div>
-                                            </div>
+                                        </div>
+                                    </div>
                                             
                                             {/* 1. 테이블: 전체 너비, 맨 위 */}
-                                            <div className="overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg flex-shrink-0">
+                                            <div className="overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg flex-shrink-0" style={{ maxHeight: '50rem' }}>
                                                 <table className="min-w-full text-xs text-left" style={{ minWidth: 'max-content' }}>
-                                                    <thead className="bg-gray-50 sticky top-0">
-                                                        <tr>
-                                                            {xolData.columns.map(col => (
-                                                                <th 
-                                                                    key={col.name} 
+                                            <thead className="bg-gray-50 sticky top-0">
+                                                <tr>
+                                                    {xolData.columns.map(col => (
+                                                        <th 
+                                                            key={col.name} 
                                                                     className="py-1 px-2 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
                                                                     onClick={() => setSelectedColumn(col.name)}
-                                                                >
-                                                                    <span className="truncate" title={col.name}>{col.name}</span>
-                                                                </th>
-                                                            ))}
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {(xolData.rows || []).slice(0, 1000).map((row, rowIndex) => (
-                                                            <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
-                                                                {xolData.columns.map(col => {
-                                                                    const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
-                                                                    const isNumeric = col.type === 'number' && !isYearColumn;
-                                                                    const value = row[col.name];
-                                                                    
-                                                                    let displayValue: string;
-                                                                    if (value === null || value === undefined || value === '') {
-                                                                        displayValue = '';
-                                                                    } else if (isNumeric) {
-                                                                        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
-                                                                        if (!isNaN(numValue)) {
-                                                                            displayValue = numValue.toLocaleString('ko-KR', { 
-                                                                                maximumFractionDigits: 2,
-                                                                                minimumFractionDigits: 0
-                                                                            });
-                                                                        } else {
-                                                                            displayValue = String(value);
-                                                                        }
-                                                                    } else {
-                                                                        displayValue = String(value);
-                                                                    }
-                                                                    
-                                                                    return (
-                                                                        <td 
-                                                                            key={col.name} 
+                                                        >
+                                                            <span className="truncate" title={col.name}>{col.name}</span>
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                        {(xolData.rows || []).slice(0, 50).map((row, rowIndex) => (
+                                                    <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
+                                                        {xolData.columns.map(col => {
+                                                            const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
+                                                            const isNumeric = col.type === 'number' && !isYearColumn;
+                                                            const value = row[col.name];
+                                                            
+                                                            let displayValue: string;
+                                                            if (value === null || value === undefined || value === '') {
+                                                                displayValue = '';
+                                                            } else if (isNumeric) {
+                                                                const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+                                                                if (!isNaN(numValue)) {
+                                                                    displayValue = numValue.toLocaleString('ko-KR', { 
+                                                                        maximumFractionDigits: 2,
+                                                                        minimumFractionDigits: 0
+                                                                    });
+                                                                } else {
+                                                                    displayValue = String(value);
+                                                                }
+                                                            } else {
+                                                                displayValue = String(value);
+                                                            }
+                                                            
+                                                            return (
+                                                                <td 
+                                                                    key={col.name} 
                                                                             className={`py-1 px-2 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
                                                                             onClick={() => setSelectedColumn(col.name)}
-                                                                            title={String(row[col.name])}
-                                                                        >
-                                                                            {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                                        </td>
-                                                                    );
-                                                                })}
-                                                            </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                                                    title={String(row[col.name])}
+                                                                >
+                                                                    {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                             
                                             {/* 통계 정보: 테이블 아래 */}
                                             {(() => {
@@ -1973,6 +2073,79 @@ const PCAScoreVisualization: React.FC<{
                                                 );
                                             })()}
                                             
+                                            {/* 수식 표시 섹션 */}
+                                            {(() => {
+                                                const contractConnection = allConnections.find(
+                                                    (c) => c.to.moduleId === module.id && c.to.portName === 'contract_in'
+                                                );
+                                                const contractModule = contractConnection 
+                                                    ? allModules.find((m) => m.id === contractConnection.from.moduleId)
+                                                    : null;
+                                                const contract = contractModule?.outputData?.type === 'XolContractOutput' 
+                                                    ? contractModule.outputData as any
+                                                    : null;
+                                                
+                                                if (!contract) return null;
+                                                
+                                                const formatNumber = (value: number) => {
+                                                    return value.toLocaleString('ko-KR', { 
+                                                        maximumFractionDigits: 0,
+                                                        minimumFractionDigits: 0
+                                                    });
+                                                };
+                                                
+                                                const maxValue = contract.limit * (contract.reinstatements + 1) + contract.aggDeductible;
+                                                
+                                                return (
+                                                    <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                                        <h4 className="text-sm font-semibold text-gray-800 mb-3">계산 수식</h4>
+                                                        <div className="space-y-3">
+                                                            {/* XoL Claim(Incl. Agg/Reinst) 수식 */}
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-gray-700 mb-1">
+                                                                    XoL Claim(Incl. Agg/Reinst)
+                                                                </div>
+                                                                <div className="text-xs text-gray-600 font-mono bg-white p-2 rounded border border-gray-200">
+                                                                    min(max(XoL Claim(Incl. Limit) - Agg Deductible, 0), Limit × (Reinstatements + 1))
+                                                                    <br />
+                                                                    = min(max(XoL Claim(Incl. Limit) - {formatNumber(contract.aggDeductible)}, 0), {formatNumber(contract.limit)} × ({contract.reinstatements} + 1))
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* XoL Premium Rate 수식 */}
+                                                            <div>
+                                                                <div className="text-xs font-semibold text-gray-700 mb-1">
+                                                                    XoL Premium Rate
+                                                                </div>
+                                                                <div className="text-xs text-gray-600 font-mono bg-white p-2 rounded border border-gray-200">
+                                                                    <div className="mb-1">
+                                                                        1. LimitCount = XoL Claim(Incl. Agg/Reinst) / Limit
+                                                                    </div>
+                                                                    <div className="mb-1">
+                                                                        2. 각각의 Limit 단위에 대해 복원보험료 비율 계산:
+                                                                    </div>
+                                                                    {contract.reinstatementPremiums && contract.reinstatementPremiums.length > 0 && (
+                                                                        <>
+                                                                            {contract.reinstatementPremiums.map((rate: number, index: number) => (
+                                                                                <div key={index} className="ml-2 mb-1">
+                                                                                    - {index + 1}차 복원: 복원비율 {rate}%를 Limit 단위에 곱함
+                                                                                </div>
+                                                                            ))}
+                                </>
+                            )}
+                                                                    <div className="ml-2 mb-1 text-gray-500">
+                                                                        - 마지막은 복원이 없으므로 0
+                                                                    </div>
+                                                                    <div className="mt-1">
+                                                                        3. XoL Premium Rate = 1 + totalReinstatementRate
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
+                                            
                                             {/* 2. 통계량 + XoL Claim(Incl. Agg/Reinst) 그래프: 테이블 아래 */}
                                             {(() => {
                                                 // 연도 컬럼 찾기
@@ -2085,13 +2258,17 @@ const PCAScoreVisualization: React.FC<{
                                             {/* XoL Claim(Incl. Limit) 탭은 기존 레이아웃 유지 */}
                                             <div className="flex justify-between items-center flex-shrink-0">
                                                 <div className="text-xs text-gray-600">
-                                                    Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.
+                                                    {allRows.length > MAX_DISPLAY_ROWS_LIMIT_TAB ? (
+                                                        <>표시: {rows.length.toLocaleString()} / 전체: {allRows.length.toLocaleString()} 행 ({xolData.columns.length} 컬럼). 실제 처리는 전체 데이터를 사용합니다. 컬럼을 클릭하여 상세 정보를 확인하세요.</>
+                                                    ) : (
+                                                        <>Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.</>
+                                                    )}
                                                 </div>
                                             </div>
                                             {/* 왼쪽 테이블 + 오른쪽 통계량 */}
                                             <div className="flex gap-4 flex-shrink-0">
                                                 {/* 왼쪽: 테이블 */}
-                                                <div className={`overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg ${selectedColumn ? 'w-1/2' : 'w-full'}`}>
+                                                <div className={`overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg ${selectedColumn ? 'w-1/2' : 'w-full'}`} style={{ maxHeight: '50rem' }}>
                                                     <table className="min-w-full text-xs text-left" style={{ minWidth: 'max-content' }}>
                                                         <thead className="bg-gray-50 sticky top-0">
                                                             <tr>
@@ -2107,7 +2284,7 @@ const PCAScoreVisualization: React.FC<{
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            {(xolData.rows || []).slice(0, 1000).map((row, rowIndex) => (
+                                                            {(xolData.rows || []).slice(0, 50).map((row, rowIndex) => (
                                                                 <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
                                                                     {xolData.columns.map(col => {
                                                                         const isYearColumn = col.name === '연도' || col.name === 'year' || col.name.toLowerCase() === 'year';
@@ -2159,6 +2336,46 @@ const PCAScoreVisualization: React.FC<{
                                             </div>
                                         </>
                                     )}
+                                    {/* 수식 표시 섹션 (사고별 XoL 적용 탭) */}
+                                    {activeXolTab === 'limit' && (() => {
+                                        const contractConnection = allConnections.find(
+                                            (c) => c.to.moduleId === module.id && c.to.portName === 'contract_in'
+                                        );
+                                        const contractModule = contractConnection 
+                                            ? allModules.find((m) => m.id === contractConnection.from.moduleId)
+                                            : null;
+                                        const contract = contractModule?.outputData?.type === 'XolContractOutput' 
+                                            ? contractModule.outputData as any
+                                            : null;
+                                        
+                                        if (!contract) return null;
+                                        
+                                        const formatNumber = (value: number) => {
+                                            return value.toLocaleString('ko-KR', { 
+                                                maximumFractionDigits: 0,
+                                                minimumFractionDigits: 0
+                                            });
+                                        };
+                                        
+                                        return (
+                                            <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                                <h4 className="text-sm font-semibold text-gray-800 mb-3">계산 수식</h4>
+                                                <div className="space-y-3">
+                                                    {/* XoL Claim(Incl. Limit) 수식 */}
+                                                    <div>
+                                                        <div className="text-xs font-semibold text-gray-700 mb-1">
+                                                            XoL Claim(Incl. Limit)
+                                                        </div>
+                                                        <div className="text-xs text-gray-600 font-mono bg-white p-2 rounded border border-gray-200">
+                                                            max(min(클레임 - Deductible, Limit), 0)
+                                                            <br />
+                                                            = max(min(클레임 - {formatNumber(contract.deductible)}, {formatNumber(contract.limit)}), 0)
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                     {/* 아래: 선택된 열 히스토그램 (XoL Claim(Incl. Limit) 탭인 경우) */}
                                     {activeXolTab === 'limit' && selectedColumn && isSelectedColNumeric && (
                                         <div className="flex-shrink-0 border border-gray-200 rounded-lg p-4">
@@ -2166,7 +2383,7 @@ const PCAScoreVisualization: React.FC<{
                                                 Histogram: {selectedColumn}
                                             </h3>
                                             <div className="h-96">
-                                                <HistogramPlot rows={xolData.rows || []} column={selectedColumn} />
+                                                <HistogramPlot rows={allRows || []} column={selectedColumn} />
                                             </div>
                                         </div>
                                     )}
@@ -2190,7 +2407,11 @@ const PCAScoreVisualization: React.FC<{
                                 <>
                             <div className="flex justify-between items-center flex-shrink-0">
                                 <div className="text-sm text-gray-600">
-                                    Showing {Math.min(rows.length, 1000)} of {data.totalRowCount.toLocaleString()} rows and {columns.length} columns. Click a column to see details.
+                                    {module.type === ModuleType.XolCalculator && activeXolTab === 'limit' && allRows.length > MAX_DISPLAY_ROWS_LIMIT_TAB ? (
+                                        <>표시: {rows.length.toLocaleString()} / 전체: {allRows.length.toLocaleString()} 행 ({columns.length} 컬럼). 실제 처리는 전체 데이터를 사용합니다. 컬럼을 클릭하여 상세 정보를 확인하세요.</>
+                                    ) : (
+                                        <>Showing {Math.min(rows.length, 1000)} of {data.totalRowCount.toLocaleString()} rows and {columns.length} columns. Click a column to see details.</>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex-grow flex gap-4 overflow-hidden">
@@ -2300,14 +2521,14 @@ const PCAScoreVisualization: React.FC<{
                                                         }
                                                         
                                                         return (
-                                                                <td 
-                                                                    key={col.name} 
+                                                        <td 
+                                                            key={col.name} 
                                                                         className={`py-1 px-2 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'} ${isNumeric ? 'text-right' : 'text-left'}`}
-                                                                    onClick={() => setSelectedColumn(col.name)}
-                                                                    title={String(row[col.name])}
-                                                                >
-                                                                        {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
-                                                                </td>
+                                                            onClick={() => setSelectedColumn(col.name)}
+                                                            title={String(row[col.name])}
+                                                        >
+                                                                {displayValue === '' ? <i className="text-gray-400">null</i> : displayValue}
+                                                        </td>
                                                         );
                                                     })}
                                                 </tr>
@@ -2526,6 +2747,30 @@ const PCAScoreVisualization: React.FC<{
                     columns={columns}
                     title={`Spread View: ${module.name}`}
                 />
+            )}
+            {contextMenu && (
+                <div
+                    className="context-menu fixed bg-white border border-gray-300 rounded-lg shadow-lg py-1 z-[100]"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                >
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleCopy();
+                        }}
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer focus:outline-none focus:bg-gray-100"
+                    >
+                        복사 (Ctrl+C)
+                    </button>
+                </div>
             )}
         </div>
     );

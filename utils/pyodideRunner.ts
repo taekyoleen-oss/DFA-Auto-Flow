@@ -5426,6 +5426,7 @@ export async function simulateAggDistPython(
   distributionType: string,
   parameters: Record<string, number>,
   nSimulations: number,
+  randomState: number = 43,
   timeoutMs: number = 120000
 ): Promise<{
   results: Array<{ count: number; amount: number }>;
@@ -5453,6 +5454,7 @@ export async function simulateAggDistPython(
     py.globals.set("js_distribution_type", distributionType);
     py.globals.set("js_parameters", parameters);
     py.globals.set("js_n_simulations", nSimulations);
+    py.globals.set("js_random_state", randomState);
 
     const code = `
 import numpy as np
@@ -5490,7 +5492,8 @@ else:
     raise ValueError(f"Unsupported distribution type: {distribution_type}")
 
 # 시뮬레이션
-np.random.seed(42)
+random_state = js_random_state
+np.random.seed(random_state)
 simulated_amounts = dist.rvs(size=n_simulations)
 
 # 원본 시뮬레이션 결과 (최대 100개)
@@ -6257,6 +6260,8 @@ export async function simulateFreqServPython(
   severityType: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull",
   severityParams: Record<string, number>,
   nSimulations: number,
+  randomState: number = 43,
+  outputFormat: "xol" | "dfa" = "dfa",
   timeoutMs: number = 120000
 ): Promise<{
   results: Array<{ count: number; amount: number }>;
@@ -6273,6 +6278,7 @@ export async function simulateFreqServPython(
     percentile95: number;
     percentile99: number;
   };
+  claimLevelData?: Array<{ simulationNumber: number; claimAmount: number }>;
 }> {
   try {
     const py = await withTimeout(
@@ -6286,6 +6292,8 @@ export async function simulateFreqServPython(
     py.globals.set("js_severity_type", severityType);
     py.globals.set("js_severity_params", severityParams);
     py.globals.set("js_n_simulations", nSimulations);
+    py.globals.set("js_random_state", randomState);
+    py.globals.set("js_output_format", outputFormat);
 
     const code = `
 import numpy as np
@@ -6296,6 +6304,7 @@ frequency_params = js_frequency_params.to_py()
 severity_type = js_severity_type
 severity_params = js_severity_params.to_py()
 n_simulations = js_n_simulations
+output_format = js_output_format
 
 # 빈도 분포 객체 생성
 if frequency_type == "Poisson":
@@ -6341,8 +6350,11 @@ else:
     raise ValueError(f"Unsupported severity distribution type: {severity_type}")
 
 # 몬테카를로 시뮬레이션
-np.random.seed(42)
+random_state = js_random_state
+output_format = js_output_format
+np.random.seed(random_state)
 simulated_totals = []
+claim_level_data = []  # XoL 형식용: 개별 사고 데이터
 
 for i in range(n_simulations):
     # 빈도 분포에서 건수 샘플링
@@ -6352,6 +6364,14 @@ for i in range(n_simulations):
     if n_claims > 0:
         claim_amounts = sev_dist.rvs(size=n_claims)
         total_loss = float(np.sum(claim_amounts))
+        
+        # XoL 형식인 경우 개별 사고 데이터 저장
+        if output_format == "xol":
+            for claim_amount in claim_amounts:
+                claim_level_data.append({
+                    "simulationNumber": i + 1,
+                    "claimAmount": float(claim_amount)
+                })
     else:
         total_loss = 0.0
     
@@ -6400,7 +6420,8 @@ result = {
         'percentile75': percentile75,
         'percentile95': percentile95,
         'percentile99': percentile99
-    }
+    },
+    'claimLevelData': claim_level_data if output_format == "xol" else []
 }
 
 result

@@ -148,24 +148,114 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                   </button>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Count</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {output.yearlyFrequency.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.year}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {(() => {
+                // 통계량 계산
+                const counts = output.yearlyFrequency.map(item => item.count).sort((a, b) => a - b);
+                const n = counts.length;
+                const mean = counts.reduce((sum, val) => sum + val, 0) / n;
+                const variance = counts.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / n;
+                const stdDev = Math.sqrt(variance);
+                const min = counts[0];
+                const max = counts[n - 1];
+                
+                // 중앙값 계산
+                const median = n % 2 === 0
+                  ? (counts[n / 2 - 1] + counts[n / 2]) / 2
+                  : counts[Math.floor(n / 2)];
+                
+                // 왜도 계산 (3차 모멘트 기반)
+                const skewness = n > 2 && stdDev > 0
+                  ? counts.reduce((sum, val) => sum + Math.pow((val - mean) / stdDev, 3), 0) / n
+                  : 0;
+                
+                // 첨도 계산 (4차 모멘트 기반, excess kurtosis)
+                const kurtosis = n > 3 && stdDev > 0
+                  ? (counts.reduce((sum, val) => sum + Math.pow((val - mean) / stdDev, 4), 0) / n) - 3
+                  : 0;
+
+                return (
+                  <div className="flex gap-2" style={{ maxHeight: '60vh' }}>
+                    {/* 왼쪽: 테이블 */}
+                    <div className="flex-1 flex flex-col gap-1 min-w-0">
+                      <div className="flex-1 overflow-auto rounded-lg">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50 sticky top-0">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Count</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {output.yearlyFrequency.map((item, idx) => (
+                              <tr key={idx}>
+                                <td className="px-4 py-3 text-sm text-gray-900">{item.year}</td>
+                                <td className="px-4 py-3 text-sm text-gray-900">{item.count}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* 오른쪽: 통계량 */}
+                    <div className="w-96 flex-shrink-0">
+                      <div className="h-full rounded-lg p-3 overflow-auto">
+                        <h3 className="text-sm font-semibold text-gray-800 mb-3">통계량</h3>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">평균:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {mean.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">분산:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {variance.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">표준편차:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {stdDev.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">중앙값:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {median.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">최소값:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {min.toLocaleString('ko-KR')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">최대값:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {max.toLocaleString('ko-KR')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">왜도:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {skewness.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-500">첨도:</span>
+                            <span className="font-mono text-sm text-gray-800 font-semibold">
+                              {kurtosis.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Yearly Severity */}

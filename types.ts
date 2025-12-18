@@ -362,6 +362,11 @@ export interface XolPricingOutput {
   expenseRate: number;
   netPremium: number;
   grossPremium: number;
+  limit: number;
+  deductible: number;
+  reinstatements: number;
+  aggDeductible: number;
+  reinstatementPremiums: number[];
 }
 
 export interface MissingHandlerOutput {
@@ -485,6 +490,20 @@ export interface SimulateAggDistOutput {
     percentile95: number;
     percentile99: number;
   };
+  outputFormat?: "xol" | "dfa"; // 출력 형식
+  claimLevelData?: Array<{ // XoL 형식일 때 개별 사고 데이터
+    simulationNumber: number;
+    claimAmount: number;
+  }>;
+}
+
+export interface SimulateFreqServOutput {
+  type: "SimulateFreqServOutput";
+  outputFormat: "xol" | "dfa";
+  // DFA 형식 (output_1): evaluation 타입
+  dfaOutput?: SimulateAggDistOutput;
+  // XoL 형식 (output_2): data 타입
+  xolOutput?: DataPreview; // claimLevelData를 DataPreview로 변환
 }
 
 export interface SplitFreqServOutput {

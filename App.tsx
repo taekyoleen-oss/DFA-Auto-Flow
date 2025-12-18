@@ -118,7 +118,7 @@ type TerminalLog = {
   timestamp: string;
 };
 
-type PropertiesTab = "properties" | "preview" | "code";
+type PropertiesTab = "properties" | "preview" | "code" | "terminal";
 
 // --- Helper Functions ---
 // Note: All mathematical/statistical calculations are now performed using Pyodide (Python)
@@ -1180,9 +1180,9 @@ ${header}
                     ...defaultModule.parameters, // 기본값 우선 적용
                   }
                 : {
-                    ...defaultModule.parameters,
-                    ...(m.parameters || {}), // 샘플의 parameters로 덮어쓰기
-                  },
+                ...defaultModule.parameters,
+                ...(m.parameters || {}), // 샘플의 parameters로 덮어쓰기
+              },
             };
           }
         );
@@ -1653,9 +1653,9 @@ ${header}
                     ...defaultModule.parameters, // 기본값 우선 적용
                   }
                 : {
-                    ...defaultModule.parameters,
-                    ...(m.parameters || {}), // 초기 모델의 parameters로 덮어쓰기
-                  },
+                ...defaultModule.parameters,
+                ...(m.parameters || {}), // 초기 모델의 parameters로 덮어쓰기
+              },
             };
           }
         );
@@ -2336,7 +2336,7 @@ ${header}
       );
       if (upstreamConnections.length === 0) return true; // No dependencies
 
-      // XOL Calculator 모듈의 경우: data_in과 contract_in 모두 필수
+      // XoL Calculator 모듈의 경우: data_in과 contract_in 모두 필수
       if (module.type === ModuleType.XolCalculator) {
         const dataConnection = upstreamConnections.find(
           (c) => c.to.portName === "data_in"
@@ -2529,6 +2529,32 @@ ${header}
         return sourceModule.outputData;
       }
 
+      // SimulateFreqServOutput 처리: 포트 이름에 따라 적절한 데이터 반환
+      if (
+        (sourceModule.outputData as any).type === "SimulateFreqServOutput"
+      ) {
+        const freqServOutput = sourceModule.outputData as any;
+        const fromPortName = inputConnection.from.portName;
+        
+        if (portType === "evaluation") {
+          // evaluation 타입: output_1 포트에서 dfaOutput 반환
+          if (fromPortName === "output_1") {
+            return freqServOutput.dfaOutput || null;
+          }
+          // output_1이 아니면 null 반환
+          return null;
+        } else if (portType === "data") {
+          // data 타입: output_2 포트에서 xolOutput 반환
+          if (fromPortName === "output_2") {
+            return freqServOutput.xolOutput || null;
+          }
+          // output_2가 아니면 null 반환
+          return null;
+        }
+        // 알 수 없는 portType이면 null 반환
+        return null;
+      }
+
       if (
         sourceModule.outputData.type === "FrequencySeverityModelOutput" &&
         portType === "evaluation"
@@ -2656,7 +2682,7 @@ ${header}
       const module = currentModules.find((m) => m.id === moduleId);
       if (!module) return;
       
-      // XOL Calculator 모듈인 경우 contract_in 포트에 연결된 DefineXolContract를 자동 실행
+      // XoL Calculator 모듈인 경우 contract_in 포트에 연결된 DefineXolContract를 자동 실행
       if (module.type === ModuleType.XolCalculator) {
         const contractConnection = connections.find(
           (c) => c.to.moduleId === moduleId && c.to.portName === "contract_in"
@@ -2699,6 +2725,34 @@ ${header}
       
       const module = currentModules.find((m) => m.id === moduleId)!;
       const moduleName = module.name;
+
+      // 모듈 실행 전에 다운스트림 모듈들을 Pending 상태로 되돌리기
+      const downstreamIds = getDownstreamModules(moduleId, currentModules, connections);
+      if (downstreamIds.length > 0) {
+        setModules((prev) =>
+          prev.map((m) => {
+            if (downstreamIds.includes(m.id)) {
+              return {
+                ...m,
+                status: ModuleStatus.Pending,
+                outputData: undefined,
+              };
+            }
+            return m;
+          })
+        );
+        // currentModules도 업데이트
+        currentModules = currentModules.map((m) => {
+          if (downstreamIds.includes(m.id)) {
+            return {
+              ...m,
+              status: ModuleStatus.Pending,
+              outputData: undefined,
+            };
+          }
+          return m;
+        });
+      }
 
       // Check if upstream modules are ready (only for individual runs, not Run All)
       if (
@@ -3178,8 +3232,9 @@ ${header}
           }
 
           const {
-            simulation_count = 10000,
+            simulation_count = 1000,
             custom_count = "",
+            random_state = 43,
           } = module.parameters;
 
           // 시뮬레이션 건수 결정
@@ -3229,6 +3284,7 @@ ${header}
               selectedResult.distributionType,
               finalParameters,
               nSimulations,
+              random_state,
               120000
             );
 
@@ -3546,8 +3602,10 @@ ${header}
           } else {
             // 파라미터가 있으면 시뮬레이션만 수행
             const {
-              simulation_count = 10000,
+              simulation_count = 1000,
               custom_count = "",
+              random_state = 43,
+              output_format = "dfa",
             } = module.parameters;
 
             // 시뮬레이션 건수 결정
@@ -3571,16 +3629,61 @@ ${header}
                 severityType as "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull",
                 severityParams,
                 nSimulations,
+                random_state,
+                output_format as "xol" | "dfa",
                 120000
               );
 
-              newOutputData = {
-                type: "SimulateAggDistOutput", // SimulateAggDistOutput과 동일한 형식 사용
+              // SimulateFreqServOutput 타입으로 출력 데이터 생성
+              // dfaOutput은 항상 생성 (DFA 형식과 XoL 형식 모두에서 사용)
+              const dfaOutput: SimulateAggDistOutput = {
+                type: "SimulateAggDistOutput",
                 simulationCount: nSimulations,
                 results: result.results,
                 rawSimulations: result.rawSimulations,
                 statistics: result.statistics,
-              } as SimulateAggDistOutput;
+                outputFormat: output_format as "xol" | "dfa",
+                claimLevelData: result.claimLevelData || [],
+              };
+
+              // XoL 형식일 때 claimLevelData를 DataPreview로 변환
+              let xolOutput: DataPreview | undefined = undefined;
+              if (output_format === "xol") {
+                if (result.claimLevelData && result.claimLevelData.length > 0) {
+                  xolOutput = {
+                    type: "DataPreview",
+                    columns: [
+                      { name: "시뮬레이션 번호", type: "number" },
+                      { name: "보험금", type: "number" },
+                    ],
+                    rows: result.claimLevelData.map(item => ({
+                      "시뮬레이션 번호": item.simulationNumber,
+                      "보험금": item.claimAmount,
+                    })),
+                    totalRowCount: result.claimLevelData.length,
+                  };
+                } else {
+                  // claimLevelData가 비어있어도 빈 DataPreview 생성
+                  addLog("WARN", "Simulate Freq-Sev Table: claimLevelData is empty, creating empty xolOutput");
+                  xolOutput = {
+                    type: "DataPreview",
+                    columns: [
+                      { name: "시뮬레이션 번호", type: "number" },
+                      { name: "보험금", type: "number" },
+                    ],
+                    rows: [],
+                    totalRowCount: 0,
+                  };
+                }
+              }
+
+              // dfaOutput은 항상 포함, xolOutput은 XoL 형식일 때만 포함
+              newOutputData = {
+                type: "SimulateFreqServOutput",
+                outputFormat: output_format as "xol" | "dfa",
+                dfaOutput: dfaOutput, // 항상 포함
+                xolOutput: xolOutput, // XoL 형식일 때만 포함
+              } as any;
 
               addLog("SUCCESS", `빈도-심도 시뮬레이션 완료: ${nSimulations}회`);
             } catch (error: any) {
@@ -3592,14 +3695,15 @@ ${header}
         } else if (module.type === ModuleType.CombineLossModel) {
           // DFA: 두 시뮬레이션 결과 합산 및 퍼센타일 계산
           const aggDistInput = getInputData(module.id, "agg_dist_in", "evaluation") as SimulateAggDistOutput | null;
-          const freqServInput = getInputData(module.id, "freq_serv_in", "evaluation") as SimulateAggDistOutput | null;
+          let freqServInput = getInputData(module.id, "freq_serv_in", "evaluation") as SimulateAggDistOutput | null;
 
           if (!aggDistInput || aggDistInput.type !== "SimulateAggDistOutput") {
             throw new Error("Aggregate Distribution simulation input not available. Please connect Simulate Agg Table module.");
           }
 
+          // SimulateFreqServOutput의 output_1 (DFA 형식)을 처리
           if (!freqServInput || freqServInput.type !== "SimulateAggDistOutput") {
-            throw new Error("Frequency-Severity simulation input not available. Please connect Simulate Freq-Sev Table module to the 'freq_serv_in' port.");
+            throw new Error("Frequency-Severity simulation input not available. Please connect Simulate Freq-Sev Table module's 'output_1' port to the 'freq_serv_in' port.");
           }
 
           // 각 모듈의 시뮬레이션 결과를 히스토그램에서 재구성
@@ -7761,11 +7865,36 @@ ${header}
           if (!dataConnection)
             throw new Error("Data input must be connected.");
 
-          const dataSource = currentModules.find(
-            (m) => m.id === dataConnection.from.moduleId
-          );
-          if (!dataSource || dataSource.outputData?.type !== "DataPreview")
+          // getInputData를 사용하여 SimulateFreqServOutput 등도 올바르게 처리
+          const inputData = getInputData(module.id, "data_in", "data") as DataPreview | null;
+          if (!inputData) {
+            // 연결된 모듈 정보 확인
+            const dataSource = currentModules.find(
+              (m) => m.id === dataConnection.from.moduleId
+            );
+            if (dataSource?.outputData?.type === "SimulateFreqServOutput") {
+              const freqServOutput = dataSource.outputData as any;
+              const fromPortName = dataConnection.from.portName;
+              
+              // 디버깅 정보
+              addLog("INFO", `SimulateFreqServOutput detected. From port: ${fromPortName}, outputFormat: ${freqServOutput.outputFormat}, has xolOutput: ${!!freqServOutput.xolOutput}, has dfaOutput: ${!!freqServOutput.dfaOutput}`);
+              
+              if (fromPortName !== "output_2") {
+                throw new Error(`Input data is not valid. Please connect to 'output_2' port of Simulate Freq-Sev Table. Current port: ${fromPortName}`);
+              }
+              if (freqServOutput.outputFormat !== "xol") {
+                throw new Error(`Input data is not valid. Please set Simulate Freq-Sev Table to '사고별 집계(XoL 사용)' output format. Current format: ${freqServOutput.outputFormat}`);
+              }
+              if (!freqServOutput.xolOutput) {
+                throw new Error("Input data is not valid. xolOutput is not available. Please ensure Simulate Freq-Sev Table is executed successfully with '사고별 집계(XoL 사용)' format.");
+              }
+              throw new Error("Input data is not valid. Please ensure Simulate Freq-Sev Table is set to '사고별 집계(XoL 사용)' output format and executed successfully.");
+            }
             throw new Error("Input data is not valid.");
+          }
+          if (inputData.type !== "DataPreview") {
+            throw new Error(`Input data type is not DataPreview. Got: ${(inputData as any).type}`);
+          }
 
           const contractConnection = connections.find(
             (c) =>
@@ -7783,51 +7912,93 @@ ${header}
           )
             throw new Error("Input contract is not valid. Please ensure XoL Contract module is executed.");
 
-          const inputData = dataSource.outputData;
           const contract = contractSource.outputData;
-          const { claim_column } = module.parameters;
+          const { claim_column, year_column } = module.parameters;
 
           if (!claim_column) {
             throw new Error("클레임 행을 선택해주세요.");
           }
 
+          // 연도 컬럼 결정: 파라미터에서 지정된 컬럼 또는 자동 감지
+          let yearColumnName: string | null = null;
+          if (year_column) {
+            // 파라미터에서 지정된 경우
+            yearColumnName = year_column;
+          } else {
+            // 자동 감지: 시뮬레이션 데이터인 경우 시뮬레이션 번호를 연도로 사용
+            const hasSimulationNumber = inputData.columns.some(col => col.name === "시뮬레이션 번호");
+            if (hasSimulationNumber) {
+              yearColumnName = "시뮬레이션 번호";
+            } else {
+              // 일반 데이터인 경우 연도 컬럼 찾기
+              const yearColumn = inputData.columns.find(col => 
+                col.name === '연도' || 
+                col.name === 'year' || 
+                col.name.toLowerCase() === 'year' ||
+                col.name.toLowerCase().includes('year')
+              );
+              if (yearColumn) {
+                yearColumnName = yearColumn.name;
+              }
+            }
+          }
+
           // XoL Claim(Incl. Limit) 계산: Max(min(클레임-Deductible, Limit), 0)
           // XoL Claim(Incl. Agg/Reinst) 계산: Aggregated Deductible과 Reinstatements를 고려
-          let cumulativeAggLoss = 0;
-          const newRows = (inputData.rows || []).map((row) => {
-            const claim = row[claim_column] as number;
-            
-            // XoL Claim(Incl. Limit): Max(min(클레임-Deductible, Limit), 0)
-            const xolClaimLimit = Math.max(
-              Math.min(claim - contract.deductible, contract.limit),
-              0
-            );
-            
-            // XoL Claim(Incl. Agg/Reinst): Aggregated Deductible과 Reinstatements 고려
-            cumulativeAggLoss += claim;
-            let xolClaimAggReinst = 0;
-            
-            if (cumulativeAggLoss > contract.aggDeductible) {
-              const excessOverAgg = cumulativeAggLoss - contract.aggDeductible;
-              // 각 reinstatement의 limit을 고려하여 계산
-              let remainingExcess = excessOverAgg;
-              let totalCovered = 0;
+          const inputRows = inputData.rows || [];
+          const totalRows = inputRows.length;
+          
+          // 큰 테이블 처리를 위한 배치 처리 (한 번에 10000개씩)
+          const BATCH_SIZE = 10000;
+          const newRows: any[] = [];
+          
+          try {
+            for (let i = 0; i < totalRows; i += BATCH_SIZE) {
+              const batch = inputRows.slice(i, i + BATCH_SIZE);
+              const batchResults = batch.map((row) => {
+                const claimValue = row[claim_column];
+                const claim = typeof claimValue === 'number' ? claimValue : (claimValue !== null && claimValue !== undefined ? parseFloat(String(claimValue)) : 0);
+                
+                if (isNaN(claim)) {
+                  // 유효하지 않은 값인 경우 0으로 처리
+                  return { 
+                    ...row, 
+                    "XoL Claim(Incl. Limit)": 0,
+                    "XoL Claim(Incl. Agg/Reinst)": 0
+                  };
+                }
+                
+                // XoL Claim(Incl. Limit): Max(min(클레임-Deductible, Limit), 0)
+                const xolClaimLimit = Math.max(
+                  Math.min(claim - contract.deductible, contract.limit),
+                  0
+                );
+                
+                // XoL Claim(Incl. Agg/Reinst): min(max(XoL Claim(Incl. Limit)-Agg Deductible,0), Limit*(Reinstatements+1))
+                const xolClaimAggReinst = Math.min(
+                  Math.max(xolClaimLimit - contract.aggDeductible, 0),
+                  contract.limit * (contract.reinstatements + 1)
+                );
+                
+                return { 
+                  ...row, 
+                  "XoL Claim(Incl. Limit)": xolClaimLimit,
+                  "XoL Claim(Incl. Agg/Reinst)": xolClaimAggReinst
+                };
+              });
               
-              for (let i = 0; i < contract.reinstatements && remainingExcess > 0; i++) {
-                const covered = Math.min(remainingExcess, contract.limit);
-                totalCovered += covered;
-                remainingExcess -= covered;
+              newRows.push(...batchResults);
+              
+              // 진행 상황 로깅 (큰 테이블의 경우)
+              if (totalRows > 50000 && (i + BATCH_SIZE) % 50000 === 0) {
+                addLog("INFO", `XoL Calculator 처리 중: ${Math.min(i + BATCH_SIZE, totalRows)}/${totalRows} 행 처리 완료`);
               }
-              
-              xolClaimAggReinst = totalCovered;
             }
-            
-            return { 
-              ...row, 
-              "XoL Claim(Incl. Limit)": xolClaimLimit,
-              "XoL Claim(Incl. Agg/Reinst)": xolClaimAggReinst
-            };
-          });
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `XoL Calculator 처리 중 오류 발생: ${errorMessage}`);
+            throw new Error(`XoL Calculator 처리 실패: ${errorMessage}`);
+          }
 
           const newColumns = [...inputData.columns];
           if (!newColumns.some((c) => c.name === "XoL Claim(Incl. Limit)")) {
@@ -7839,26 +8010,38 @@ ${header}
 
           newOutputData = { ...inputData, columns: newColumns, rows: newRows };
         } else if (module.type === ModuleType.XolPricing) {
-          // XOL Calculator의 출력 데이터를 받아서 통계 계산
+          // XoL Calculator의 출력 데이터를 받아서 통계 계산
           const calculatorConnection = connections.find(
             (c) => c.to.moduleId === module.id && c.to.portName === "data_in"
           );
-          if (!calculatorConnection)
-            throw new Error("XOL Calculator input must be connected.");
+          if (!calculatorConnection) {
+            throw new Error("XoL Calculator input must be connected.");
+          }
 
           const calculatorSource = currentModules.find(
             (m) => m.id === calculatorConnection.from.moduleId
           );
-          if (!calculatorSource || calculatorSource.outputData?.type !== "DataPreview")
-            throw new Error("XOL Calculator output is not valid.");
+          if (!calculatorSource) {
+            throw new Error("XoL Calculator source module not found.");
+          }
 
-          const calculatorData = calculatorSource.outputData;
+          // getInputData를 사용하여 올바르게 처리
+          const calculatorData = getInputData(module.id, "data_in", "data") as DataPreview | null;
+          if (!calculatorData || calculatorData.type !== "DataPreview") {
+            if (calculatorSource.outputData?.type !== "DataPreview") {
+              throw new Error(`XoL Calculator output is not valid. Expected DataPreview, got: ${calculatorSource.outputData?.type || "undefined"}`);
+            }
+            throw new Error("XoL Calculator output is not valid.");
+          }
+
           const { expenseRate = 0.2 } = module.parameters;
 
-          // XOL Calculator의 contract 연결 찾기 (Reluctance Factor를 가져오기 위해)
-          const contractConnection = connections.find(
-            (c) => c.to.moduleId === calculatorSource.id && c.to.portName === "contract_in"
-          );
+          // XoL Calculator의 contract 연결 찾기 (Reluctance Factor를 가져오기 위해)
+          const contractConnection = calculatorSource
+            ? connections.find(
+                (c) => c.to.moduleId === calculatorSource.id && c.to.portName === "contract_in"
+              )
+            : null;
           const contractModule = contractConnection 
             ? currentModules.find((m) => m.id === contractConnection.from.moduleId)
             : null;
@@ -7866,13 +8049,28 @@ ${header}
             ? contractModule.outputData as any
             : null;
 
-          // 연도 컬럼 찾기
-          const yearColumn = calculatorData.columns.find(col => 
-            col.name === '연도' || 
-            col.name === 'year' || 
-            col.name.toLowerCase() === 'year' ||
-            col.name.toLowerCase().includes('year')
-          );
+          // 연도 컬럼 찾기: XoL Calculator의 year_column 파라미터 사용 또는 자동 감지
+          let yearColumn = null;
+          const calculatorYearColumn = calculatorSource?.parameters?.year_column;
+          
+          if (calculatorYearColumn) {
+            // XoL Calculator에서 지정된 연도 컬럼 사용
+            yearColumn = calculatorData.columns.find(col => col.name === calculatorYearColumn);
+          } else {
+            // 자동 감지: 시뮬레이션 데이터인 경우 시뮬레이션 번호를 연도로 사용
+            const hasSimulationNumber = calculatorData.columns.some(col => col.name === "시뮬레이션 번호");
+            if (hasSimulationNumber) {
+              yearColumn = calculatorData.columns.find(col => col.name === "시뮬레이션 번호");
+            } else {
+              // 일반 데이터인 경우 연도 컬럼 찾기
+              yearColumn = calculatorData.columns.find(col => 
+                col.name === '연도' || 
+                col.name === 'year' || 
+                col.name.toLowerCase() === 'year' ||
+                col.name.toLowerCase().includes('year')
+              );
+            }
+          }
 
           // XoL Claim(Incl. Limit) 컬럼 찾기
           const xolLimitColumn = calculatorData.columns.find(col => 
@@ -7986,6 +8184,12 @@ ${header}
           // Gross Premium 계산: Net Premium / (1 - Expense Rate)
           const grossPremium = netPremium / (1 - expenseRate);
 
+          const limit = contract?.limit || 0;
+          const deductible = contract?.deductible || 0;
+          const reinstatements = contract?.reinstatements || 0;
+          const aggDeductible = contract?.aggDeductible || 0;
+          const reinstatementPremiums = contract?.reinstatementPremiums || [];
+
           newOutputData = {
             type: "XolPricingOutput",
             xolClaimMean,
@@ -7995,6 +8199,11 @@ ${header}
             expenseRate,
             netPremium,
             grossPremium,
+            limit,
+            deductible,
+            reinstatements,
+            aggDeductible,
+            reinstatementPremiums,
           };
         } else if (module.type === ModuleType.PriceXolContract) {
           const dataConnection = connections.find(
@@ -9156,7 +9365,8 @@ ${header}
 
       {/* -- Modals -- */}
       {viewingDataForModule &&
-        viewingDataForModule.outputData?.type === "SimulateAggDistOutput" && (
+        (viewingDataForModule.outputData?.type === "SimulateAggDistOutput" ||
+         (viewingDataForModule.outputData as any)?.type === "SimulateFreqServOutput") && (
           <ErrorBoundary>
             {viewingDataForModule.type === ModuleType.SimulateFreqServ ? (
               <SimulateFreqServPreviewModal

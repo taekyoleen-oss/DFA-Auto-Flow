@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useRef, useEffect, useCallback } from "react";
 import { XCircleIcon } from "./icons";
 import { CanvasModule } from "../types";
 import { XolPricingOutput } from "../types";
+import { useCopyOnCtrlC } from "../hooks/useCopyOnCtrlC";
 
 interface XolPricingPreviewModalProps {
   module: CanvasModule;
@@ -23,9 +24,74 @@ const formatNumber = (value: number, decimals: number = 2): string => {
   }).format(value);
 };
 
+const formatNumberNoUnit = (value: number, decimals: number = 0): string => {
+  return new Intl.NumberFormat("ko-KR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value);
+};
+
+const formatPercent = (value: number, decimals: number = 1): string => {
+  return new Intl.NumberFormat("ko-KR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value * 100) + "%";
+};
+
+const formatYears = (value: number, decimals: number = 2): string => {
+  return new Intl.NumberFormat("ko-KR", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value) + "년";
+};
+
 export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ module, onClose }) => {
   const output = module.outputData as XolPricingOutput;
   if (!output || output.type !== 'XolPricingOutput') return null;
+
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  
+  useCopyOnCtrlC(contentRef);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleCopy = useCallback(async () => {
+    if (contentRef.current) {
+      const text = contentRef.current.innerText || contentRef.current.textContent || '';
+      if (text.trim()) {
+        try {
+          await navigator.clipboard.writeText(text);
+          setContextMenu(null);
+        } catch (err) {
+          console.error('Failed to copy:', err);
+        }
+      }
+    }
+  }, []);
+
+  // 컨텍스트 메뉴 외부 클릭 시 닫기
+  useEffect(() => {
+    if (!contextMenu) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (contextMenu && !target.closest('.context-menu')) {
+        setContextMenu(null);
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside, true);
+    document.addEventListener('mousedown', handleClickOutside, true);
+    
+    return () => {
+      document.removeEventListener('click', handleClickOutside, true);
+      document.removeEventListener('mousedown', handleClickOutside, true);
+    };
+  }, [contextMenu]);
 
   const { 
     xolClaimMean, 
@@ -34,8 +100,21 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
     reluctanceFactor, 
     expenseRate, 
     netPremium, 
-    grossPremium 
+    grossPremium,
+    limit,
+    deductible,
+    reinstatements,
+    aggDeductible,
+    reinstatementPremiums
   } = output;
+
+  // ROL 계산
+  const rol = limit > 0 ? grossPremium / limit : 0;
+  const rolFormatted = limit > 0 ? formatPercent(rol) : "N/A";
+  
+  // Payback Period 계산
+  const paybackPeriod = limit > 0 && grossPremium > 0 ? limit / grossPremium : 0;
+  const paybackPeriodFormatted = limit > 0 && grossPremium > 0 ? formatYears(paybackPeriod) : "N/A";
 
   return (
     <div 
@@ -45,6 +124,7 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
       <div 
         className="bg-white text-gray-900 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
+        onContextMenu={handleContextMenu}
       >
         <header className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-xl font-bold text-gray-800">XoL Pricing Details: {module.name}</h2>
@@ -52,19 +132,39 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
             <XCircleIcon className="w-6 h-6" />
           </button>
         </header>
-        <main className="flex-grow p-6 overflow-auto">
+        <main ref={contentRef} className="flex-grow p-6 overflow-auto">
           <div className="space-y-6">
+            {/* XoL 조건 */}
+            <div className="bg-gray-100 rounded-lg p-3 border border-gray-300">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                Limit Xs Deductible Condition: {formatNumberNoUnit(limit)} Xs {formatNumberNoUnit(deductible)}
+              </h3>
+              <div className="text-xs text-gray-600 space-y-1">
+                <div>복원횟수: {reinstatements}회</div>
+                {reinstatementPremiums && reinstatementPremiums.length > 0 && (
+                  <div>
+                    복원비율: {reinstatementPremiums.map((rate, idx) => 
+                      `${idx + 1}차 ${rate}%`
+                    ).join(", ")}
+                  </div>
+                )}
+                {aggDeductible > 0 && (
+                  <div>Agg Ded: {formatNumberNoUnit(aggDeductible)}</div>
+                )}
+              </div>
+            </div>
+
             {/* 입력값 표시 */}
             <div className="border border-gray-200 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">입력값</h3>
               <div className="space-y-3">
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-gray-600">XoL Claim 평균:</span>
-                  <span className="font-mono text-gray-800 font-medium">{formatCurrency(xolClaimMean)}</span>
+                  <span className="font-mono text-gray-800 font-medium">{formatNumberNoUnit(xolClaimMean)}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-gray-600">XoL Claim 표준편차:</span>
-                  <span className="font-mono text-gray-800 font-medium">{formatCurrency(xolClaimStdDev)}</span>
+                  <span className="font-mono text-gray-800 font-medium">{formatNumberNoUnit(xolClaimStdDev)}</span>
                 </div>
                 <div className="flex justify-between items-center py-2 border-b">
                   <span className="text-gray-600">XoL Premium Rate 평균:</span>
@@ -90,12 +190,12 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
                   <div className="text-sm text-gray-600 mb-2">
                     <span className="font-semibold">Net Premium 수식:</span>
                     <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-200 font-mono text-xs">
-                      ({formatCurrency(xolClaimMean)} / {formatNumber(xolPremiumRateMean)}) + {formatCurrency(xolClaimStdDev)} × {formatNumber(reluctanceFactor)}
+                      ({formatNumberNoUnit(xolClaimMean)} / {formatNumber(xolPremiumRateMean)}) + {formatNumberNoUnit(xolClaimStdDev)} × {formatNumber(reluctanceFactor)}
                     </div>
                   </div>
                   <div className="flex justify-between items-center py-2 border-b">
                     <span className="text-gray-600">Net Premium:</span>
-                    <span className="font-mono text-gray-800 font-medium">{formatCurrency(netPremium)}</span>
+                    <span className="font-mono text-gray-800 font-medium">{formatNumberNoUnit(netPremium)}</span>
                   </div>
                 </div>
                 
@@ -104,12 +204,40 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
                   <div className="text-sm text-gray-600 mb-2">
                     <span className="font-semibold">Gross Premium 수식:</span>
                     <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-200 font-mono text-xs">
-                      {formatCurrency(netPremium)} / (1 - {formatNumber(expenseRate)})
+                      {formatNumberNoUnit(netPremium)} / (1 - {formatNumber(expenseRate)})
                     </div>
                   </div>
                   <div className="flex justify-between items-center py-3 mt-2 bg-blue-50 rounded-md px-3">
                     <span className="font-bold text-blue-800">Gross Premium:</span>
-                    <span className="font-mono text-blue-800 font-bold text-lg">{formatCurrency(grossPremium)}</span>
+                    <span className="font-mono text-blue-800 font-bold text-lg">{formatNumberNoUnit(grossPremium)}</span>
+                  </div>
+                </div>
+
+                {/* ROL */}
+                <div className="space-y-2 mt-4">
+                  <div className="text-sm text-gray-600 mb-2">
+                    <span className="font-semibold">ROL 수식:</span>
+                    <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-200 font-mono text-xs">
+                      {formatNumberNoUnit(grossPremium)} / {formatNumberNoUnit(limit)}
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-600">ROL:</span>
+                    <span className="font-mono text-gray-800 font-medium">{rolFormatted}</span>
+                  </div>
+                </div>
+
+                {/* Payback Period */}
+                <div className="space-y-2 mt-4">
+                  <div className="text-sm text-gray-600 mb-2">
+                    <span className="font-semibold">Payback Period 수식:</span>
+                    <div className="mt-1 p-2 bg-gray-50 rounded border border-gray-200 font-mono text-xs">
+                      1 / {rolFormatted}
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span className="text-gray-600">Payback Period:</span>
+                    <span className="font-mono text-gray-800 font-medium">{paybackPeriodFormatted}</span>
                   </div>
                 </div>
               </div>
@@ -117,6 +245,30 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
           </div>
         </main>
       </div>
+      {contextMenu && (
+        <div
+          className="context-menu fixed bg-white border border-gray-300 rounded-lg shadow-lg py-1 z-[100]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleCopy();
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer focus:outline-none focus:bg-gray-100"
+          >
+            복사 (Ctrl+C)
+          </button>
+        </div>
+      )}
     </div>
   );
 };

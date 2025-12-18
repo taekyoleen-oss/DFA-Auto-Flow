@@ -62,8 +62,8 @@ interface PropertiesPanelProps {
   logs: TerminalLog[];
   modules: CanvasModule[];
   connections: Connection[];
-  activeTab: "properties" | "preview" | "code";
-  setActiveTab: (tab: "properties" | "preview" | "code") => void;
+  activeTab: "properties" | "preview" | "code" | "terminal";
+  setActiveTab: (tab: "properties" | "preview" | "code" | "terminal") => void;
   onViewDetails: (moduleId: string) => void;
   folderHandle: FileSystemDirectoryHandle | null;
 }
@@ -517,6 +517,20 @@ const getConnectedDataSourceHelper = (
     return sourceModule.outputData as SimulateAggDistOutput;
   } else if (sourceModule.outputData.type === "FrequencySeverityModelOutput") {
     return sourceModule.outputData as FrequencySeverityModelOutput;
+  } else if ((sourceModule.outputData as any).type === "SimulateFreqServOutput") {
+    // SimulateFreqServOutput 처리: 포트 이름에 따라 적절한 데이터 반환
+    const freqServOutput = sourceModule.outputData as any;
+    const fromPortName = inputConnection.from.portName;
+    
+    if (fromPortName === "output_2") {
+      // XoL 형식: data 타입 (DataPreview)
+      return freqServOutput.xolOutput;
+    } else if (fromPortName === "output_1") {
+      // DFA 형식: evaluation 타입 (SimulateAggDistOutput)
+      return freqServOutput.dfaOutput;
+    }
+    // 기본적으로 xolOutput 반환 (data_in 포트의 경우)
+    return freqServOutput.xolOutput;
   }
   return undefined;
 };
@@ -3227,6 +3241,21 @@ const renderParameters = (
               />
             </div>
           )}
+          <PropertyInput
+            label="Random State"
+            value={module.parameters.random_state as number || 43}
+            type="number"
+            onChange={(v) => onParamChange("random_state", Number(v))}
+          />
+          <PropertySelect
+            label="Output Format"
+            value={module.parameters.output_format as string || "dfa"}
+            onChange={(v) => onParamChange("output_format", v)}
+            options={[
+              { value: "dfa", label: "연도별 집계(DFA 사용)으로 출력 1 연결" },
+              { value: "xol", label: "사고별 집계(XoL 사용)으로 출력 2 연결" },
+            ]}
+          />
           <p className="text-xs text-gray-500">
             If models are not connected, the module will fit models from input data using default parameters.
           </p>
@@ -3440,6 +3469,12 @@ const renderParameters = (
               />
             </div>
           )}
+          <PropertyInput
+            label="Random State"
+            value={module.parameters.random_state as number || 43}
+            type="number"
+            onChange={(v) => onParamChange("random_state", Number(v))}
+          />
         </>
       );
     }
@@ -3497,7 +3532,10 @@ const renderParameters = (
         }
       }
       
-      const { claim_column } = module.parameters;
+      const { claim_column, year_column } = module.parameters;
+      
+      // 시뮬레이션 데이터인지 확인 (시뮬레이션 번호 컬럼이 있는지)
+      const isSimulationData = inputColumns.some(col => col.name === "시뮬레이션 번호");
       
       return (
         <div>
@@ -3514,6 +3552,34 @@ const renderParameters = (
           />
           <p className="text-xs text-gray-500 mt-1">
             XoL 계산에 사용할 클레임 컬럼을 선택하세요.
+          </p>
+          
+          <PropertySelect
+            label="연도"
+            value={year_column || (isSimulationData ? "시뮬레이션 번호" : "")}
+            onChange={(v) => onParamChange("year_column", v)}
+            options={[
+              { value: "", label: "선택하세요" },
+              ...(isSimulationData 
+                ? [{ value: "시뮬레이션 번호", label: "시뮬레이션 번호 (연도로 사용)" }]
+                : []
+              ),
+              ...inputColumns
+                .filter((col) => 
+                  col.type === "number" && 
+                  col.name !== "시뮬레이션 번호" &&
+                  (col.name.includes("연도") || 
+                   col.name.toLowerCase().includes("year") ||
+                   col.name === "연도")
+                )
+                .map((col) => ({ value: col.name, label: col.name })),
+            ]}
+          />
+          <p className="text-xs text-gray-500 mt-1">
+            {isSimulationData 
+              ? "시뮬레이션 데이터의 경우 시뮬레이션 번호가 연도로 사용됩니다."
+              : "연도별 집계에 사용할 연도 컬럼을 선택하세요."
+            }
           </p>
         </div>
       );
@@ -3964,50 +4030,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const resizableContainerRef = useRef<HTMLDivElement>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<"Input" | "Output">(
     "Input"
   );
   const [localModuleName, setLocalModuleName] = useState("");
   const [isCopied, setIsCopied] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState(200);
-  const resizableContainerRef = useRef<HTMLDivElement>(null);
   const [showExcelModal, setShowExcelModal] = useState(false);
-
-  const handleTerminalResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const startY = e.clientY;
-      const startHeight = terminalHeight;
-      const container = resizableContainerRef.current;
-      if (!container) return;
-
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-
-      const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
-        const dy = moveEvent.clientY - startY;
-        const newHeight = startHeight - dy;
-
-        const minHeight = 80;
-        const maxHeight = container.clientHeight - 150; // Leave 150px for the top panel
-
-        if (newHeight >= minHeight && newHeight <= maxHeight) {
-          setTerminalHeight(newHeight);
-        }
-      };
-
-      const handleMouseUp = () => {
-        document.body.style.cursor = "default";
-        document.body.style.userSelect = "auto";
-        window.removeEventListener("mousemove", handleMouseMove);
-        window.removeEventListener("mouseup", handleMouseUp);
-      };
-
-      window.addEventListener("mousemove", handleMouseMove);
-      window.addEventListener("mouseup", handleMouseUp);
-    },
-    [terminalHeight]
-  );
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -4646,45 +4675,142 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </p>
         </div>
 
-        {module && (
-          <div className="flex-shrink-0 border-b border-gray-700">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab("properties")}
-                className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
-                  activeTab === "properties"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
-                }`}
-              >
-                <CogIcon className="w-5 h-5" /> Properties
-              </button>
-              <button
-                onClick={() => setActiveTab("preview")}
-                className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
-                  activeTab === "preview"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
-                }`}
-              >
-                <TableCellsIcon className="w-5 h-5" /> {module.type === ModuleType.DefineXolContract ? "복원P 비율" : "Preview"}
-              </button>
-              <button
-                onClick={() => setActiveTab("code")}
-                className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
-                  activeTab === "code"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
-                }`}
-              >
-                <CodeBracketIcon className="w-5 h-5" /> Code
-              </button>
-            </div>
+        <div className="flex-shrink-0 border-b border-gray-700">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab("properties")}
+              disabled={!module}
+              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
+                activeTab === "properties"
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-400 hover:bg-gray-700/50"
+              } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              <CogIcon className="w-5 h-5" /> Properties
+            </button>
+            <button
+              onClick={() => setActiveTab("preview")}
+              disabled={!module}
+              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
+                activeTab === "preview"
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-400 hover:bg-gray-700/50"
+              } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              <TableCellsIcon className="w-5 h-5" /> {module?.type === ModuleType.DefineXolContract ? "복원P 비율" : "Preview"}
+            </button>
+            <button
+              onClick={() => setActiveTab("code")}
+              disabled={!module}
+              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
+                activeTab === "code"
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-400 hover:bg-gray-700/50"
+              } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
+              <CodeBracketIcon className="w-5 h-5" /> Code
+            </button>
+            <button
+              onClick={() => setActiveTab("terminal")}
+              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
+                activeTab === "terminal"
+                  ? "bg-gray-700 text-white"
+                  : "text-gray-400 hover:bg-gray-700/50"
+              }`}
+            >
+              <CommandLineIcon className="w-5 h-5" /> Terminal
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="flex-grow overflow-y-auto panel-scrollbar p-3">
-          {!module ? (
+          {activeTab === "terminal" ? (
+            <div className="h-full flex flex-col bg-gray-900 rounded-lg">
+              <div
+                ref={logContainerRef}
+                className="flex-grow overflow-y-auto text-xs font-mono p-2 space-y-1"
+                onContextMenu={(e) => {
+                  // 텍스트가 선택되어 있으면 컨텍스트 메뉴에서 복사 가능하도록
+                  const selection = window.getSelection();
+                  if (selection && selection.toString().trim()) {
+                    // 브라우저 기본 컨텍스트 메뉴 사용 (복사 옵션 포함)
+                    return;
+                  }
+                  // 텍스트가 선택되지 않았으면 기본 동작 방지
+                  e.preventDefault();
+                }}
+              >
+                {logs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="flex group hover:bg-gray-800/50 rounded px-1 py-0.5"
+                  >
+                    <span className="text-gray-500 mr-2 flex-shrink-0 select-none">
+                      {log.timestamp}
+                    </span>
+                    <span
+                      className={`mr-2 font-bold flex-shrink-0 select-none ${
+                        log.level === "INFO"
+                          ? "text-blue-400"
+                          : log.level === "WARN"
+                          ? "text-yellow-400"
+                          : log.level === "ERROR"
+                          ? "text-red-400"
+                          : "text-green-400"
+                      }`}
+                    >
+                      {log.level}:
+                    </span>
+                    <span
+                      className="flex-1 whitespace-pre-wrap break-words cursor-text select-text"
+                      onDoubleClick={(e) => {
+                        e.preventDefault();
+                        const text = log.message;
+                        navigator.clipboard.writeText(text).then(() => {
+                          setIsCopied(true);
+                          setTimeout(() => setIsCopied(false), 2000);
+                        });
+                      }}
+                      onMouseUp={(e) => {
+                        // 텍스트 선택 후 Ctrl+C 또는 우클릭으로 복사 가능
+                        const selection = window.getSelection();
+                        if (selection && selection.toString().trim()) {
+                          // 선택된 텍스트가 있으면 복사 가능
+                        }
+                      }}
+                      title="텍스트를 선택하여 복사하거나 더블클릭하여 전체 메시지 복사"
+                    >
+                      {log.message}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const text = `${log.timestamp} ${log.level}: ${log.message}`;
+                        navigator.clipboard.writeText(text).then(() => {
+                          setIsCopied(true);
+                          setTimeout(() => setIsCopied(false), 2000);
+                        });
+                      }}
+                      className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                      title="전체 로그 복사"
+                    >
+                      {isCopied ? (
+                        <CheckIcon className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <ClipboardIcon className="w-4 h-4 text-gray-400 hover:text-gray-300" />
+                      )}
+                    </button>
+                  </div>
+                ))}
+                {logs.length === 0 && (
+                  <div className="text-gray-500 text-center py-4">
+                    로그가 없습니다
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : !module ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-gray-500">
                 Select a module to see its properties.
@@ -4769,104 +4895,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 </div>
               )}
             </>
-          )}
-        </div>
-      </div>
-
-      <div
-        className="flex-shrink-0 flex flex-col"
-        style={{ height: `${terminalHeight}px` }}
-      >
-        <div
-          onMouseDown={handleTerminalResizeMouseDown}
-          className="w-full h-1.5 cursor-row-resize bg-gray-700 hover:bg-blue-500 transition-colors"
-          title="Resize Terminal"
-        />
-        <div className="p-2 border-b border-gray-700 bg-gray-900/50 flex items-center gap-2">
-          <CommandLineIcon className="w-5 h-5 text-gray-400" />
-          <h3 className="text-sm font-semibold text-gray-300">Terminal</h3>
-        </div>
-        <div
-          ref={logContainerRef}
-          className="flex-grow overflow-y-auto bg-gray-900 text-xs font-mono p-2 space-y-1"
-          onContextMenu={(e) => {
-            // 텍스트가 선택되어 있으면 컨텍스트 메뉴에서 복사 가능하도록
-            const selection = window.getSelection();
-            if (selection && selection.toString().trim()) {
-              // 브라우저 기본 컨텍스트 메뉴 사용 (복사 옵션 포함)
-              return;
-            }
-            // 텍스트가 선택되지 않았으면 기본 동작 방지
-            e.preventDefault();
-          }}
-        >
-          {logs.map((log) => (
-            <div
-              key={log.id}
-              className="flex group hover:bg-gray-800/50 rounded px-1 py-0.5"
-            >
-              <span className="text-gray-500 mr-2 flex-shrink-0 select-none">
-                {log.timestamp}
-              </span>
-              <span
-                className={`mr-2 font-bold flex-shrink-0 select-none ${
-                  log.level === "INFO"
-                    ? "text-blue-400"
-                    : log.level === "WARN"
-                    ? "text-yellow-400"
-                    : log.level === "ERROR"
-                    ? "text-red-400"
-                    : "text-green-400"
-                }`}
-              >
-                {log.level}:
-              </span>
-              <span
-                className="flex-1 whitespace-pre-wrap break-words cursor-text select-text"
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  const text = log.message;
-                  navigator.clipboard.writeText(text).then(() => {
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                  });
-                }}
-                onMouseUp={(e) => {
-                  // 텍스트 선택 후 Ctrl+C 또는 우클릭으로 복사 가능
-                  const selection = window.getSelection();
-                  if (selection && selection.toString().trim()) {
-                    // 선택된 텍스트가 있으면 복사 가능
-                  }
-                }}
-                title="텍스트를 선택하여 복사하거나 더블클릭하여 전체 메시지 복사"
-              >
-                {log.message}
-              </span>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const text = `${log.timestamp} ${log.level}: ${log.message}`;
-                  navigator.clipboard.writeText(text).then(() => {
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                  });
-                }}
-                className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                title="전체 로그 복사"
-              >
-                {isCopied ? (
-                  <CheckIcon className="w-4 h-4 text-green-400" />
-                ) : (
-                  <ClipboardIcon className="w-4 h-4 text-gray-400 hover:text-gray-300" />
-                )}
-              </button>
-            </div>
-          ))}
-          {logs.length === 0 && (
-            <div className="text-gray-500 text-center py-4">
-              로그가 없습니다
-            </div>
           )}
         </div>
       </div>
