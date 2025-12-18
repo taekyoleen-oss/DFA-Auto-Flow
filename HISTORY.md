@@ -21,16 +21,16 @@
 - 사용자 요청에 따라 Save 버튼 아이콘을 저장 기능에 맞게 수정
 - XoL Loss Model 샘플을 최신 내용으로 업데이트
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe5a8e1b8c3f4d5e6f7a8b9c0d1e2f3a4b5c
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe5a8e1b8c3f4d5e6f7a8b9c0d1e2f3a4b5c
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe5a8e1b8c3f4d5e6f7a8b9c0d1e2f3a4b5c
 ```
 
 ## 2025-01-16 09:00:00
@@ -163,16 +163,16 @@ git reset --hard c9082c251c79f3966136e044e126341d703b6391
 - 사용자 요청에 따라 테이블의 좌우 스크롤 기능 추가로 많은 컬럼을 가진 테이블도 편리하게 탐색 가능
 - 연도별 집계 데이터를 막대그래프로 시각화하여 트렌드를 더 쉽게 파악 가능
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 07:00:00
@@ -199,16 +199,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 XoL Claim(Incl. Agg/Reinst) 탭에 계산된 컬럼 추가
 - XoL Contract 조건에 따른 최대값 제한을 반영한 계산 제공
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 06:30:00
@@ -234,16 +234,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 XoL Calculator 모듈의 두 번째 탭에서 연도별 집계 데이터를 확인할 수 있도록 개선
 - 연도별 트렌드를 쉽게 파악할 수 있도록 집계 기능 제공
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 06:00:00
@@ -262,16 +262,16 @@ git reset --hard <커밋해시>
 **Reason:**
 - 사용자 요청에 따라 XoL Contract 모듈의 기본값을 변경하여 더 적절한 초기값 제공
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 05:30:00
@@ -290,16 +290,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 XoL Calculator 모듈의 View Details에서 상단 통계량 테이블 제거
 - 선택된 열의 통계량과 히스토그램만 표시하여 더 간결한 레이아웃 제공
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 05:00:00
@@ -325,16 +325,16 @@ git reset --hard <커밋해시>
 - 테이블, 통계량, 히스토그램을 한 화면에서 확인할 수 있도록 개선
 - 상하 스크롤을 통해 모든 정보를 쉽게 탐색 가능
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 04:30:00
@@ -359,16 +359,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 Select Data 모듈을 Apply Threshold 모듈과 동일한 형태로 통일
 - Data Table 탭에서는 테이블과 통계량에 집중, 히스토그램은 별도 탭에서 확인하도록 개선
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 04:00:00
@@ -389,16 +389,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 Apply Threshold 모듈의 Data Table 탭에서 오른쪽 상단 그래프 제거
 - 히스토그램은 별도 Histogram 탭에서 확인 가능하므로 Data Table 탭에서는 테이블만 표시
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 03:30:00
@@ -428,16 +428,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 히스토그램을 별도 탭으로 분리하여 표시
 - Select Data 모듈과 동일한 방식으로 히스토그램 표시하여 일관성 유지
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 03:00:00
@@ -464,16 +464,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 Select Data와 Apply Threshold 모듈의 View Details에서 데이터 분포를 시각적으로 확인할 수 있도록 히스토그램 추가
 - 데이터 분석 시 분포를 한눈에 파악할 수 있어 분석 효율성 향상
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 02:30:00
@@ -499,16 +499,16 @@ git reset --hard <커밋해시>
 - 사용자 요청에 따라 View Details의 글자 크기를 더 작게 조정하여 더 많은 정보를 한 화면에 표시
 - 일관된 패딩 크기로 UI 통일성 향상
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 02:00:00
@@ -540,16 +540,16 @@ git reset --hard <커밋해시>
 - 통계량과 데이터 테이블을 명확하게 구분하여 가독성 향상
 - 글자 크기 축소로 더 많은 정보를 한 화면에 표시 가능
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 01:00:00
@@ -583,16 +583,16 @@ git reset --hard <커밋해시>
 - 사용자가 엑셀 파일을 직접 로드하거나 복사-붙여넣기로 데이터를 입력할 수 있도록 편의성 향상
 - 기존 CSV 파일 로드 기능과 호환성 유지
 
-**Commit Hash:** (will be updated after commit)
+**Commit Hash:** 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 **Recovery Command:**
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-01-16 00:00:00
@@ -622,10 +622,10 @@ git reset --hard <커밋해시>
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-12-14 19:00:00
@@ -705,10 +705,10 @@ git reset --hard 0dc5664
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-12-14 13:57:31
@@ -741,10 +741,10 @@ git reset --hard <커밋해시>
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-12-14 13:49:51
@@ -779,10 +779,10 @@ git reset --hard <커밋해시>
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-12-14 13:23:43
@@ -809,10 +809,10 @@ git reset --hard <커밋해시>
 ```bash
 # Backup and recover
 git stash push -u -m "백업"
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 
 # Or direct recovery
-git reset --hard <커밋해시>
+git reset --hard 84e0fe566c4dba419d4c94438bd6cc12423a2a86
 ```
 
 ## 2025-12-14 09:35:26
