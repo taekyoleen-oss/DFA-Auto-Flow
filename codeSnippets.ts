@@ -861,25 +861,6 @@ p_loading_factor = {loading_factor}
 # Execution
 # premium, _, _ = price_xol_layer(exposure_curve, p_total_loss, p_retention, p_limit, p_loading_factor)
 `,
-    XolLoading: `
-import pandas as pd
-
-# This is identical to the standard LoadData module but conceptually used for XoL data.
-def load_xol_data(file_path: str):
-    """
-    Loads claims data from a CSV file, expecting columns like 'year', 'loss'.
-    """
-    print(f"Loading XoL claims data from: {file_path}")
-    df = pd.read_csv(file_path)
-    print("XoL data loaded successfully.")
-    return df
-
-# Parameters from UI
-p_file_path = {source}
-
-# Execution
-# xol_dataframe = load_xol_data(p_file_path)
-`,
 
     ApplyThreshold: `
 import pandas as pd
@@ -1714,6 +1695,189 @@ Std_Total = np.sqrt(Var_Total)
 print(f"\\n=== 집계 분포 ===")
 print(f"기대값: {E_Total:,.2f}")
 print(f"표준편차: {Std_Total:,.2f}")
+`,
+
+    SettingThreshold: `
+import pandas as pd
+import numpy as np
+import json
+
+# Parameters from UI
+p_target_column = {target_column}
+p_thresholds = {thresholds}  # List of threshold values
+p_year_column = {year_column}  # Year column for yearly analysis
+
+# Assuming 'dataframe' is passed from previous step
+# Check if target column exists
+if p_target_column not in dataframe.columns:
+    raise ValueError(f"Column '{p_target_column}' not found in dataframe")
+
+# Get the target column data (numeric only)
+target_data = pd.to_numeric(dataframe[p_target_column], errors='coerce')
+target_data = target_data.dropna()
+
+if len(target_data) == 0:
+    raise ValueError(f"No valid numeric data found in column '{p_target_column}'")
+
+# Sort thresholds in ascending order
+p_thresholds = sorted([float(t) for t in p_thresholds if t is not None and str(t).strip() != ''])
+
+if len(p_thresholds) == 0:
+    raise ValueError("At least one threshold value must be provided")
+
+# Calculate statistics
+statistics = {
+    'min': float(target_data.min()),
+    'max': float(target_data.max()),
+    'mean': float(target_data.mean()),
+    'median': float(target_data.median()),
+    'std': float(target_data.std()),
+    'q25': float(target_data.quantile(0.25)),
+    'q75': float(target_data.quantile(0.75))
+}
+
+# Calculate threshold results
+total_count = len(target_data)
+threshold_results = []
+
+# Sort thresholds descending for cumulative calculation
+sorted_thresholds = sorted(p_thresholds, reverse=True)
+cumulative_count = 0
+
+for threshold in sorted_thresholds:
+    count = int((target_data > threshold).sum())
+    percentage = (count / total_count * 100) if total_count > 0 else 0.0
+    cumulative_count += count
+    cumulative_percentage = (cumulative_count / total_count * 100) if total_count > 0 else 0.0
+    
+    threshold_results.append({
+        'threshold': float(threshold),
+        'count': count,
+        'percentage': float(percentage),
+        'cumulativeCount': cumulative_count,
+        'cumulativePercentage': float(cumulative_percentage)
+    })
+
+# Sort back to ascending for display
+threshold_results = sorted(threshold_results, key=lambda x: x['threshold'])
+
+# Prepare data distribution for histogram (sample up to 1000 points for performance)
+sample_size = min(1000, len(target_data))
+if sample_size < len(target_data):
+    sampled_data = target_data.sample(n=sample_size, random_state=42)
+else:
+    sampled_data = target_data
+
+# Create histogram bins
+num_bins = 50
+hist_values = sampled_data.values.tolist()
+bins = np.linspace(float(target_data.min()), float(target_data.max()), num_bins + 1).tolist()
+frequencies, _ = np.histogram(hist_values, bins=bins)
+frequencies = frequencies.tolist()
+
+data_distribution = {
+    'values': hist_values[:100],  # Limit to 100 values for JSON size
+    'bins': bins,
+    'frequencies': frequencies
+}
+
+# Print results
+print("=" * 60)
+print(f"Setting Threshold Analysis: {p_target_column}")
+print("=" * 60)
+print(f"\\nTotal rows: {total_count:,}")
+print(f"\\nStatistics:")
+print(f"  Min: {statistics['min']:,.2f}")
+print(f"  Max: {statistics['max']:,.2f}")
+print(f"  Mean: {statistics['mean']:,.2f}")
+print(f"  Median: {statistics['median']:,.2f}")
+print(f"  Std: {statistics['std']:,.2f}")
+print(f"  Q25: {statistics['q25']:,.2f}")
+print(f"  Q75: {statistics['q75']:,.2f}")
+
+print(f"\\nThreshold Results:")
+print(f"{'Threshold':>15} {'Count':>10} {'Percentage':>12} {'Cumulative':>12} {'Cum %':>10}")
+print("-" * 70)
+for result in threshold_results:
+    print(f"{result['threshold']:>15,.2f} {result['count']:>10,} {result['percentage']:>11.2f}% {result['cumulativeCount']:>12,} {result['cumulativePercentage']:>9.2f}%")
+
+# Calculate yearly counts if year column is provided
+yearly_counts = []
+if p_year_column and p_year_column.strip() and p_year_column in dataframe.columns:
+    # Extract year from year column (handle various formats)
+    def extract_year(value):
+        if pd.isna(value):
+            return None
+        value_str = str(value)
+        # Try to extract 4-digit year
+        import re
+        year_match = re.search(r'\\d{4}', value_str)
+        if year_match:
+            return int(year_match.group())
+        # Try to parse as integer
+        try:
+            year_int = int(float(value_str))
+            if 1900 <= year_int <= 2100:
+                return year_int
+        except:
+            pass
+        return None
+    
+    dataframe['_extracted_year'] = dataframe[p_year_column].apply(extract_year)
+    dataframe_with_year = dataframe[dataframe['_extracted_year'].notna()].copy()
+    
+    if len(dataframe_with_year) > 0:
+        # Get numeric target data with year
+        target_data_with_year = pd.to_numeric(dataframe_with_year[p_target_column], errors='coerce')
+        dataframe_with_year['_target_value'] = target_data_with_year
+        dataframe_with_year = dataframe_with_year[dataframe_with_year['_target_value'].notna()].copy()
+        
+        # Group by year and calculate counts for each threshold
+        for year in sorted(dataframe_with_year['_extracted_year'].unique()):
+            year_data = dataframe_with_year[dataframe_with_year['_extracted_year'] == year]
+            year_target = year_data['_target_value']
+            
+            counts = []
+            for threshold in sorted(p_thresholds):
+                count = int((year_target >= threshold).sum())
+                counts.append(count)
+            
+            # Calculate totals, mean, std for this year
+            year_counts_array = np.array(counts)
+            totals = {
+                'total': int(year_counts_array.sum()),
+                'mean': float(year_counts_array.mean()) if len(year_counts_array) > 0 else 0.0,
+                'std': float(year_counts_array.std()) if len(year_counts_array) > 0 else 0.0
+            }
+            
+            yearly_counts.append({
+                'year': int(year) if isinstance(year, (int, float)) else str(year),
+                'counts': counts,
+                'totals': totals
+            })
+    
+    dataframe = dataframe.drop(columns=['_extracted_year'], errors='ignore')
+
+# Output JSON for frontend
+output = {
+    'type': 'SettingThresholdOutput',
+    'targetColumn': p_target_column,
+    'thresholds': p_thresholds,
+    'selectedThreshold': p_thresholds[0] if len(p_thresholds) > 0 else None,  # 기본값: 첫 번째 threshold
+    'thresholdResults': threshold_results,
+    'yearlyCounts': yearly_counts if yearly_counts else None,
+    'dataDistribution': data_distribution,
+    'statistics': statistics
+}
+
+print("\\n" + "=" * 60)
+print("Analysis complete")
+print("=" * 60)
+print("\\nOutput JSON:")
+print(json.dumps(output, indent=2))
+
+# output을 반환 (마지막 줄)
+output
 `,
 };
 

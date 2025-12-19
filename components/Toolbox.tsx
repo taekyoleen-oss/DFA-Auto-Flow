@@ -17,14 +17,15 @@ interface ToolboxProps {
 }
 
 const preprocessTypes = [
+  ModuleType.LoadClaimData,
   ModuleType.LoadData,
   ModuleType.Statistics,
   ModuleType.SelectData,
-  ModuleType.LoadClaimData,
-  ModuleType.ApplyInflation,
-  ModuleType.FormatChange,
-  ModuleType.TransformData,
-  ModuleType.TransitionData,
+  ModuleType.HandleMissingValues,
+  ModuleType.EncodeCategorical,
+  ModuleType.NormalizeData,
+  ModuleType.ResampleData,
+  ModuleType.SettingThreshold,
 ];
 
 const analysisOpTypes = [
@@ -74,15 +75,17 @@ const reinsuranceTypes = [
 const xolPricingTypes = [
   ModuleType.ApplyThreshold,
   ModuleType.DefineXolContract,
-  ModuleType.XolCalculator,
-  ModuleType.XolPricing,
+  ModuleType.CalculateCededLoss,
+  ModuleType.PriceXolContract,
 ];
 
 const dfaTypes = [
+  ModuleType.FormatChange,
+  ModuleType.ApplyInflation,
   ModuleType.SplitByThreshold,
-  ModuleType.SplitByFreqServ,
   ModuleType.FitAggregateModel,
   ModuleType.SimulateAggDist,
+  ModuleType.SplitByFreqServ,
   ModuleType.FitFrequencyModel,
   ModuleType.FitSeverityModel,
   ModuleType.SimulateFreqServ,
@@ -97,18 +100,6 @@ const categorizedModules = [
   {
     name: "DFA Analysis",
     modules: TOOLBOX_MODULES.filter((m) => dfaTypes.includes(m.type)),
-      },
-      {
-    name: "Claim Analysis",
-    subCategories: [],
-  },
-  {
-    name: "Tradition Analysis",
-    modules: [],
-  },
-  {
-    name: "Reinsurance Analysis",
-    modules: TOOLBOX_MODULES.filter((m) => reinsuranceTypes.includes(m.type)),
   },
   {
     name: "XoL Pricing",
@@ -163,13 +154,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
   >({
     "Data Preprocess": true,
     "DFA Analysis": true,
-    "Claim Analysis": true,
-    "Tradition Analysis": true,
-    "Reinsurance Analysis": true,
     "XoL Pricing": true,
-    Operations: true,
-    "Supervised Learning": true,
-    "Unsupervised Learning": true,
   });
 
   const [lastTapInfo, setLastTapInfo] = useState<{

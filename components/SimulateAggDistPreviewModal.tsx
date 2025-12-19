@@ -165,35 +165,35 @@ export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalPr
               {output.rawSimulations && output.rawSimulations.length > 0 ? (
                 <>
                   <div className="flex justify-between items-center flex-shrink-0 px-1">
-                     <h3 className="text-sm font-semibold text-gray-800">
-                       Simulation Results (Raw Values)
-                       <span className="text-xs font-normal text-gray-500 ml-2">
+                    <h3 className="text-sm font-semibold text-gray-800">
+                      Simulation Results (Raw Values)
+                        <span className="text-xs font-normal text-gray-500 ml-2">
                          (Total: {simulationCount.toLocaleString('ko-KR')})
-                       </span>
-                     </h3>
+                        </span>
+                    </h3>
                   </div>
                    <div className="flex-1 rounded-lg overflow-auto min-h-0" style={{ maxHeight: 'calc(10 * 2.5rem + 2.5rem)' }}>
-                     <table className="min-w-full text-xs">
-                       <thead className="bg-gray-50 sticky top-0">
-                         <tr>
-                           <th className="px-1.5 py-1 text-right font-semibold text-gray-600">#</th>
-                           <th className="px-1.5 py-1 text-right font-semibold text-gray-600">Simulated Value</th>
-                         </tr>
-                       </thead>
-                       <tbody>
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-1.5 py-1 text-right font-semibold text-gray-600">#</th>
+                          <th className="px-1.5 py-1 text-right font-semibold text-gray-600">Simulated Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                          {output.rawSimulations.map((value, index) => (
-                           <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                             <td className="px-1.5 py-1 text-right font-mono text-gray-600">
-                               {index + 1}
-                             </td>
-                             <td className="px-1.5 py-1 text-right font-mono text-gray-800">
-                               {value.toLocaleString('ko-KR', { maximumFractionDigits: 4 })}
-                             </td>
-                           </tr>
-                         ))}
-                       </tbody>
-                     </table>
-                   </div>
+                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="px-1.5 py-1 text-right font-mono text-gray-600">
+                              {index + 1}
+                            </td>
+                            <td className="px-1.5 py-1 text-right font-mono text-gray-800">
+                              {value.toLocaleString('ko-KR', { maximumFractionDigits: 4 })}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </>
               ) : (
                 <div className="flex-1 rounded-lg p-4 flex items-center justify-center">

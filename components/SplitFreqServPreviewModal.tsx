@@ -178,23 +178,23 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                     {/* 왼쪽: 테이블 */}
                     <div className="flex-1 flex flex-col gap-1 min-w-0">
                       <div className="flex-1 overflow-auto rounded-lg">
-                        <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50 sticky top-0">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
-                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Count</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {output.yearlyFrequency.map((item, idx) => (
-                              <tr key={idx}>
-                                <td className="px-4 py-3 text-sm text-gray-900">{item.year}</td>
-                                <td className="px-4 py-3 text-sm text-gray-900">{item.count}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Year</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {output.yearlyFrequency.map((item, idx) => (
+                      <tr key={idx}>
+                        <td className="px-4 py-3 text-sm text-gray-900">{item.year}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{item.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
                     </div>
 
                     {/* 오른쪽: 통계량 */}

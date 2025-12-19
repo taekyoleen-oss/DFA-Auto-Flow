@@ -27,6 +27,12 @@ import {
 export const TOOLBOX_MODULES = [
   // Data Preprocess
   {
+    type: ModuleType.LoadClaimData,
+    name: "Load Claim Data",
+    icon: DatabaseIcon,
+    description: "Loads claim data from a CSV file for DFA analysis.",
+  },
+  {
     type: ModuleType.Statistics,
     name: "Statistics",
     icon: BarChartIcon,
@@ -39,12 +45,6 @@ export const TOOLBOX_MODULES = [
     description: "Selects or removes columns from the data.",
   },
   {
-    type: ModuleType.LoadClaimData,
-    name: "Load Claim Data",
-    icon: DatabaseIcon,
-    description: "Loads claim data from a CSV file for DFA analysis.",
-  },
-  {
     type: ModuleType.ApplyInflation,
     name: "Apply Inflation",
     icon: ChartCurveIcon,
@@ -55,19 +55,6 @@ export const TOOLBOX_MODULES = [
     name: "Format Change",
     icon: TableCellsIcon,
     description: "Extracts year from date column and adds it as a new column.",
-  },
-  {
-    type: ModuleType.TransitionData,
-    name: "Transition Data",
-    icon: ScaleIcon,
-    description: "Applies mathematical transformations to numeric columns.",
-  },
-  {
-    type: ModuleType.TransformData,
-    name: "Transform Data",
-    icon: CogIcon,
-    description:
-      "Applies pre-trained handlers (e.g., for missing values, encoding) to a dataset.",
   },
 
   // Claim Analysis
@@ -275,12 +262,6 @@ export const TOOLBOX_MODULES = [
 
   // Reinsurance (Experience)
   {
-    type: ModuleType.XolLoading,
-    name: "XoL Loading",
-    icon: DatabaseIcon,
-    description: "Loads claims data for experience-based XoL pricing.",
-  },
-  {
     type: ModuleType.ApplyThreshold,
     name: "Apply Threshold",
     icon: FilterIcon,
@@ -315,7 +296,7 @@ export const TOOLBOX_MODULES = [
     type: ModuleType.XolPricing,
     name: "XoL Pricing",
     icon: PriceTagIcon,
-    description: "Calculates XoL pricing based on XOL Calculator results.",
+    description: "Calculates XoL pricing based on XoL Calculator results.",
   },
   {
     type: ModuleType.ExperienceModel,
@@ -373,6 +354,12 @@ export const TOOLBOX_MODULES = [
     icon: BarChartIcon,
     description: "Combines two simulation results and calculates VaR and TVaR.",
   },
+  {
+    type: ModuleType.SettingThreshold,
+    name: "Setting Threshold",
+    icon: FilterIcon,
+    description: "Analyzes data distribution and counts rows above various threshold values to help determine optimal threshold.",
+  },
 ];
 
 // fix: Replaced all instances of status: 'Pending' with status: ModuleStatus.Pending to conform to the ModuleStatus enum type.
@@ -412,16 +399,6 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       outputs: [{ name: "handler_out", type: "handler" }],
     },
     {
-      type: ModuleType.TransformData,
-      status: ModuleStatus.Pending,
-      parameters: { primary_exclude_column: "", exclude_columns: [] },
-      inputs: [
-        { name: "handler_in", type: "handler" },
-        { name: "data_in", type: "data" },
-      ],
-      outputs: [{ name: "data_out", type: "data" }],
-    },
-    {
       type: ModuleType.EncodeCategorical,
       status: ModuleStatus.Pending,
       parameters: {
@@ -442,13 +419,6 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       parameters: { method: "MinMax", columnSelections: {} },
       inputs: [{ name: "data_in", type: "data" }],
       outputs: [{ name: "handler_out", type: "handler" }],
-    },
-    {
-      type: ModuleType.TransitionData,
-      status: ModuleStatus.Pending,
-      parameters: { transformations: {} },
-      inputs: [{ name: "data_in", type: "data" }],
-      outputs: [{ name: "data_out", type: "data" }],
     },
     {
       type: ModuleType.ResampleData,
@@ -770,17 +740,13 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
     },
     // Reinsurance (Experience)
     {
-      type: ModuleType.XolLoading,
-      status: ModuleStatus.Pending,
-      parameters: { source: "xol_claims_data.csv" },
-      inputs: [],
-      outputs: [{ name: "data_out", type: "data" }],
-    },
-    {
       type: ModuleType.ApplyThreshold,
       status: ModuleStatus.Pending,
       parameters: { threshold: 1000000, amount_column: "클레임 금액" },
-      inputs: [{ name: "data_in", type: "data" }],
+      inputs: [
+        { name: "threshold_in", type: "threshold" },
+        { name: "data_in", type: "data" },
+      ],
       outputs: [{ name: "data_out", type: "data" }],
     },
     {
@@ -894,7 +860,10 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         amount_column: "클레임 금액",
         date_column: "날짜",
       },
-      inputs: [{ name: "data_in", type: "data" }],
+      inputs: [
+        { name: "threshold_in", type: "threshold" },
+        { name: "data_in", type: "data" },
+      ],
       outputs: [
         { name: "below_threshold_out", type: "data" },
         { name: "above_threshold_out", type: "data" },
@@ -985,6 +954,19 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         { name: "freq_serv_in", type: "evaluation" },
       ],
       outputs: [{ name: "combined_out", type: "evaluation" }],
+    },
+    {
+      type: ModuleType.SettingThreshold,
+      status: ModuleStatus.Pending,
+      parameters: {
+        target_column: null,
+        thresholds: [], // 배열로 여러 threshold 값 저장
+        year_column: "", // 연도 컬럼
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [
+        { name: "threshold_out", type: "threshold" },
+      ],
     },
   ];
 

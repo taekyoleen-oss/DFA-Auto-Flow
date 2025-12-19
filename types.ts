@@ -52,7 +52,6 @@ export enum ModuleType {
   FitLossDistribution = "FitLossDistribution",
   GenerateExposureCurve = "GenerateExposureCurve",
   PriceXoLLayer = "PriceXoLLayer",
-  XolLoading = "XolLoading",
   ApplyThreshold = "ApplyThreshold",
   DefineXolContract = "DefineXolContract",
   CalculateCededLoss = "CalculateCededLoss",
@@ -73,6 +72,7 @@ export enum ModuleType {
   FitSeverityModel = "FitSeverityModel",
   SimulateFreqServ = "SimulateFreqServ",
   CombineLossModel = "CombineLossModel",
+  SettingThreshold = "SettingThreshold",
 
   // Deprecating these
   LogisticTradition = "LogisticTradition",
@@ -98,7 +98,8 @@ export interface Port {
     | "distribution"
     | "curve"
     | "contract"
-    | "handler";
+    | "handler"
+    | "threshold";
 }
 
 export interface ColumnInfo {
@@ -628,6 +629,43 @@ export interface CombineLossModelOutput {
   };
 }
 
+export interface SettingThresholdOutput {
+  type: "SettingThresholdOutput";
+  targetColumn: string;
+  thresholds: number[];
+  selectedThreshold?: number; // 선택된 threshold 값
+  thresholdResults: Array<{
+    threshold: number;
+    count: number; // 해당 threshold보다 큰 행의 건수
+    percentage: number; // 전체 대비 비율
+    cumulativeCount: number; // 누적 건수 (가장 큰 threshold부터)
+    cumulativePercentage: number; // 누적 비율
+  }>;
+  yearlyCounts?: Array<{
+    year: number | string;
+    counts: number[]; // 각 threshold별 건수
+    totals?: {
+      total: number;
+      mean: number;
+      std: number;
+    };
+  }>;
+  dataDistribution?: {
+    values: number[]; // 원본 데이터 값들 (히스토그램용)
+    bins: number[]; // 히스토그램 bins
+    frequencies: number[]; // 각 bin의 빈도
+  };
+  statistics: {
+    min: number;
+    max: number;
+    mean: number;
+    median: number;
+    std: number;
+    q25: number;
+    q75: number;
+  };
+}
+
 export interface CanvasModule {
   id: string;
   name: string;
@@ -670,7 +708,8 @@ export interface CanvasModule {
     | FrequencyModelOutput
     | SeverityModelOutput
     | FrequencySeverityModelOutput
-    | CombineLossModelOutput;
+    | CombineLossModelOutput
+    | SettingThresholdOutput;
   // Shape-specific properties
   shapeData?: {
     // For TextBox

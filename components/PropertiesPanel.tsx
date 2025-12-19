@@ -31,10 +31,6 @@ import {
 } from "../types";
 import {
   PlayIcon,
-  TableCellsIcon,
-  CommandLineIcon,
-  CogIcon,
-  CodeBracketIcon,
   InformationCircleIcon,
   SparklesIcon,
   ClipboardIcon,
@@ -558,8 +554,7 @@ const renderParameters = (
 
   switch (module.type) {
     // ... [Previous cases remain unchanged: LoadData, SelectData, HandleMissingValues, TransformData, EncodeCategorical, NormalizeData, TransitionData, ResampleData, SplitData] ...
-    case ModuleType.LoadData:
-    case ModuleType.XolLoading: {
+    case ModuleType.LoadData: {
       // 엑셀 파일을 CSV로 변환하는 함수
       const convertExcelToCSV = (workbook: XLSX.Workbook, sheetName?: string): string => {
         const targetSheet = sheetName || workbook.SheetNames[0];
@@ -2660,6 +2655,209 @@ const renderParameters = (
         </div>
       );
     }
+    case ModuleType.SettingThreshold: {
+      const sourceData = getConnectedDataSource(module.id);
+      // Handle different output types
+      let inputColumns: ColumnInfo[] = [];
+      let inputRows: Record<string, any>[] = [];
+      if (sourceData) {
+        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+          inputRows = (sourceData as any).data?.rows || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+          inputRows = sourceData.rows || [];
+        }
+      }
+      const numericColumns = inputColumns.filter(col => col.type === "number");
+      const columnOptions = numericColumns.length > 0 
+        ? numericColumns.map(col => col.name)
+        : ["클레임 금액"];
+      
+      // Find year column candidates (date columns or columns with "year", "연도" in name)
+      const yearColumnCandidates = inputColumns.filter(col => {
+        const name = col.name.toLowerCase();
+        return name.includes("year") || name.includes("연도") || name.includes("날짜") || name.includes("date");
+      });
+      const yearColumnOptions = yearColumnCandidates.length > 0
+        ? yearColumnCandidates.map(col => col.name)
+        : [];
+      
+      const { target_column, thresholds = [], year_column = "" } = module.parameters;
+      
+      // Calculate mean for the target column if data is available
+      const calculateMean = (): number => {
+        if (!target_column || inputRows.length === 0) return 0;
+        const values = inputRows
+          .map(row => row[target_column])
+          .filter(val => val !== null && val !== undefined && val !== "")
+          .map(val => parseFloat(String(val)))
+          .filter(val => !isNaN(val));
+        if (values.length === 0) return 0;
+        const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+        if (mean === 0) return 0;
+        // Round to nearest power of 10 below mean (e.g., 1234 -> 1000)
+        const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(mean))));
+        return Math.floor(mean / magnitude) * magnitude;
+      };
+      
+      // Ensure at least one threshold exists for display
+      // If thresholds is empty and target_column is set, show calculated mean
+      // Otherwise show existing thresholds
+      const displayThresholds = (() => {
+        if (thresholds.length === 0 && target_column) {
+          const calculatedMean = calculateMean();
+          return calculatedMean > 0 ? [calculatedMean] : [0];
+        }
+        return thresholds.length > 0 ? thresholds : [0];
+      })();
+      
+      const handleAddThreshold = () => {
+        let initialValue = 0;
+        if (displayThresholds.length === 0) {
+          // First threshold: use mean-based value
+          initialValue = calculateMean();
+        } else {
+          // Subsequent thresholds: use first threshold value
+          initialValue = displayThresholds[0] || 0;
+        }
+        const newThresholds = [...displayThresholds, initialValue];
+        onParamChange("thresholds", newThresholds);
+      };
+      
+      const handleRemoveThreshold = (index: number) => {
+        // Prevent removing the first threshold
+        if (index === 0) return;
+        const newThresholds = displayThresholds.filter((_, i) => i !== index);
+        onParamChange("thresholds", newThresholds);
+      };
+      
+      // Format number with thousand separators
+      const formatNumber = (num: number): string => {
+        if (isNaN(num) || num === null || num === undefined) return "0";
+        return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
+      };
+      
+      // Parse formatted number back to number
+      const parseFormattedNumber = (str: string): number => {
+        const cleaned = str.replace(/,/g, '');
+        return parseFloat(cleaned) || 0;
+      };
+      
+      const handleThresholdInputChange = (index: number, formattedValue: string) => {
+        const numericValue = parseFormattedNumber(formattedValue);
+        const newThresholds = [...displayThresholds];
+        newThresholds[index] = numericValue;
+        onParamChange("thresholds", newThresholds);
+      };
+      
+      return (
+        <div className="space-y-4">
+          <PropertySelect
+            label="Target Column"
+            value={target_column || ""}
+            onChange={(v) => {
+              onParamChange("target_column", v);
+              // If thresholds is empty and target column is selected, initialize with calculated mean
+              if (thresholds.length === 0 && v) {
+                const tempCalculateMean = (): number => {
+                  if (!v || inputRows.length === 0) return 0;
+                  const values = inputRows
+                    .map(row => row[v])
+                    .filter(val => val !== null && val !== undefined && val !== "")
+                    .map(val => parseFloat(String(val)))
+                    .filter(val => !isNaN(val));
+                  if (values.length === 0) return 0;
+                  const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+                  if (mean === 0) return 0;
+                  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(mean))));
+                  return Math.floor(mean / magnitude) * magnitude;
+                };
+                const initialValue = tempCalculateMean();
+                if (initialValue > 0) {
+                  onParamChange("thresholds", [initialValue]);
+                }
+              }
+            }}
+            options={[
+              { value: "", label: "선택하세요" },
+              ...columnOptions.map(col => ({ value: col, label: col }))
+            ]}
+          />
+          <p className="text-xs text-gray-500">
+            Threshold 분석을 수행할 숫자형 컬럼을 선택하세요.
+          </p>
+          
+          <div className="pt-2 border-t border-gray-700">
+            <PropertySelect
+              label="Year Column"
+              value={year_column || ""}
+              onChange={(v) => onParamChange("year_column", v)}
+              options={[
+                { value: "", label: "선택하세요" },
+                ...yearColumnOptions.map(col => ({ value: col, label: col }))
+              ]}
+            />
+            <p className="text-xs text-gray-500">
+              연도별 건수 분석을 위한 연도 컬럼을 선택하세요.
+            </p>
+          </div>
+          
+          <div className="pt-2 border-t border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-gray-300">Thresholds</label>
+              <button
+                onClick={handleAddThreshold}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+              >
+                추가
+              </button>
+            </div>
+            <div className="space-y-2">
+              {displayThresholds.map((threshold: number, index: number) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 p-2 bg-gray-800 rounded-md"
+                  >
+                    <span className="text-sm text-gray-400 w-20">
+                      Threshold {index + 1}:
+                    </span>
+                    <input
+                      type="text"
+                      value={formatNumber(threshold || 0)}
+                      onChange={(e) => {
+                        const inputValue = e.target.value;
+                        // Allow only numbers, commas, and decimal points
+                        if (/^[\d,.]*$/.test(inputValue) || inputValue === '') {
+                          handleThresholdInputChange(index, inputValue);
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // Ensure proper formatting on blur
+                        const numericValue = parseFormattedNumber(e.target.value);
+                        handleThresholdInputChange(index, formatNumber(numericValue));
+                      }}
+                      className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                    {index > 0 && (
+                      <button
+                        onClick={() => handleRemoveThreshold(index)}
+                        className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
+                      >
+                        삭제
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            <p className="text-xs text-gray-500 mt-2">
+              여러 Threshold 값을 설정하여 각 값보다 큰 행의 건수를 분석할 수 있습니다.
+            </p>
+          </div>
+        </div>
+      );
+    }
     case ModuleType.FitAggregateModel: {
       const sourceData = getConnectedDataSource(module.id);
       // Handle different output types (ThresholdSplitOutput, DataPreview, etc.)
@@ -4231,10 +4429,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       );
     }
 
-    if (
-      module.type === ModuleType.LoadData ||
-      module.type === ModuleType.XolLoading
-    ) {
+    if (module.type === ModuleType.LoadData) {
       return (
         <StatRow label="File Name" value={module.parameters.source || "N/A"} />
       );
@@ -4675,53 +4870,53 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </p>
         </div>
 
-        <div className="flex-shrink-0 border-b border-gray-700">
-          <div className="flex">
-            <button
-              onClick={() => setActiveTab("properties")}
+          <div className="flex-shrink-0 border-b border-gray-700">
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab("properties")}
               disabled={!module}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
-                activeTab === "properties"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:bg-gray-700/50"
+              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                  activeTab === "properties"
+                    ? "bg-gray-700 text-white"
+                    : "text-gray-400 hover:bg-gray-700/50"
               } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <CogIcon className="w-5 h-5" /> Properties
-            </button>
-            <button
-              onClick={() => setActiveTab("preview")}
+              >
+              Properties
+              </button>
+              <button
+                onClick={() => setActiveTab("preview")}
               disabled={!module}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
-                activeTab === "preview"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:bg-gray-700/50"
+              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                  activeTab === "preview"
+                    ? "bg-gray-700 text-white"
+                    : "text-gray-400 hover:bg-gray-700/50"
               } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <TableCellsIcon className="w-5 h-5" /> {module?.type === ModuleType.DefineXolContract ? "복원P 비율" : "Preview"}
-            </button>
-            <button
-              onClick={() => setActiveTab("code")}
+              >
+              {module?.type === ModuleType.DefineXolContract ? "복원P 비율" : "Preview"}
+              </button>
+              <button
+                onClick={() => setActiveTab("code")}
               disabled={!module}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
-                activeTab === "code"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:bg-gray-700/50"
+              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                  activeTab === "code"
+                    ? "bg-gray-700 text-white"
+                    : "text-gray-400 hover:bg-gray-700/50"
               } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              <CodeBracketIcon className="w-5 h-5" /> Code
+              >
+              Code
             </button>
             <button
               onClick={() => setActiveTab("terminal")}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 text-sm font-semibold ${
+              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                 activeTab === "terminal"
                   ? "bg-gray-700 text-white"
                   : "text-gray-400 hover:bg-gray-700/50"
               }`}
             >
-              <CommandLineIcon className="w-5 h-5" /> Terminal
-            </button>
+              Terminal
+              </button>
+            </div>
           </div>
-        </div>
 
         <div className="flex-grow overflow-y-auto panel-scrollbar p-3">
           {activeTab === "terminal" ? (

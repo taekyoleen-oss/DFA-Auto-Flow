@@ -51,6 +51,7 @@ import {
   SeverityModelOutput,
   FrequencySeverityModelOutput,
   CombineLossModelOutput,
+  SettingThresholdOutput,
 } from "./types";
 import { DEFAULT_MODULES, TOOLBOX_MODULES, SAMPLE_MODELS } from "./constants";
 import { SAVED_SAMPLES } from "./savedSamples";
@@ -87,6 +88,7 @@ import {
 import useHistoryState from "./hooks/useHistoryState";
 import { DataPreviewModal } from "./components/DataPreviewModal";
 import { StatisticsPreviewModal } from "./components/StatisticsPreviewModal";
+import { SettingThresholdPreviewModal } from "./components/SettingThresholdPreviewModal";
 import { SplitDataPreviewModal } from "./components/SplitDataPreviewModal";
 import { TrainedModelPreviewModal } from "./components/TrainedModelPreviewModal";
 import { AggregateModelPreviewModal } from "./components/AggregateModelPreviewModal";
@@ -621,39 +623,17 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
   const handleRearrangeModules = useCallback(() => {
     if (modules.length === 0) return;
 
-    // Model definition types (auxiliary modules that should be placed to the left)
-    const MODEL_DEFINITION_TYPES: ModuleType[] = [
-      ModuleType.LinearRegression,
-      ModuleType.LogisticRegression,
-      ModuleType.PoissonRegression,
-      ModuleType.NegativeBinomialRegression,
-      ModuleType.DecisionTree,
-      ModuleType.RandomForest,
-      ModuleType.SVM,
-      ModuleType.LinearDiscriminantAnalysis,
-      ModuleType.NaiveBayes,
-      ModuleType.KNN,
-      ModuleType.KMeans,
-      ModuleType.HierarchicalClustering,
-      ModuleType.DBSCAN,
-      ModuleType.PrincipalComponentAnalysis,
-      // Traditional Analysis - Statsmodels Models
-      ModuleType.OLSModel,
-      ModuleType.LogisticModel,
-      ModuleType.PoissonModel,
-      ModuleType.QuasiPoissonModel,
-      ModuleType.NegativeBinomialModel,
-      ModuleType.StatModels,
-    ];
-
     // 1. Build graph representations
     const adj: Record<string, string[]> = {};
     const revAdj: Record<string, string[]> = {};
     const inDegree: Record<string, number> = {};
+    const outDegree: Record<string, number> = {};
+    
     modules.forEach((m) => {
       adj[m.id] = [];
       revAdj[m.id] = [];
       inDegree[m.id] = 0;
+      outDegree[m.id] = 0;
     });
 
     connections.forEach((conn) => {
@@ -661,101 +641,277 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
         adj[conn.from.moduleId].push(conn.to.moduleId);
         revAdj[conn.to.moduleId].push(conn.from.moduleId);
         inDegree[conn.to.moduleId]++;
+        outDegree[conn.from.moduleId]++;
       }
     });
 
-    // 2. Topological sort to get execution order (top to bottom)
-    const queue = modules.filter((m) => inDegree[m.id] === 0).map((m) => m.id);
-    const sortedModuleIds: string[] = [];
-    const tempInDegree = { ...inDegree };
-    while (queue.length > 0) {
-      const u = queue.shift()!;
-      sortedModuleIds.push(u);
-      (adj[u] || []).forEach((v) => {
-        tempInDegree[v]--;
-        if (tempInDegree[v] === 0) {
-          queue.push(v);
-        }
+    // 2. Calculate layers using BFS (좌에서 우로)
+    const layers: string[][] = [];
+    const visited = new Set<string>();
+    const layerMap = new Map<string, number>(); // moduleId -> layer index
+    
+    // Separate modules: those with inputs and those without inputs
+    const modulesWithInputs = modules.filter((m) => inDegree[m.id] > 0).map((m) => m.id);
+    const modulesWithoutInputs = modules.filter((m) => inDegree[m.id] === 0).map((m) => m.id);
+    
+    // First, process modules with inputs using BFS
+    if (modulesWithInputs.length > 0) {
+      // Find starting points: modules with inputs that are not connected from unprocessed modules
+      const queue: Array<{ id: string; layer: number }> = [];
+      
+      // Start with modules that have inputs but all their inputs are from modules without inputs
+      const startingModules = modulesWithInputs.filter((moduleId) => {
+        const inputs = revAdj[moduleId] || [];
+        return inputs.length > 0 && inputs.every(inputId => modulesWithoutInputs.includes(inputId));
       });
+
+      if (startingModules.length > 0) {
+        // These modules start at layer 1 (one step after their inputs)
+        startingModules.forEach(id => {
+          visited.add(id);
+          layerMap.set(id, 1);
+          queue.push({ id, layer: 1 });
+        });
+      } else {
+        // If no such modules, start with first module that has inputs at layer 1
+        const firstModule = modulesWithInputs[0];
+        visited.add(firstModule);
+        layerMap.set(firstModule, 1);
+        queue.push({ id: firstModule, layer: 1 });
+      }
+
+      while (queue.length > 0) {
+        const { id, layer } = queue.shift()!;
+        
+        // Ensure layer exists
+        if (!layers[layer]) {
+          layers[layer] = [];
+        }
+        if (!layers[layer].includes(id)) {
+          layers[layer].push(id);
+        }
+
+        // Process outgoing connections
+        (adj[id] || []).forEach((nextId) => {
+          if (modulesWithInputs.includes(nextId)) {
+            if (!visited.has(nextId)) {
+              visited.add(nextId);
+              const nextLayer = layer + 1;
+              layerMap.set(nextId, nextLayer);
+              queue.push({ id: nextId, layer: nextLayer });
+            } else {
+              // Already visited, check if layer needs update
+              const currentLayer = layerMap.get(nextId) || 1;
+              const newLayer = Math.max(currentLayer, layer + 1);
+              if (newLayer > currentLayer) {
+                layerMap.set(nextId, newLayer);
+                // Remove from old layer and add to new layer
+                if (layers[currentLayer]) {
+                  layers[currentLayer] = layers[currentLayer].filter(mid => mid !== nextId);
+                }
+                if (!layers[newLayer]) {
+                  layers[newLayer] = [];
+                }
+                layers[newLayer].push(nextId);
+                queue.push({ id: nextId, layer: newLayer });
+              }
+            }
+          }
+        });
+      }
     }
 
-    // Handle cycles/unreachable nodes by appending them
-    if (sortedModuleIds.length < modules.length) {
-      addLog(
-        "WARN",
-        "Cycle detected or modules are unreachable. Appending to layout."
-      );
-      modules.forEach((m) => {
-        if (!sortedModuleIds.includes(m.id)) {
-          sortedModuleIds.push(m.id);
-        }
-      });
-    }
-
-    // 3. Separate auxiliary modules from regular modules
-    const regularModules: string[] = [];
-    const auxiliaryModules: Record<string, string> = {}; // moduleId -> parentModuleId
-
-    sortedModuleIds.forEach((moduleId) => {
-      const module = modules.find((m) => m.id === moduleId);
-      if (!module) return;
-
-      if (MODEL_DEFINITION_TYPES.includes(module.type)) {
-        // Find the module it connects to (usually TrainModel)
-        const connection = connections.find(
-          (c) => c.from.moduleId === moduleId
-        );
-        if (connection) {
-          auxiliaryModules[moduleId] = connection.to.moduleId;
+    // Now handle modules without inputs
+    // If they have outputs, place them one layer before their connected modules
+    modulesWithoutInputs.forEach((moduleId) => {
+      const outputs = adj[moduleId] || [];
+      
+      if (outputs.length > 0) {
+        // Find the minimum layer of connected modules
+        const connectedLayers = outputs
+          .map(outputId => layerMap.get(outputId))
+          .filter(layer => layer !== undefined) as number[];
+        
+        if (connectedLayers.length > 0) {
+          const minConnectedLayer = Math.min(...connectedLayers);
+          // Place this module one layer before the minimum connected layer
+          const targetLayer = Math.max(0, minConnectedLayer - 1);
+          layerMap.set(moduleId, targetLayer);
+          
+          if (!layers[targetLayer]) {
+            layers[targetLayer] = [];
+          }
+          if (!layers[targetLayer].includes(moduleId)) {
+            layers[targetLayer].push(moduleId);
+          }
         } else {
-          // If no connection found, treat as regular module
-          regularModules.push(moduleId);
+          // No connected modules found, place at layer 0
+          layerMap.set(moduleId, 0);
+          if (!layers[0]) {
+            layers[0] = [];
+          }
+          if (!layers[0].includes(moduleId)) {
+            layers[0].push(moduleId);
+          }
         }
       } else {
-        regularModules.push(moduleId);
+        // No inputs and no outputs - place at layer 0
+        layerMap.set(moduleId, 0);
+        if (!layers[0]) {
+          layers[0] = [];
+        }
+        if (!layers[0].includes(moduleId)) {
+          layers[0].push(moduleId);
+        }
       }
     });
 
-    // 4. Calculate positions - 위에서 아래로 배치
-    const moduleWidth = 256;
-    const vSpacing = 150; // 상하 간격
-    const auxiliaryOffset = 10; // 보조 모듈 왼쪽 오프셋
-    const initialX = 50;
-    const initialY = 50;
+    // Handle any remaining unvisited modules (cycles or disconnected)
+    modules.forEach((m) => {
+      if (!visited.has(m.id) && !layerMap.has(m.id)) {
+        const maxLayer = layers.length > 0 ? layers.length - 1 : 0;
+        if (!layers[maxLayer]) {
+          layers[maxLayer] = [];
+        }
+        layers[maxLayer].push(m.id);
+        layerMap.set(m.id, maxLayer);
+      }
+    });
+
+    // 3. Calculate positions - 좌에서 우로, 입력/출력이 여러 개면 위아래로
+    const hSpacing = 350; // 좌우 간격
+    const vSpacing = 180; // 상하 간격 (여러 입력/출력일 때)
+    const initialX = 100;
+    const initialY = 100;
 
     const newModules = [...modules];
     const modulePositions: Record<string, { x: number; y: number }> = {};
-    let currentY = initialY;
 
-    // Place regular modules vertically from top to bottom
-    regularModules.forEach((moduleId) => {
-      modulePositions[moduleId] = {
-        x: initialX,
-        y: currentY,
-      };
-      currentY += vSpacing;
+    // First pass: Calculate X positions based on layers
+    layers.forEach((layerModules, layerIndex) => {
+      const x = initialX + layerIndex * hSpacing;
+      layerModules.forEach((moduleId) => {
+        modulePositions[moduleId] = { x, y: 0 }; // Y will be calculated later
+      });
     });
 
-    // 5. Place auxiliary modules to the left of their parent modules
-    Object.entries(auxiliaryModules).forEach(
-      ([auxModuleId, parentModuleId]) => {
-        const parentPos = modulePositions[parentModuleId];
-        if (parentPos) {
-          modulePositions[auxModuleId] = {
-            x: parentPos.x - moduleWidth - auxiliaryOffset,
-            y: parentPos.y,
-          };
-        } else {
-          // If parent not found, place at initial position
-          modulePositions[auxModuleId] = {
-            x: initialX - moduleWidth - auxiliaryOffset,
-            y: initialY,
-          };
-        }
-      }
-    );
+    // Second pass: Calculate Y positions considering inputs and outputs
+    layers.forEach((layerModules, layerIndex) => {
+      layerModules.forEach((moduleId) => {
+        const inputIds = revAdj[moduleId] || [];
+        const outputIds = adj[moduleId] || [];
+        const inputCount = inputIds.length;
+        const outputCount = outputIds.length;
 
-    // 6. Update module positions
+        let targetY = initialY;
+
+        // If module has inputs, align with input modules
+        if (inputCount > 0) {
+          const inputYs = inputIds
+            .map(id => modulePositions[id]?.y)
+            .filter(y => y !== undefined && y > 0) as number[];
+          
+          if (inputYs.length > 0) {
+            if (inputCount === 1) {
+              // Single input: align with it
+              targetY = inputYs[0];
+            } else {
+              // Multiple inputs: use average and add vertical spacing
+              const avgY = inputYs.reduce((sum, y) => sum + y, 0) / inputYs.length;
+              const minY = Math.min(...inputYs);
+              const maxY = Math.max(...inputYs);
+              
+              // If inputs are spread out, place in the middle
+              if (maxY - minY > vSpacing) {
+                targetY = avgY;
+              } else {
+                // If inputs are close, place below the highest
+                targetY = maxY + vSpacing;
+              }
+            }
+          }
+        }
+
+        // If module has outputs, consider output alignment
+        if (outputCount > 1 && targetY === initialY) {
+          // Multiple outputs but no inputs: start from initial position
+          // Will be adjusted based on layer position
+          const layerStartY = initialY + layerModules.indexOf(moduleId) * vSpacing;
+          targetY = layerStartY;
+        }
+
+        // If still at initial position and no inputs, use layer-based positioning
+        if (targetY === initialY && inputCount === 0) {
+          const indexInLayer = layerModules.indexOf(moduleId);
+          targetY = initialY + indexInLayer * vSpacing;
+        }
+
+        // Update position
+        modulePositions[moduleId] = {
+          x: modulePositions[moduleId].x,
+          y: targetY,
+        };
+      });
+    });
+
+    // Third pass: Adjust Y positions for modules with multiple outputs
+    // Spread them vertically if they have multiple outputs
+    layers.forEach((layerModules, layerIndex) => {
+      layerModules.forEach((moduleId) => {
+        const outputIds = adj[moduleId] || [];
+        if (outputIds.length > 1) {
+          // Get output positions
+          const outputYs = outputIds
+            .map(id => modulePositions[id]?.y)
+            .filter(y => y !== undefined && y > 0) as number[];
+          
+          if (outputYs.length > 1) {
+            const minOutputY = Math.min(...outputYs);
+            const maxOutputY = Math.max(...outputYs);
+            const avgOutputY = outputYs.reduce((sum, y) => sum + y, 0) / outputYs.length;
+            
+            // Align source module with average of outputs
+            modulePositions[moduleId] = {
+              ...modulePositions[moduleId],
+              y: avgOutputY,
+            };
+          }
+        }
+      });
+    });
+
+    // Fourth pass: Ensure proper spacing within each layer
+    layers.forEach((layerModules, layerIndex) => {
+      // Sort modules in layer by their current Y position
+      const sortedModules = [...layerModules].sort((a, b) => {
+        const yA = modulePositions[a]?.y || 0;
+        const yB = modulePositions[b]?.y || 0;
+        return yA - yB;
+      });
+
+      // Redistribute with proper spacing
+      sortedModules.forEach((moduleId, index) => {
+        const currentPos = modulePositions[moduleId];
+        if (currentPos) {
+          // Check if we need to maintain spacing from previous module
+          if (index > 0) {
+            const prevModuleId = sortedModules[index - 1];
+            const prevY = modulePositions[prevModuleId]?.y || 0;
+            const minY = prevY + vSpacing;
+            
+            // Only adjust if current Y is too close
+            if (currentPos.y < minY) {
+              modulePositions[moduleId] = {
+                ...currentPos,
+                y: minY,
+              };
+            }
+          }
+        }
+      });
+    });
+
+    // 5. Update module positions
     newModules.forEach((module, index) => {
       const pos = modulePositions[module.id];
       if (pos) {
@@ -763,10 +919,16 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
           ...module,
           position: pos,
         };
+      } else {
+        // Fallback: place at initial position
+        newModules[index] = {
+          ...module,
+          position: { x: initialX, y: initialY },
+        };
       }
     });
 
-    // 7. Update state
+    // 6. Update state
     setModules(newModules);
     setIsDirty(true);
     setTimeout(() => handleFitToView(), 0);
@@ -818,8 +980,6 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
           "Generates an exposure curve from a fitted distribution.",
         PriceXoLLayer:
           "Calculates the premium for an Excess of Loss (XoL) layer using an exposure curve.",
-        XolLoading:
-          "Loads claims data specifically for experience-based XoL pricing.",
         ApplyThreshold:
           "Filters out claims that are below a specified monetary threshold.",
         DefineXolContract:
@@ -961,11 +1121,7 @@ The JSON object must contain 'plan', 'modules', and 'connections'.
           outputs: [...defaultData.outputs],
         };
 
-        if (
-          file &&
-          (newModule.type === ModuleType.LoadData ||
-            newModule.type === ModuleType.XolLoading)
-        ) {
+        if (file && newModule.type === ModuleType.LoadData) {
           newModule.parameters.fileContent = file.content;
           newModule.parameters.source = file.name;
         }
@@ -2789,7 +2945,6 @@ ${header}
       try {
         if (
           module.type === ModuleType.LoadData ||
-          module.type === ModuleType.XolLoading ||
           module.type === ModuleType.LoadClaimData
         ) {
           const fileContent = module.parameters.fileContent as string;
@@ -3063,8 +3218,33 @@ ${header}
               ? inputData.data
               : inputData;
 
+          // threshold_in 연결 확인
+          const thresholdConnection = connections.find((c) => {
+            if (c.to.moduleId === module.id) {
+              const targetModule = currentModules.find((m) => m.id === module.id);
+              const targetPort = targetModule?.inputs.find(
+                (p) => p.name === c.to.portName
+              );
+              return targetPort?.name === "threshold_in" && targetPort?.type === "threshold";
+            }
+            return false;
+          });
+
+          let thresholdValue = module.parameters.threshold || 1000000;
+          if (thresholdConnection) {
+            const sourceModule = currentModules.find(
+              (sm) => sm.id === thresholdConnection.from.moduleId
+            );
+            if (sourceModule?.outputData?.type === "SettingThresholdOutput") {
+              const selectedThreshold = (sourceModule.outputData as SettingThresholdOutput).selectedThreshold;
+              if (selectedThreshold !== undefined && selectedThreshold !== null) {
+                thresholdValue = selectedThreshold;
+                addLog("INFO", `Setting Threshold에서 선택된 값 사용: ${thresholdValue.toLocaleString()}`);
+              }
+            }
+          }
+
           const {
-            threshold = 1000000,
             amount_column = "클레임 금액",
           } = module.parameters;
 
@@ -3078,7 +3258,7 @@ ${header}
             // Python 코드에서도 date_column을 사용하지 않도록 수정 필요
             const result = await splitByThresholdPython(
               actualData.rows || [],
-              threshold,
+              thresholdValue,
               amount_column,
               "", // date_column 제거
               60000
@@ -3098,7 +3278,7 @@ ${header}
                 totalRowCount: result.aboveThreshold.rows.length,
                 rows: result.aboveThreshold.rows,
               },
-              threshold: threshold,
+              threshold: thresholdValue,
             } as ThresholdSplitOutput;
 
             addLog("SUCCESS", "Threshold 기준 분리 완료");
@@ -4447,6 +4627,116 @@ ${header}
             const errorMessage = error.message || String(error);
             addLog("ERROR", `Python 통계 계산 실패: ${errorMessage}`);
             throw new Error(`통계 계산 실패: ${errorMessage}`);
+          }
+        } else if (module.type === ModuleType.SettingThreshold) {
+          const inputData = getSingleInputData(module.id) as DataPreview | ClaimDataOutput | InflatedDataOutput | FormatChangeOutput;
+          if (!inputData) {
+            throw new Error("Input data not available.");
+          }
+
+          // Get actual data
+          let actualData: DataPreview;
+          if (inputData.type === "ClaimDataOutput" || inputData.type === "InflatedDataOutput" || inputData.type === "FormatChangeOutput") {
+            actualData = (inputData as any).data;
+          } else {
+            actualData = inputData as DataPreview;
+          }
+
+          if (!actualData || !actualData.rows) {
+            throw new Error("Input data rows not available.");
+          }
+
+          const { target_column, thresholds = [], year_column = "" } = module.parameters;
+
+          if (!target_column || !thresholds || thresholds.length === 0) {
+            throw new Error("Target column and at least one threshold must be configured.");
+          }
+
+          // Pyodide를 사용하여 Python으로 Threshold 분석 수행
+          try {
+            addLog("INFO", "Threshold 분석 중...");
+
+            const pyodideModule = await import("./utils/pyodideRunner");
+            const { loadPyodide, fromPython } = pyodideModule;
+
+            // Python 코드 생성
+            const { getModuleCode } = await import("./codeSnippets");
+            const pythonCode = getModuleCode(module, currentModules, connections);
+
+            // Pyodide 로드
+            const py = await loadPyodide(30000);
+
+            // 필요한 패키지 로드
+            await Promise.race([
+              py.loadPackage(["pandas", "numpy"]),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("패키지 설치 타임아웃 (60초 초과)")), 60000)
+              )
+            ]);
+
+            // 데이터를 Python에 전달
+            py.globals.set("js_data", actualData.rows);
+            py.globals.set("js_columns", actualData.columns);
+
+            // Python 코드 실행 (dataframe 변수 설정 포함)
+            const fullCode = `
+import pandas as pd
+import numpy as np
+import json
+
+# JavaScript에서 전달된 데이터를 DataFrame으로 변환
+rows = js_data.to_py()
+columns = js_columns.to_py()
+
+# DataFrame 생성
+dataframe = pd.DataFrame(rows)
+
+# 모듈 코드 실행
+${pythonCode}
+
+# output 변수가 있는지 확인하고 반환
+if 'output' in locals():
+    result = output
+else:
+    result = None
+
+result
+`;
+
+            const resultPyObj = await Promise.race([
+              Promise.resolve(py.runPython(fullCode)),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Python Threshold 분석 타임아웃 (120초 초과)")), 120000)
+              )
+            ]);
+
+            // Python 딕셔너리를 JavaScript 객체로 변환
+            const result = fromPython(resultPyObj);
+
+            // 정리
+            py.globals.delete("js_data");
+            py.globals.delete("js_columns");
+
+            // 디버깅: 결과 로그 출력
+            console.log("Python execution result:", result);
+            console.log("Result type:", result?.type);
+
+            // 결과가 SettingThresholdOutput 형식인지 확인
+            if (result && result.type === "SettingThresholdOutput") {
+              newOutputData = result as SettingThresholdOutput;
+              addLog("SUCCESS", "Threshold 분석 완료");
+            } else {
+              // 더 자세한 오류 메시지
+              const errorMsg = result 
+                ? `Invalid output format. Expected SettingThresholdOutput, got: ${JSON.stringify(result).substring(0, 200)}`
+                : "No output returned from Python execution";
+              console.error("Python execution error:", errorMsg);
+              throw new Error(errorMsg);
+            }
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `Threshold 분석 실패: ${errorMessage}`);
+            throw new Error(`Threshold 분석 실패: ${errorMessage}`);
           }
         } else if (module.type === ModuleType.TrainModel) {
           const modelInputConnection = connections.find(
@@ -7755,14 +8045,41 @@ ${header}
         } else if (module.type === ModuleType.ApplyThreshold) {
           const inputData = getSingleInputData(module.id) as DataPreview;
           if (!inputData) throw new Error("Input data not available.");
-          const { threshold, amount_column } = module.parameters;
-          if (!amount_column || typeof threshold !== "number")
+          
+          // threshold_in 연결 확인
+          const thresholdConnection = connections.find((c) => {
+            if (c.to.moduleId === module.id) {
+              const targetModule = currentModules.find((m) => m.id === module.id);
+              const targetPort = targetModule?.inputs.find(
+                (p) => p.name === c.to.portName
+              );
+              return targetPort?.name === "threshold_in" && targetPort?.type === "threshold";
+            }
+            return false;
+          });
+
+          let thresholdValue = module.parameters.threshold || 1000000;
+          if (thresholdConnection) {
+            const sourceModule = currentModules.find(
+              (sm) => sm.id === thresholdConnection.from.moduleId
+            );
+            if (sourceModule?.outputData?.type === "SettingThresholdOutput") {
+              const selectedThreshold = (sourceModule.outputData as SettingThresholdOutput).selectedThreshold;
+              if (selectedThreshold !== undefined && selectedThreshold !== null) {
+                thresholdValue = selectedThreshold;
+                addLog("INFO", `Setting Threshold에서 선택된 값 사용: ${thresholdValue.toLocaleString()}`);
+              }
+            }
+          }
+
+          const { amount_column } = module.parameters;
+          if (!amount_column || typeof thresholdValue !== "number")
             throw new Error("Threshold and Amount Column must be set.");
 
           const newRows = (inputData.rows || []).filter(
             (row) => {
               const value = row[amount_column];
-              return value !== null && value !== undefined && (value as number) >= threshold;
+              return value !== null && value !== undefined && (value as number) >= thresholdValue;
             }
           );
           newOutputData = {
@@ -9211,20 +9528,20 @@ ${header}
                     transform: "translateX(-50%)",
                   }),
             }}
-            className={`fixed bg-gray-900/80 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-4 shadow-2xl z-50 border border-gray-700 select-none transition-all active:scale-95 ${
+            className={`fixed bg-gray-900/80 backdrop-blur-md rounded-full px-2.5 py-1.5 flex items-center gap-2 shadow-2xl z-50 border border-gray-700 select-none transition-all active:scale-95 cursor-move ${
               controlPanelPos ? "" : ""
             }`}
           >
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 adjustScale(-0.1);
               }}
-                className="p-2 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
               title="Zoom Out"
             >
-              <MinusIcon className="w-5 h-5" />
+              <MinusIcon className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => {
@@ -9232,7 +9549,7 @@ ${header}
                   setScale(1);
                   setPan({ x: 0, y: 0 });
               }}
-                className="px-2 text-sm font-medium text-gray-300 hover:text-white min-w-[3rem] text-center"
+                className="px-1.5 text-xs font-medium text-gray-300 hover:text-white min-w-[2.5rem] text-center"
                 title="Reset View"
             >
                 {Math.round(scale * 100)}%
@@ -9242,45 +9559,45 @@ ${header}
                 e.stopPropagation();
                   adjustScale(0.1);
               }}
-                className="p-2 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
                 title="Zoom In"
             >
-                <PlusIcon className="w-5 h-5" />
+                <PlusIcon className="w-4 h-4" />
             </button>
             </div>
 
-            <div className="w-px h-4 bg-gray-700"></div>
+            <div className="w-px h-3 bg-gray-700"></div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 handleFitToView();
               }}
-                className="p-2 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
               title="Fit to View"
             >
-              <ArrowsPointingOutIcon className="w-5 h-5" />
+              <ArrowsPointingOutIcon className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                   handleRearrangeModules();
               }}
-                className="p-2 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
                 title="Auto Layout"
             >
-                <SparklesIcon className="w-5 h-5" />
+                <SparklesIcon className="w-4 h-4" />
             </button>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                   handleRotateModules();
               }}
-                className="p-2 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
+                className="p-1.5 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
                 title="Rotate Modules"
             >
-                <ArrowPathIcon className="w-5 h-5" />
+                <ArrowPathIcon className="w-4 h-4" />
             </button>
             </div>
           </div>
@@ -9418,6 +9735,53 @@ ${header}
             module={viewingDataForModule}
             projectName={projectName}
             onClose={handleCloseModal}
+          />
+        )}
+      {viewingDataForModule &&
+        viewingDataForModule.outputData?.type === "SettingThresholdOutput" && (
+          <SettingThresholdPreviewModal
+            module={viewingDataForModule}
+            projectName={projectName}
+            onClose={handleCloseModal}
+            onThresholdChange={(moduleId, threshold) => {
+              setModules(prev => {
+                // Setting Threshold 모듈의 outputData 업데이트
+                const updatedModules = prev.map(m => {
+                  if (m.id === moduleId && m.outputData?.type === "SettingThresholdOutput") {
+                    return {
+                      ...m,
+                      outputData: {
+                        ...m.outputData,
+                        selectedThreshold: threshold
+                      }
+                    };
+                  }
+                  return m;
+                });
+
+                // threshold_out에 연결된 모듈들의 threshold 파라미터 업데이트
+                const connectedModules = connections
+                  .filter(c => 
+                    c.from.moduleId === moduleId && 
+                    c.from.portName === "threshold_out"
+                  )
+                  .map(c => c.to.moduleId);
+
+                return updatedModules.map(m => {
+                  if (connectedModules.includes(m.id) && 
+                      (m.type === ModuleType.SplitByThreshold || m.type === ModuleType.ApplyThreshold)) {
+                    return {
+                      ...m,
+                      parameters: {
+                        ...m.parameters,
+                        threshold: threshold
+                      }
+                    };
+                  }
+                  return m;
+                });
+              });
+            }}
           />
         )}
       {viewingDataForModule &&

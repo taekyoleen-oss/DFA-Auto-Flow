@@ -14,7 +14,7 @@ type SortConfig = {
 export const StatsTable: React.FC<{ 
     title: string; 
     data: DataPreview;
-    targetColumn?: string; // XOL Calculator의 경우 대상 클레임 컬럼만 통계량 산출
+    targetColumn?: string; // XoL Calculator의 경우 대상 클레임 컬럼만 통계량 산출
     excludePercentiles?: boolean; // 백분위수 제외 여부
 }> = ({ title, data, targetColumn, excludePercentiles = false }) => {
     const allColumns = useMemo(() => {

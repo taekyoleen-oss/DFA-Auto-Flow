@@ -91,10 +91,10 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
     } else if (!results || results.length === 0) {
       return [];
     } else {
-      return results.map(result => ({
-        amount: result.amount,
-        count: result.count,
-      }));
+    return results.map(result => ({
+      amount: result.amount,
+      count: result.count,
+    }));
     }
   }, [results, isXolFormat, displayClaimLevelData]);
 
@@ -106,9 +106,9 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
       ];
     } else {
       return [
-        { name: 'amount', type: 'number' },
-        { name: 'count', type: 'number' },
-      ];
+    { name: 'amount', type: 'number' },
+    { name: 'count', type: 'number' },
+  ];
     }
   }, [isXolFormat, displayClaimLevelData]);
 

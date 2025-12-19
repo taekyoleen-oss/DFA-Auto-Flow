@@ -574,8 +574,14 @@ export const Canvas: React.FC<CanvasProps> = ({
                   toModule.type === ModuleType.XolCalculator &&
                   toPort.name === "data_in" &&
                   toPort.type === "data";
+                // Setting Threshold의 data_out 포트는 data 타입으로 연결 가능
+                const isSettingThresholdDataOutCase =
+                  fromModule.type === ModuleType.SettingThreshold &&
+                  fromPort.name === "data_out" &&
+                  fromPort.type === "data" &&
+                  toPort.type === "data";
                 
-                if (isTypeMatch || isXolCalculatorSpecialCase || isSimulateFreqServXolCase) {
+                if (isTypeMatch || isXolCalculatorSpecialCase || isSimulateFreqServXolCase || isSettingThresholdDataOutCase) {
                     const newConnection: Connection = {
                         id: `conn-${Date.now()}`,
                         from: { moduleId: fromModule.id, portName: fromPort.name },
@@ -585,13 +591,31 @@ export const Canvas: React.FC<CanvasProps> = ({
                         ...prev.filter(c => !(c.to.moduleId === toModule.id && c.to.portName === toPort.name)),
                         newConnection,
                     ]);
+
+                    // Setting Threshold의 threshold_out 연결 시, 연결된 모듈의 threshold 파라미터 업데이트
+                    if (fromModule.type === ModuleType.SettingThreshold && 
+                        fromPort.name === "threshold_out" &&
+                        (toModule.type === ModuleType.SplitByThreshold || toModule.type === ModuleType.ApplyThreshold)) {
+                        const settingThresholdModule = modules.find(m => m.id === fromModule.id);
+                        if (settingThresholdModule?.outputData?.type === "SettingThresholdOutput") {
+                            const selectedThreshold = (settingThresholdModule.outputData as any).selectedThreshold;
+                            if (selectedThreshold !== undefined && selectedThreshold !== null) {
+                                onUpdateModule(toModule.id, {
+                                    parameters: {
+                                        ...toModule.parameters,
+                                        threshold: selectedThreshold
+                                    }
+                                });
+                            }
+                        }
+                    }
                 }
             }
         }
     }
     setDragConnection(null);
     setIsSuggestionDrag(false);
-  }, [dragConnection, isSuggestionDrag, modules, setConnections, onAcceptSuggestion]);
+  }, [dragConnection, isSuggestionDrag, modules, setConnections, onAcceptSuggestion, onUpdateModule]);
 
   const handleTapPort = useCallback((moduleId: string, portName: string, isInput: boolean) => {
     cancelDragConnection(); 
@@ -618,6 +642,24 @@ export const Canvas: React.FC<CanvasProps> = ({
                     ...prev.filter(c => !(c.to.moduleId === moduleId && c.to.portName === portName)),
                     newConnection,
                 ]);
+
+                // Setting Threshold의 threshold_out 연결 시, 연결된 모듈의 threshold 파라미터 업데이트
+                if (sourceModule.type === ModuleType.SettingThreshold && 
+                    tappedSourcePort.portName === "threshold_out" &&
+                    (targetModule.type === ModuleType.SplitByThreshold || targetModule.type === ModuleType.ApplyThreshold)) {
+                    const settingThresholdModule = modules.find(m => m.id === sourceModule.id);
+                    if (settingThresholdModule?.outputData?.type === "SettingThresholdOutput") {
+                        const selectedThreshold = (settingThresholdModule.outputData as any).selectedThreshold;
+                        if (selectedThreshold !== undefined && selectedThreshold !== null) {
+                            onUpdateModule(targetModule.id, {
+                                parameters: {
+                                    ...targetModule.parameters,
+                                    threshold: selectedThreshold
+                                }
+                            });
+                        }
+                    }
+                }
             }
             setTappedSourcePort(null);
         }
@@ -628,7 +670,7 @@ export const Canvas: React.FC<CanvasProps> = ({
             setTappedSourcePort({ moduleId, portName });
         }
     }
-  }, [tappedSourcePort, modules, setConnections, cancelDragConnection]);
+  }, [tappedSourcePort, modules, setConnections, cancelDragConnection, onUpdateModule]);
   
     const handleCanvasTouchEnd = (e: React.TouchEvent) => {
         if (dragConnection) {
