@@ -592,10 +592,32 @@ export const Canvas: React.FC<CanvasProps> = ({
                         from: { moduleId: toModule.id, portName: fromPort.name },
                         to: { moduleId: fromModule.id, portName: toPort.name },
                     };
-                    setConnections(prev => [
-                        ...prev.filter(c => !(c.to.moduleId === fromModule.id && c.to.portName === toPort.name)),
-                        newConnection,
-                    ]);
+                    // XoL Pricing 모듈의 data_in 포트는 여러 연결 허용
+                    const isXolPricingMultiInput = 
+                      fromModule.type === ModuleType.XolPricing && 
+                      toPort.name === "data_in";
+                    
+                    setConnections(prev => {
+                      if (isXolPricingMultiInput) {
+                        // 중복 연결 체크 (같은 from 모듈에서 같은 포트로의 연결 방지)
+                        const isDuplicate = prev.some(c => 
+                          c.from.moduleId === newConnection.from.moduleId && 
+                          c.to.moduleId === newConnection.to.moduleId && 
+                          c.to.portName === newConnection.to.portName
+                        );
+                        if (isDuplicate) {
+                          return prev; // 중복이면 추가하지 않음
+                        }
+                        // 기존 연결 유지하고 새 연결 추가
+                        return [...prev, newConnection];
+                      } else {
+                        // 기존 연결 제거하고 새 연결 추가
+                        return [
+                          ...prev.filter(c => !(c.to.moduleId === fromModule.id && c.to.portName === toPort.name)),
+                          newConnection,
+                        ];
+                      }
+                    });
                 }
             }
         } else if (!dragFromIsInput && dropOnIsInput) { // Drag from OUTPUT to INPUT
@@ -631,10 +653,32 @@ export const Canvas: React.FC<CanvasProps> = ({
                         from: { moduleId: fromModule.id, portName: fromPort.name },
                         to: { moduleId: toModule.id, portName: toPort.name },
                     };
-                    setConnections(prev => [
-                        ...prev.filter(c => !(c.to.moduleId === toModule.id && c.to.portName === toPort.name)),
-                        newConnection,
-                    ]);
+                    // XoL Pricing 모듈의 data_in 포트는 여러 연결 허용
+                    const isXolPricingMultiInput = 
+                      toModule.type === ModuleType.XolPricing && 
+                      toPort.name === "data_in";
+                    
+                    setConnections(prev => {
+                      if (isXolPricingMultiInput) {
+                        // 중복 연결 체크 (같은 from 모듈에서 같은 포트로의 연결 방지)
+                        const isDuplicate = prev.some(c => 
+                          c.from.moduleId === newConnection.from.moduleId && 
+                          c.to.moduleId === newConnection.to.moduleId && 
+                          c.to.portName === newConnection.to.portName
+                        );
+                        if (isDuplicate) {
+                          return prev; // 중복이면 추가하지 않음
+                        }
+                        // 기존 연결 유지하고 새 연결 추가
+                        return [...prev, newConnection];
+                      } else {
+                        // 기존 연결 제거하고 새 연결 추가
+                        return [
+                          ...prev.filter(c => !(c.to.moduleId === toModule.id && c.to.portName === toPort.name)),
+                          newConnection,
+                        ];
+                      }
+                    });
 
                     // Setting Threshold의 threshold_out 연결 시, 연결된 모듈의 threshold 파라미터 업데이트
                     if (fromModule.type === ModuleType.SettingThreshold && 
@@ -682,10 +726,32 @@ export const Canvas: React.FC<CanvasProps> = ({
                     from: tappedSourcePort,
                     to: { moduleId, portName },
                 };
-                setConnections(prev => [
-                    ...prev.filter(c => !(c.to.moduleId === moduleId && c.to.portName === portName)),
-                    newConnection,
-                ]);
+                // XoL Pricing 모듈의 data_in 포트는 여러 연결 허용
+                const isXolPricingMultiInput = 
+                  targetModule.type === ModuleType.XolPricing && 
+                  portName === "data_in";
+                
+                setConnections(prev => {
+                  if (isXolPricingMultiInput) {
+                    // 중복 연결 체크 (같은 from 모듈에서 같은 포트로의 연결 방지)
+                    const isDuplicate = prev.some(c => 
+                      c.from.moduleId === newConnection.from.moduleId && 
+                      c.to.moduleId === newConnection.to.moduleId && 
+                      c.to.portName === newConnection.to.portName
+                    );
+                    if (isDuplicate) {
+                      return prev; // 중복이면 추가하지 않음
+                    }
+                    // 기존 연결 유지하고 새 연결 추가
+                    return [...prev, newConnection];
+                  } else {
+                    // 기존 연결 제거하고 새 연결 추가
+                    return [
+                      ...prev.filter(c => !(c.to.moduleId === moduleId && c.to.portName === portName)),
+                      newConnection,
+                    ];
+                  }
+                });
 
                 // Setting Threshold의 threshold_out 연결 시, 연결된 모듈의 threshold 파라미터 업데이트
                 if (sourceModule.type === ModuleType.SettingThreshold && 

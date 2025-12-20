@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from "react";
+import React, { useRef, useEffect, useCallback, useState } from "react";
 import { XCircleIcon } from "./icons";
 import { CanvasModule } from "../types";
 import { XolPricingOutput } from "../types";
@@ -51,8 +51,21 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
 
   const contentRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('Summary');
   
   useCopyOnCtrlC(contentRef);
+  
+  // Calculator 결과 가져오기 (다중 입력 지원)
+  const calculatorResults = output.calculatorResults || [];
+  
+  // Summary 탭을 위한 데이터 준비
+  const summaryData = calculatorResults.map(result => ({
+    name: result.calculatorName,
+    netPremium: result.netPremium,
+    grossPremium: result.grossPremium,
+    rol: result.limit > 0 ? result.grossPremium / result.limit : 0,
+    paybackPeriod: result.limit > 0 && result.grossPremium > 0 ? result.limit / result.grossPremium : 0,
+  }));
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -93,6 +106,24 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
     };
   }, [contextMenu]);
 
+  // 현재 선택된 Calculator 결과 (기본값은 첫 번째)
+  const currentResult = calculatorResults.find(r => r.calculatorName === activeTab) || calculatorResults[0] || {
+    calculatorName: '',
+    calculatorId: '',
+    xolClaimMean: 0,
+    xolClaimStdDev: 0,
+    xolPremiumRateMean: 0,
+    reluctanceFactor: 0,
+    expenseRate: 0,
+    netPremium: 0,
+    grossPremium: 0,
+    limit: 0,
+    deductible: 0,
+    reinstatements: 0,
+    aggDeductible: 0,
+    reinstatementPremiums: [],
+  };
+
   const { 
     xolClaimMean, 
     xolClaimStdDev, 
@@ -106,7 +137,7 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
     reinstatements,
     aggDeductible,
     reinstatementPremiums
-  } = output;
+  } = currentResult;
 
   // ROL 계산
   const rol = limit > 0 ? grossPremium / limit : 0;
@@ -132,8 +163,70 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
             <XCircleIcon className="w-6 h-6" />
           </button>
         </header>
+        
+        {/* Tabs */}
+        <div className="border-b border-gray-200 px-4">
+          <div className="flex gap-4 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('Summary')}
+              className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${
+                activeTab === 'Summary'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Summary
+            </button>
+            {calculatorResults.map((result) => (
+              <button
+                key={result.calculatorId}
+                onClick={() => setActiveTab(result.calculatorName)}
+                className={`px-4 py-2 text-sm font-medium whitespace-nowrap ${
+                  activeTab === result.calculatorName
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {result.calculatorName}
+              </button>
+            ))}
+          </div>
+        </div>
+        
         <main ref={contentRef} className="flex-grow p-6 overflow-auto">
-          <div className="space-y-6">
+          {activeTab === 'Summary' ? (
+            <div className="space-y-6">
+              {/* Summary Table */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">Summary</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Calculator</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">순보험료 (Net Premium)</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">영업보험료 (Gross Premium)</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">ROL</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Payback Period</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {summaryData.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{row.name}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono">{formatNumberNoUnit(row.netPremium)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono">{formatNumberNoUnit(row.grossPremium)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono">{formatPercent(row.rol)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono">{formatYears(row.paybackPeriod)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
             {/* XoL 조건 */}
             <div className="bg-gray-100 rounded-lg p-3 border border-gray-300">
               <h3 className="text-sm font-semibold text-gray-700 mb-2">
@@ -242,7 +335,8 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
                 </div>
               </div>
             </div>
-          </div>
+            </div>
+          )}
         </main>
       </div>
       {contextMenu && (

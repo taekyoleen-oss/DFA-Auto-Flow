@@ -356,6 +356,24 @@ export interface FinalXolPriceOutput {
 
 export interface XolPricingOutput {
   type: "XolPricingOutput";
+  // 다중 입력 지원: 각 Calculator별 결과
+  calculatorResults: Array<{
+    calculatorName: string;
+    calculatorId: string;
+    xolClaimMean: number;
+    xolClaimStdDev: number;
+    xolPremiumRateMean: number;
+    reluctanceFactor: number;
+    expenseRate: number;
+    netPremium: number;
+    grossPremium: number;
+    limit: number;
+    deductible: number;
+    reinstatements: number;
+    aggDeductible: number;
+    reinstatementPremiums: number[];
+  }>;
+  // 하위 호환성을 위한 단일 값 (첫 번째 결과 또는 합계)
   xolClaimMean: number;
   xolClaimStdDev: number;
   xolPremiumRateMean: number;
@@ -516,7 +534,7 @@ export interface SplitFreqServOutput {
 }
 
 export interface FrequencyModelFitResult {
-  distributionType: "Poisson" | "NegativeBinomial";
+  distributionType: "Poisson" | "NegativeBinomial" | "ZeroInflatedPoisson" | "ZeroInflatedNegativeBinomial";
   parameters: Record<string, number>;
   fitStatistics: {
     aic?: number;
@@ -540,8 +558,9 @@ export interface FrequencyModelFitResult {
 export interface FrequencyModelOutput {
   type: "FrequencyModelOutput";
   results: FrequencyModelFitResult[];
-  selectedDistribution?: "Poisson" | "NegativeBinomial";
+  selectedDistribution?: "Poisson" | "NegativeBinomial" | "ZeroInflatedPoisson" | "ZeroInflatedNegativeBinomial";
   yearlyCounts: Array<{ year: number; count: number }>;
+  originalData?: number[]; // 원본 빈도 데이터 (그래프용)
 }
 
 export interface SeverityModelFitResult {
@@ -582,7 +601,7 @@ export interface SeverityModelOutput {
 export interface FrequencySeverityModelOutput {
   type: "FrequencySeverityModelOutput";
   frequencyModel: {
-    type: "Poisson" | "NegativeBinomial";
+    type: "Poisson" | "NegativeBinomial" | "ZeroInflatedPoisson" | "ZeroInflatedNegativeBinomial";
     parameters: Record<string, number>;
     fitStatistics: {
       aic?: number;

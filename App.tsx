@@ -3585,11 +3585,20 @@ ${header}
               return currentAic < bestAic ? current : best;
             }, successfulResults[0]);
 
+            // Extract original count data for graphs
+            const originalCounts = (actualData.rows || [])
+              .map((row: any) => {
+                const count = row[count_column];
+                return typeof count === 'number' && !isNaN(count) && count >= 0 ? count : null;
+              })
+              .filter((c: any): c is number => c !== null);
+
             newOutputData = {
               type: "FrequencyModelOutput",
               results: result.results,
-              selectedDistribution: recommended?.distributionType as "Poisson" | "NegativeBinomial" | undefined,
+              selectedDistribution: recommended?.distributionType as "Poisson" | "NegativeBinomial" | "ZeroInflatedPoisson" | "ZeroInflatedNegativeBinomial" | undefined,
               yearlyCounts: result.yearlyCounts,
+              originalData: originalCounts,
             } as FrequencyModelOutput;
 
             addLog("SUCCESS", `빈도 모델 적합 완료 (${successfulResults.length}개 분포, 추천: ${recommended?.distributionType || "없음"})`);
@@ -8328,31 +8337,57 @@ result
 
           newOutputData = { ...inputData, columns: newColumns, rows: newRows };
         } else if (module.type === ModuleType.XolPricing) {
-          // XoL Calculator의 출력 데이터를 받아서 통계 계산
-          const calculatorConnection = connections.find(
+          // 모든 연결된 XoL Calculator 찾기
+          const calculatorConnections = connections.filter(
             (c) => c.to.moduleId === module.id && c.to.portName === "data_in"
           );
-          if (!calculatorConnection) {
-            throw new Error("XoL Calculator input must be connected.");
-          }
-
-          const calculatorSource = currentModules.find(
-            (m) => m.id === calculatorConnection.from.moduleId
-          );
-          if (!calculatorSource) {
-            throw new Error("XoL Calculator source module not found.");
-          }
-
-          // getInputData를 사용하여 올바르게 처리
-          const calculatorData = getInputData(module.id, "data_in", "data") as DataPreview | null;
-          if (!calculatorData || calculatorData.type !== "DataPreview") {
-            if (calculatorSource.outputData?.type !== "DataPreview") {
-              throw new Error(`XoL Calculator output is not valid. Expected DataPreview, got: ${calculatorSource.outputData?.type || "undefined"}`);
-            }
-            throw new Error("XoL Calculator output is not valid.");
+          
+          if (calculatorConnections.length === 0) {
+            throw new Error("At least one XoL Calculator input must be connected.");
           }
 
           const { expenseRate = 0.2 } = module.parameters;
+          
+          // 각 Calculator별로 결과 계산
+          const calculatorResults: Array<{
+            calculatorName: string;
+            calculatorId: string;
+            xolClaimMean: number;
+            xolClaimStdDev: number;
+            xolPremiumRateMean: number;
+            reluctanceFactor: number;
+            expenseRate: number;
+            netPremium: number;
+            grossPremium: number;
+            limit: number;
+            deductible: number;
+            reinstatements: number;
+            aggDeductible: number;
+            reinstatementPremiums: number[];
+          }> = [];
+
+          // 연결된 Calculator들을 이름 순으로 정렬
+          const sortedConnections = [...calculatorConnections].sort((a, b) => {
+            const moduleA = currentModules.find(m => m.id === a.from.moduleId);
+            const moduleB = currentModules.find(m => m.id === b.from.moduleId);
+            const nameA = moduleA?.name || '';
+            const nameB = moduleB?.name || '';
+            return nameA.localeCompare(nameB);
+          });
+
+          for (const calculatorConnection of sortedConnections) {
+            const calculatorSource = currentModules.find(
+              (m) => m.id === calculatorConnection.from.moduleId
+            );
+            if (!calculatorSource) {
+              continue; // Skip if source not found
+            }
+
+            // Calculator의 출력 데이터 가져오기
+            if (calculatorSource.outputData?.type !== "DataPreview") {
+              continue; // Skip invalid data
+            }
+            const calculatorData = calculatorSource.outputData as DataPreview;
 
           // XoL Calculator의 contract 연결 찾기 (Reluctance Factor를 가져오기 위해)
           const contractConnection = calculatorSource
@@ -8496,32 +8531,58 @@ result
             }
           }
 
-          // Net Premium 계산: (XoL Claim 평균 / XoL Premium Rate 평균) + XoL Claim 표준편차 * Reluctance Factor
-          const netPremium = (xolClaimMean / (xolPremiumRateMean || 1)) + (xolClaimStdDev * reluctanceFactor);
-          
-          // Gross Premium 계산: Net Premium / (1 - Expense Rate)
-          const grossPremium = netPremium / (1 - expenseRate);
+            // Net Premium 계산: (XoL Claim 평균 / XoL Premium Rate 평균) + XoL Claim 표준편차 * Reluctance Factor
+            const netPremium = (xolClaimMean / (xolPremiumRateMean || 1)) + (xolClaimStdDev * reluctanceFactor);
+            
+            // Gross Premium 계산: Net Premium / (1 - Expense Rate)
+            const grossPremium = netPremium / (1 - expenseRate);
 
-          const limit = contract?.limit || 0;
-          const deductible = contract?.deductible || 0;
-          const reinstatements = contract?.reinstatements || 0;
-          const aggDeductible = contract?.aggDeductible || 0;
-          const reinstatementPremiums = contract?.reinstatementPremiums || [];
+            const limit = contract?.limit || 0;
+            const deductible = contract?.deductible || 0;
+            const reinstatements = contract?.reinstatements || 0;
+            const aggDeductible = contract?.aggDeductible || 0;
+            const reinstatementPremiums = contract?.reinstatementPremiums || [];
+
+            calculatorResults.push({
+              calculatorName: calculatorSource.name,
+              calculatorId: calculatorSource.id,
+              xolClaimMean,
+              xolClaimStdDev,
+              xolPremiumRateMean,
+              reluctanceFactor,
+              expenseRate,
+              netPremium,
+              grossPremium,
+              limit,
+              deductible,
+              reinstatements,
+              aggDeductible,
+              reinstatementPremiums,
+            });
+          }
+
+          if (calculatorResults.length === 0) {
+            throw new Error("No valid XoL Calculator results found.");
+          }
+
+          // 첫 번째 결과를 기본값으로 사용 (하위 호환성)
+          const firstResult = calculatorResults[0];
 
           newOutputData = {
             type: "XolPricingOutput",
-            xolClaimMean,
-            xolClaimStdDev,
-            xolPremiumRateMean,
-            reluctanceFactor,
-            expenseRate,
-            netPremium,
-            grossPremium,
-            limit,
-            deductible,
-            reinstatements,
-            aggDeductible,
-            reinstatementPremiums,
+            calculatorResults,
+            xolClaimMean: firstResult.xolClaimMean,
+            xolClaimStdDev: firstResult.xolClaimStdDev,
+            xolPremiumRateMean: firstResult.xolPremiumRateMean,
+            reluctanceFactor: firstResult.reluctanceFactor,
+            expenseRate: firstResult.expenseRate,
+            netPremium: firstResult.netPremium,
+            grossPremium: firstResult.grossPremium,
+            limit: firstResult.limit,
+            deductible: firstResult.deductible,
+            reinstatements: firstResult.reinstatements,
+            aggDeductible: firstResult.aggDeductible,
+            reinstatementPremiums: firstResult.reinstatementPremiums,
           };
         } else if (module.type === ModuleType.PriceXolContract) {
           const dataConnection = connections.find(

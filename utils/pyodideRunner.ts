@@ -5911,6 +5911,24 @@ for dist_type in frequency_types:
             aic = 2 * n_params - 2 * log_likelihood
             bic = n_params * np.log(n_obs) - 2 * log_likelihood
             
+            # Q-Q Plot and P-P Plot
+            sorted_counts = np.sort(counts)
+            n = len(sorted_counts)
+            theoretical_quantiles = []
+            sample_quantiles = []
+            theoretical_cdf = []
+            empirical_cdf = []
+            
+            for i in range(n):
+                p = (i + 0.5) / n
+                theoretical_quantile = dist.ppf(p)
+                theoretical_quantiles.append(float(theoretical_quantile))
+                sample_quantiles.append(float(sorted_counts[i]))
+                
+                theoretical_cdf_val = dist.cdf(sorted_counts[i])
+                theoretical_cdf.append(float(theoretical_cdf_val))
+                empirical_cdf.append(float((i + 1) / n))
+            
             all_results.append({
                 "distribution_type": "Poisson",
                 "parameters": params,
@@ -5921,6 +5939,14 @@ for dist_type in frequency_types:
                     "mean": float(np.mean(counts)),
                     "variance": float(np.var(counts)),
                     "dispersion": float(np.var(counts) / np.mean(counts)) if np.mean(counts) > 0 else 0
+                },
+                "qq_plot": {
+                    "theoretical_quantiles": theoretical_quantiles,
+                    "sample_quantiles": sample_quantiles
+                },
+                "pp_plot": {
+                    "theoretical_cdf": theoretical_cdf,
+                    "empirical_cdf": empirical_cdf
                 }
             })
             
@@ -5951,6 +5977,24 @@ for dist_type in frequency_types:
             aic = 2 * n_params - 2 * log_likelihood
             bic = n_params * np.log(n_obs) - 2 * log_likelihood
             
+            # Q-Q Plot and P-P Plot
+            sorted_counts = np.sort(counts)
+            n = len(sorted_counts)
+            theoretical_quantiles = []
+            sample_quantiles = []
+            theoretical_cdf = []
+            empirical_cdf = []
+            
+            for i in range(n):
+                p = (i + 0.5) / n
+                theoretical_quantile = dist.ppf(p)
+                theoretical_quantiles.append(float(theoretical_quantile))
+                sample_quantiles.append(float(sorted_counts[i]))
+                
+                theoretical_cdf_val = dist.cdf(sorted_counts[i])
+                theoretical_cdf.append(float(theoretical_cdf_val))
+                empirical_cdf.append(float((i + 1) / n))
+            
             all_results.append({
                 "distribution_type": "NegativeBinomial",
                 "parameters": params,
@@ -5961,8 +6005,232 @@ for dist_type in frequency_types:
                     "mean": float(np.mean(counts)),
                     "variance": float(np.var(counts)),
                     "dispersion": float(np.var(counts) / np.mean(counts)) if np.mean(counts) > 0 else 0
+                },
+                "qq_plot": {
+                    "theoretical_quantiles": theoretical_quantiles,
+                    "sample_quantiles": sample_quantiles
+                },
+                "pp_plot": {
+                    "theoretical_cdf": theoretical_cdf,
+                    "empirical_cdf": empirical_cdf
                 }
             })
+            
+        elif dist_type == "ZeroInflatedPoisson":
+            # Zero-Inflated Poisson (ZIP)
+            # ZIP: P(X=0) = pi + (1-pi)*exp(-lambda)
+            # P(X=k) = (1-pi)*lambda^k*exp(-lambda)/k! for k>0
+            # pi: zero-inflation probability
+            # lambda: Poisson parameter
+            
+            # Method of Moments estimation
+            n = len(counts)
+            n_zeros = np.sum(counts == 0)
+            pi_est = max(0, min(1, (n_zeros - n * np.exp(-np.mean(counts))) / n))
+            
+            if pi_est <= 0 or pi_est >= 1:
+                # Fallback: use simple Poisson if zero-inflation is not significant
+                lambda_param = np.mean(counts)
+                if lambda_param <= 0:
+                    all_results.append({"distribution_type": "ZeroInflatedPoisson", "error": "Mean count must be positive"})
+                    continue
+                pi_est = 0
+            else:
+                # Estimate lambda from non-zero observations
+                non_zero_counts = counts[counts > 0]
+                if len(non_zero_counts) > 0:
+                    lambda_param = np.mean(non_zero_counts)
+                else:
+                    lambda_param = np.mean(counts)
+            
+            if lambda_param <= 0:
+                all_results.append({"distribution_type": "ZeroInflatedPoisson", "error": "Lambda must be positive"})
+                continue
+            
+            # Calculate log-likelihood
+            def zip_logpmf(k, pi, lam):
+                if k == 0:
+                    return np.log(pi + (1 - pi) * np.exp(-lam))
+                else:
+                    return np.log(1 - pi) + stats.poisson.logpmf(k, lam)
+            
+            log_likelihood = np.sum([zip_logpmf(int(k), pi_est, lambda_param) for k in counts])
+            n_params = 2  # pi and lambda
+            n_obs = len(counts)
+            aic = 2 * n_params - 2 * log_likelihood
+            bic = n_params * np.log(n_obs) - 2 * log_likelihood
+            
+            # Calculate mean and variance
+            zip_mean = (1 - pi_est) * lambda_param
+            zip_variance = (1 - pi_est) * lambda_param * (1 + pi_est * lambda_param)
+            
+            # Q-Q Plot and P-P Plot for ZIP
+            sorted_counts = np.sort(counts)
+            n = len(sorted_counts)
+            theoretical_quantiles = []
+            sample_quantiles = []
+            theoretical_cdf = []
+            empirical_cdf = []
+            
+            # ZIP distribution function
+            def zip_cdf(k, pi, lam):
+                if k < 0:
+                    return 0
+                cdf_val = pi
+                for i in range(int(k) + 1):
+                    if i == 0:
+                        cdf_val += (1 - pi) * np.exp(-lam)
+                    else:
+                        cdf_val += (1 - pi) * stats.poisson.pmf(i, lam)
+                return min(1.0, cdf_val)
+            
+            def zip_ppf(p, pi, lam):
+                # Inverse CDF for ZIP
+                if p <= pi + (1 - pi) * np.exp(-lam):
+                    return 0
+                # For k > 0, use Poisson quantile adjusted for zero-inflation
+                poisson_p = (p - pi) / (1 - pi)
+                return stats.poisson.ppf(poisson_p, lam)
+            
+            for i in range(n):
+                p = (i + 0.5) / n
+                theoretical_quantile = zip_ppf(p, pi_est, lambda_param)
+                theoretical_quantiles.append(float(theoretical_quantile))
+                sample_quantiles.append(float(sorted_counts[i]))
+                
+                theoretical_cdf_val = zip_cdf(sorted_counts[i], pi_est, lambda_param)
+                theoretical_cdf.append(float(theoretical_cdf_val))
+                empirical_cdf.append(float((i + 1) / n))
+            
+            all_results.append({
+                "distribution_type": "ZeroInflatedPoisson",
+                "parameters": {"pi": float(pi_est), "lambda": float(lambda_param)},
+                "fit_statistics": {
+                    "aic": float(aic),
+                    "bic": float(bic),
+                    "log_likelihood": float(log_likelihood),
+                    "mean": float(zip_mean),
+                    "variance": float(zip_variance),
+                    "dispersion": float(zip_variance / zip_mean) if zip_mean > 0 else 0
+                },
+                "qq_plot": {
+                    "theoretical_quantiles": theoretical_quantiles,
+                    "sample_quantiles": sample_quantiles
+                },
+                "pp_plot": {
+                    "theoretical_cdf": theoretical_cdf,
+                    "empirical_cdf": empirical_cdf
+                }
+            })
+            
+        elif dist_type == "ZeroInflatedNegativeBinomial":
+            # Zero-Inflated Negative Binomial (ZINB)
+            # Similar to ZIP but with Negative Binomial instead of Poisson
+            n = len(counts)
+            n_zeros = np.sum(counts == 0)
+            mean_count = np.mean(counts)
+            var_count = np.var(counts)
+            
+            if var_count <= mean_count:
+                all_results.append({"distribution_type": "ZeroInflatedNegativeBinomial", "error": "Variance must be greater than mean (overdispersion required)"})
+                continue
+            
+            # Estimate zero-inflation parameter
+            # P(X=0) = pi + (1-pi)*P_NB(0)
+            # For NB: P_NB(0) = (p)^r where r=n, p=mean/var
+            r_est = mean_count ** 2 / (var_count - mean_count)
+            p_est = mean_count / var_count
+            
+            if r_est <= 0 or p_est <= 0 or p_est >= 1:
+                all_results.append({"distribution_type": "ZeroInflatedNegativeBinomial", "error": f"Invalid NB parameters: r={r_est:.2f}, p={p_est:.2f}"})
+                continue
+            
+            # Estimate pi using method of moments
+            nb_zero_prob = (p_est) ** r_est
+            pi_est = max(0, min(1, (n_zeros / n - nb_zero_prob) / (1 - nb_zero_prob)))
+            
+            if pi_est < 0 or pi_est >= 1:
+                # Fallback: use simple NB if zero-inflation is not significant
+                pi_est = 0
+            
+            # Calculate log-likelihood
+            def zinb_logpmf(k, pi, r, p):
+                if k == 0:
+                    nb_zero = (p) ** r
+                    return np.log(pi + (1 - pi) * nb_zero)
+                else:
+                    return np.log(1 - pi) + stats.nbinom.logpmf(int(k), r, p)
+            
+            log_likelihood = np.sum([zinb_logpmf(int(k), pi_est, r_est, p_est) for k in counts])
+            n_params = 3  # pi, r, p
+            n_obs = len(counts)
+            aic = 2 * n_params - 2 * log_likelihood
+            bic = n_params * np.log(n_obs) - 2 * log_likelihood
+            
+            # Calculate mean and variance
+            zinb_mean = (1 - pi_est) * mean_count
+            zinb_variance = (1 - pi_est) * var_count + pi_est * (1 - pi_est) * mean_count ** 2
+            
+            # Q-Q Plot and P-P Plot for ZINB
+            sorted_counts = np.sort(counts)
+            n = len(sorted_counts)
+            theoretical_quantiles = []
+            sample_quantiles = []
+            theoretical_cdf = []
+            empirical_cdf = []
+            
+            # ZINB distribution function
+            def zinb_cdf(k, pi, r, p):
+                if k < 0:
+                    return 0
+                cdf_val = pi
+                for i in range(int(k) + 1):
+                    if i == 0:
+                        cdf_val += (1 - pi) * (p ** r)
+                    else:
+                        cdf_val += (1 - pi) * stats.nbinom.pmf(i, r, p)
+                return min(1.0, cdf_val)
+            
+            def zinb_ppf(p, pi, r, p_val):
+                # Inverse CDF for ZINB
+                nb_zero = p_val ** r
+                if p <= pi + (1 - pi) * nb_zero:
+                    return 0
+                # For k > 0, use NB quantile adjusted for zero-inflation
+                nb_p = (p - pi) / (1 - pi)
+                return stats.nbinom.ppf(nb_p, r, p_val)
+            
+            for i in range(n):
+                p = (i + 0.5) / n
+                theoretical_quantile = zinb_ppf(p, pi_est, r_est, p_est)
+                theoretical_quantiles.append(float(theoretical_quantile))
+                sample_quantiles.append(float(sorted_counts[i]))
+                
+                theoretical_cdf_val = zinb_cdf(sorted_counts[i], pi_est, r_est, p_est)
+                theoretical_cdf.append(float(theoretical_cdf_val))
+                empirical_cdf.append(float((i + 1) / n))
+            
+            all_results.append({
+                "distribution_type": "ZeroInflatedNegativeBinomial",
+                "parameters": {"pi": float(pi_est), "n": float(r_est), "p": float(p_est)},
+                "fit_statistics": {
+                    "aic": float(aic),
+                    "bic": float(bic),
+                    "log_likelihood": float(log_likelihood),
+                    "mean": float(zinb_mean),
+                    "variance": float(zinb_variance),
+                    "dispersion": float(zinb_variance / zinb_mean) if zinb_mean > 0 else 0
+                },
+                "qq_plot": {
+                    "theoretical_quantiles": theoretical_quantiles,
+                    "sample_quantiles": sample_quantiles
+                },
+                "pp_plot": {
+                    "theoretical_cdf": theoretical_cdf,
+                    "empirical_cdf": empirical_cdf
+                }
+            })
+            
         else:
             all_results.append({"distribution_type": dist_type, "error": f"Unknown distribution type"})
             
@@ -6001,6 +6269,17 @@ for r in all_results:
             "variance": r["fit_statistics"].get("variance"),
             "dispersion": r["fit_statistics"].get("dispersion")
         }
+        # Q-Q Plot and P-P Plot
+        if "qq_plot" in r:
+            formatted_result["qqPlot"] = {
+                "theoreticalQuantiles": r["qq_plot"]["theoretical_quantiles"],
+                "sampleQuantiles": r["qq_plot"]["sample_quantiles"]
+            }
+        if "pp_plot" in r:
+            formatted_result["ppPlot"] = {
+                "theoreticalCDF": r["pp_plot"]["theoretical_cdf"],
+                "empiricalCDF": r["pp_plot"]["empirical_cdf"]
+            }
     formatted_results.append(formatted_result)
 
 result = {

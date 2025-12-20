@@ -3053,7 +3053,7 @@ const renderParameters = (
         }
       }
       
-      const allFrequencyTypes = ["Poisson", "NegativeBinomial"];
+      const allFrequencyTypes = ["Poisson", "NegativeBinomial", "ZeroInflatedPoisson", "ZeroInflatedNegativeBinomial"];
       const selectedFrequencyTypes = (module.parameters.selected_frequency_types as string[]) || ["Poisson", "NegativeBinomial"];
       const countColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
       
