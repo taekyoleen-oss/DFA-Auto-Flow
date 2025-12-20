@@ -1,8 +1,1160 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { CanvasModule, SeverityModelOutput, SeverityModelFitResult } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
 import { SpreadViewModal } from './SpreadViewModal';
+
+// Magnifier hook for graphs
+const useGraphMagnifier = () => {
+  const [isMagnifying, setIsMagnifying] = useState(false);
+  const [magnifierPos, setMagnifierPos] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleMagnify = useCallback(() => {
+    setIsMagnifying(true);
+    setContextMenu(null);
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    if (!isMagnifying || !svgRef.current) return;
+    
+    const svg = svgRef.current;
+    const rect = svg.getBoundingClientRect();
+    
+    // Get viewBox dimensions
+    const viewBox = svg.getAttribute('viewBox');
+    if (!viewBox) {
+      // Fallback if no viewBox
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setMagnifierPos({ x, y });
+      return;
+    }
+    
+    const [vbX, vbY, vbWidth, vbHeight] = viewBox.split(' ').map(Number);
+    
+    // Calculate scale factors
+    const scaleX = vbWidth / rect.width;
+    const scaleY = vbHeight / rect.height;
+    
+    // Convert mouse position to viewBox coordinates
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const x = mouseX * scaleX;
+    const y = mouseY * scaleY;
+    
+    setMagnifierPos({ x, y });
+  }, [isMagnifying]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (isMagnifying) {
+      setMagnifierPos(null);
+    }
+  }, [isMagnifying]);
+
+  useEffect(() => {
+    if (!isMagnifying) return;
+
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsMagnifying(false);
+        setMagnifierPos(null);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenu && !(e.target as Element).closest('.context-menu')) {
+        setContextMenu(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('click', handleClickOutside, true);
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('click', handleClickOutside, true);
+    };
+  }, [isMagnifying, contextMenu]);
+
+  return {
+    svgRef,
+    isMagnifying,
+    magnifierPos,
+    contextMenu,
+    handleContextMenu,
+    handleMagnify,
+    handleMouseMove,
+    handleMouseLeave,
+  };
+};
+
+// Graphs Tab Component
+interface GraphsTabProps {
+  output: SeverityModelOutput;
+  sortedResults: SeverityModelFitResult[];
+  recommended: SeverityModelFitResult | null;
+  statistics: {
+    mean: number;
+    stdDev: number;
+    min: number;
+    max: number;
+    count: number;
+  } | null;
+}
+
+const GraphsTab: React.FC<GraphsTabProps> = ({ output, sortedResults, recommended, statistics }) => {
+  const originalData = output.originalData || [];
+  const amounts = originalData.filter((a): a is number => typeof a === 'number' && !isNaN(a) && a > 0).sort((a, b) => a - b);
+
+  // Initialize selectedQQDistribution
+  const qqResults = sortedResults.filter(r => !r.error && r.qqPlot);
+  const initialQQDistribution = qqResults.length > 0 
+    ? (recommended?.distributionType || qqResults[0].distributionType || '')
+    : '';
+  
+  const [selectedQQDistribution, setSelectedQQDistribution] = useState<string>(initialQQDistribution);
+
+  if (amounts.length === 0 || !statistics) {
+    return <div className="text-gray-500 text-center py-8">No data available for graphs.</div>;
+  }
+
+  const margin = { top: 40, right: 40, bottom: 80, left: 100 };
+  const chartWidth = 1200;
+  const chartHeight = 600;
+  const innerWidth = chartWidth - margin.left - margin.right;
+  const innerHeight = chartHeight - margin.top - margin.bottom;
+
+  // Color palette for distributions
+  const colors = [
+    '#3b82f6', // blue
+    '#ef4444', // red
+    '#10b981', // green
+    '#f59e0b', // orange
+    '#8b5cf6', // purple
+    '#ec4899', // pink
+    '#06b6d4', // cyan
+    '#84cc16', // lime
+  ];
+
+  // 1. Histogram + PDF
+  const HistogramPDFChart = () => {
+    const magnifier = useGraphMagnifier();
+    const bins = 40;
+    const binWidth = (statistics.max - statistics.min) / bins;
+    const histogram: number[] = Array(bins).fill(0);
+    
+    amounts.forEach(amount => {
+      const binIndex = Math.min(Math.floor((amount - statistics.min) / binWidth), bins - 1);
+      histogram[binIndex]++;
+    });
+
+    const maxFreq = Math.max(...histogram);
+    const normalizedHistogram = histogram.map(freq => freq / (maxFreq * binWidth * amounts.length));
+
+    // Generate x values for PDF curves
+    const xValues = Array.from({ length: 500 }, (_, i) => {
+      return statistics.min + (i / 499) * (statistics.max - statistics.min);
+    });
+
+    const xScale = (x: number) => margin.left + ((x - statistics.min) / (statistics.max - statistics.min)) * innerWidth;
+    const yScale = (y: number) => margin.top + innerHeight - (y / (Math.max(...normalizedHistogram) * 1.2)) * innerHeight;
+
+    // Magnifier overlay
+    const magnifierSize = 200;
+    const magnifierScale = 3;
+
+    return (
+      <div className="border border-gray-300 rounded-lg p-4 bg-white relative">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-md font-semibold text-gray-700">Histogram + Fitted PDFs</h4>
+          <button
+            onClick={() => magnifier.handleMagnify()}
+            className={`p-2 rounded-md transition-colors ${
+              magnifier.isMagnifying 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+            title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+        </div>
+        <svg 
+          ref={magnifier.svgRef}
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`} 
+          className="w-full h-auto"
+          onContextMenu={magnifier.handleContextMenu}
+          onMouseMove={magnifier.handleMouseMove}
+          onMouseLeave={magnifier.handleMouseLeave}
+        >
+          <defs>
+            <pattern id="hist-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width={chartWidth} height={chartHeight} fill="url(#hist-grid)" />
+
+          {/* Axes */}
+          <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+          <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+
+          {/* Histogram bars */}
+          {histogram.map((freq, i) => {
+            const binStart = statistics.min + i * binWidth;
+            const barHeight = (normalizedHistogram[i] / Math.max(...normalizedHistogram)) * innerHeight * 0.8;
+            return (
+              <rect
+                key={i}
+                x={xScale(binStart)}
+                y={margin.top + innerHeight - barHeight}
+                width={innerWidth / bins}
+                height={barHeight}
+                fill="#93c5fd"
+                opacity="0.5"
+              />
+            );
+          })}
+
+          {/* PDF curves for each distribution */}
+          {sortedResults.slice(0, 5).map((result, idx) => {
+            if (result.error || !result.theoreticalCumulative) return null;
+            
+            // Approximate PDF from theoretical cumulative (derivative approximation)
+            const pdfPoints: Array<{ x: number; y: number }> = [];
+            const theoretical = result.theoreticalCumulative;
+            
+            for (let i = 1; i < theoretical.probabilities.length; i++) {
+              const x = theoretical.amounts[i];
+              const prevX = theoretical.amounts[i - 1];
+              const prob = theoretical.probabilities[i];
+              const prevProb = theoretical.probabilities[i - 1];
+              
+              if (x > prevX && prob > prevProb) {
+                const pdf = (prob - prevProb) / (x - prevX);
+                pdfPoints.push({ x, y: pdf });
+              }
+            }
+
+            if (pdfPoints.length === 0) return null;
+
+            const maxPdf = Math.max(...pdfPoints.map(p => p.y));
+            const normalizedPdf = pdfPoints.map(p => ({ x: p.x, y: (p.y / maxPdf) * Math.max(...normalizedHistogram) }));
+
+            const pathData = normalizedPdf
+              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.x)} ${yScale(p.y)}`)
+              .join(' ');
+
+            return (
+              <path
+                key={result.distributionType}
+                d={pathData}
+                fill="none"
+                stroke={colors[idx % colors.length]}
+                strokeWidth="2"
+                opacity="0.8"
+              />
+            );
+          })}
+
+          {/* Legend */}
+          <g transform={`translate(${margin.left + innerWidth - 300}, ${margin.top + 20})`}>
+            <text x="0" y="0" fontSize="24" fill="#374151" fontWeight="bold">Raw Data</text>
+            <rect x="0" y="15" width="20" height="15" fill="#93c5fd" opacity="0.5" />
+            {sortedResults.slice(0, 5).map((result, idx) => {
+              if (result.error) return null;
+              return (
+                <g key={result.distributionType} transform={`translate(0, ${40 + idx * 30})`}>
+                  <line x1="0" y1="10" x2="20" y2="10" stroke={colors[idx % colors.length]} strokeWidth="3" />
+                  <text x="25" y="15" fontSize="22" fill="#374151">
+                    {result.distributionType} (AIC={result.fitStatistics?.aic?.toFixed(1) || 'N/A'})
+                  </text>
+                </g>
+              );
+            })}
+          </g>
+
+          {/* Axis labels */}
+          <text x={chartWidth / 2} y={chartHeight - 20} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold">
+            Amount
+          </text>
+          <text x="30" y={chartHeight / 2} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold" transform={`rotate(-90 30 ${chartHeight / 2})`}>
+            Density
+          </text>
+
+          {/* Magnifier overlay */}
+          {magnifier.isMagnifying && magnifier.magnifierPos && (
+            <>
+              <defs>
+                <clipPath id="magnifier-clip-hist">
+                  <circle cx={magnifier.magnifierPos.x} cy={magnifier.magnifierPos.y} r={magnifierSize / 2} />
+                </clipPath>
+              </defs>
+              <g clipPath="url(#magnifier-clip-hist)">
+                <rect
+                  x={magnifier.magnifierPos.x - magnifierSize / 2}
+                  y={magnifier.magnifierPos.y - magnifierSize / 2}
+                  width={magnifierSize}
+                  height={magnifierSize}
+                  fill="white"
+                  opacity="0.95"
+                />
+                <g transform={`translate(${magnifier.magnifierPos.x}, ${magnifier.magnifierPos.y}) scale(${magnifierScale}) translate(${-magnifier.magnifierPos.x}, ${-magnifier.magnifierPos.y})`}>
+                  {/* Re-render all chart elements at higher scale */}
+                  <rect width={chartWidth} height={chartHeight} fill="url(#hist-grid)" />
+                  <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  {histogram.map((freq, i) => {
+                    const binStart = statistics.min + i * binWidth;
+                    const barHeight = (normalizedHistogram[i] / Math.max(...normalizedHistogram)) * innerHeight * 0.8;
+                    return (
+                      <rect
+                        key={i}
+                        x={xScale(binStart)}
+                        y={margin.top + innerHeight - barHeight}
+                        width={innerWidth / bins}
+                        height={barHeight}
+                        fill="#93c5fd"
+                        opacity="0.5"
+                      />
+                    );
+                  })}
+                  {sortedResults.slice(0, 5).map((result, idx) => {
+                    if (result.error || !result.theoreticalCumulative) return null;
+                    const pdfPoints: Array<{ x: number; y: number }> = [];
+                    const theoretical = result.theoreticalCumulative;
+                    for (let i = 1; i < theoretical.probabilities.length; i++) {
+                      const x = theoretical.amounts[i];
+                      const prevX = theoretical.amounts[i - 1];
+                      const prob = theoretical.probabilities[i];
+                      const prevProb = theoretical.probabilities[i - 1];
+                      if (x > prevX && prob > prevProb) {
+                        const pdf = (prob - prevProb) / (x - prevX);
+                        pdfPoints.push({ x, y: pdf });
+                      }
+                    }
+                    if (pdfPoints.length === 0) return null;
+                    const maxPdf = Math.max(...pdfPoints.map(p => p.y));
+                    const normalizedPdf = pdfPoints.map(p => ({ x: p.x, y: (p.y / maxPdf) * Math.max(...normalizedHistogram) }));
+                    const pathData = normalizedPdf.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.x)} ${yScale(p.y)}`).join(' ');
+                    return (
+                      <path
+                        key={result.distributionType}
+                        d={pathData}
+                        fill="none"
+                        stroke={colors[idx % colors.length]}
+                        strokeWidth="2"
+                        opacity="0.8"
+                      />
+                    );
+                  })}
+                </g>
+              </g>
+              <circle
+                cx={magnifier.magnifierPos.x}
+                cy={magnifier.magnifierPos.y}
+                r={magnifierSize / 2}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="3"
+              />
+            </>
+          )}
+        </svg>
+        {magnifier.contextMenu && (
+          <div
+            className="context-menu fixed bg-white border border-gray-300 rounded-lg shadow-lg py-1 z-[100]"
+            style={{ left: magnifier.contextMenu.x, top: magnifier.contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                magnifier.handleMagnify();
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+            >
+              돋보기
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 2. Empirical CDF vs Fitted CDF
+  const CDFChart = () => {
+    const magnifier = useGraphMagnifier();
+    const ecdf = amounts.map((_, i) => (i + 1) / amounts.length);
+    
+    const xScale = (x: number) => margin.left + ((x - statistics.min) / (statistics.max - statistics.min)) * innerWidth;
+    const yScale = (y: number) => margin.top + innerHeight - y * innerHeight;
+
+    const magnifierSize = 200;
+    const magnifierScale = 3;
+
+    return (
+      <div className="border border-gray-300 rounded-lg p-4 bg-white relative">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-md font-semibold text-gray-700">Empirical CDF vs Fitted CDF</h4>
+          <button
+            onClick={() => magnifier.handleMagnify()}
+            className={`p-2 rounded-md transition-colors ${
+              magnifier.isMagnifying 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+            title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+        </div>
+        <svg 
+          ref={magnifier.svgRef}
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`} 
+          className="w-full h-auto"
+          onContextMenu={magnifier.handleContextMenu}
+          onMouseMove={magnifier.handleMouseMove}
+          onMouseLeave={magnifier.handleMouseLeave}
+        >
+          <defs>
+            <pattern id="cdf-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width={chartWidth} height={chartHeight} fill="url(#cdf-grid)" />
+
+          {/* Axes */}
+          <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+          <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+
+          {/* Empirical CDF */}
+          <polyline
+            points={amounts.map((x, i) => `${xScale(x)},${yScale(ecdf[i])}`).join(' ')}
+            fill="none"
+            stroke="#000000"
+            strokeWidth="2"
+          />
+
+          {/* Fitted CDFs */}
+          {sortedResults.slice(0, 5).map((result, idx) => {
+            if (result.error || !result.ppPlot) return null;
+            const { theoreticalCDF, empiricalCDF } = result.ppPlot;
+            if (!theoreticalCDF || !empiricalCDF || theoreticalCDF.length === 0) return null;
+
+            // Map theoretical CDF to amounts using sorted data
+            const sortedAmounts = [...amounts];
+            const cdfPoints = theoreticalCDF.map((cdf, i) => {
+              const sortedIdx = Math.min(i * Math.floor(sortedAmounts.length / theoreticalCDF.length), sortedAmounts.length - 1);
+              return { x: sortedAmounts[sortedIdx], y: cdf };
+            });
+
+            const pathData = cdfPoints
+              .map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.x)} ${yScale(p.y)}`)
+              .join(' ');
+
+            return (
+              <path
+                key={result.distributionType}
+                d={pathData}
+                fill="none"
+                stroke={colors[idx % colors.length]}
+                strokeWidth="2"
+                opacity="0.8"
+              />
+            );
+          })}
+
+          {/* Legend - Bottom Right */}
+          <g transform={`translate(${margin.left + innerWidth - 300}, ${margin.top + innerHeight - 150})`}>
+            <g transform="translate(0, 0)">
+              <line x1="0" y1="10" x2="20" y2="10" stroke="#000000" strokeWidth="3" />
+              <text x="25" y="15" fontSize="22" fill="#374151">Empirical CDF</text>
+            </g>
+            {sortedResults.slice(0, 5).map((result, idx) => {
+              if (result.error) return null;
+              return (
+                <g key={result.distributionType} transform={`translate(0, ${40 + idx * 30})`}>
+                  <line x1="0" y1="10" x2="20" y2="10" stroke={colors[idx % colors.length]} strokeWidth="3" />
+                  <text x="25" y="15" fontSize="22" fill="#374151">{result.distributionType}</text>
+                </g>
+              );
+            })}
+          </g>
+
+          {/* Axis labels */}
+          <text x={chartWidth / 2} y={chartHeight - 20} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold">
+            Amount
+          </text>
+          <text x="30" y={chartHeight / 2} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold" transform={`rotate(-90 30 ${chartHeight / 2})`}>
+            Cumulative Probability
+          </text>
+
+          {/* Magnifier overlay */}
+          {magnifier.isMagnifying && magnifier.magnifierPos && (
+            <>
+              <defs>
+                <clipPath id="magnifier-clip-cdf">
+                  <circle cx={magnifier.magnifierPos.x} cy={magnifier.magnifierPos.y} r={magnifierSize / 2} />
+                </clipPath>
+              </defs>
+              <g clipPath="url(#magnifier-clip-cdf)">
+                <rect
+                  x={magnifier.magnifierPos.x - magnifierSize / 2}
+                  y={magnifier.magnifierPos.y - magnifierSize / 2}
+                  width={magnifierSize}
+                  height={magnifierSize}
+                  fill="white"
+                  opacity="0.95"
+                />
+                <g transform={`translate(${magnifier.magnifierPos.x}, ${magnifier.magnifierPos.y}) scale(${magnifierScale}) translate(${-magnifier.magnifierPos.x}, ${-magnifier.magnifierPos.y})`}>
+                  <rect width={chartWidth} height={chartHeight} fill="url(#cdf-grid)" />
+                  <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  <polyline
+                    points={amounts.map((x, i) => `${xScale(x)},${yScale(ecdf[i])}`).join(' ')}
+                    fill="none"
+                    stroke="#000000"
+                    strokeWidth="2"
+                  />
+                  {sortedResults.slice(0, 5).map((result, idx) => {
+                    if (result.error || !result.ppPlot) return null;
+                    const { theoreticalCDF } = result.ppPlot;
+                    if (!theoreticalCDF || theoreticalCDF.length === 0) return null;
+                    const sortedAmounts = [...amounts];
+                    const cdfPoints = theoreticalCDF.map((cdf, i) => {
+                      const sortedIdx = Math.min(i * Math.floor(sortedAmounts.length / theoreticalCDF.length), sortedAmounts.length - 1);
+                      return { x: sortedAmounts[sortedIdx], y: cdf };
+                    });
+                    const pathData = cdfPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.x)} ${yScale(p.y)}`).join(' ');
+                    return (
+                      <path
+                        key={result.distributionType}
+                        d={pathData}
+                        fill="none"
+                        stroke={colors[idx % colors.length]}
+                        strokeWidth="2"
+                        opacity="0.8"
+                      />
+                    );
+                  })}
+                </g>
+              </g>
+              <circle
+                cx={magnifier.magnifierPos.x}
+                cy={magnifier.magnifierPos.y}
+                r={magnifierSize / 2}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="3"
+              />
+            </>
+          )}
+        </svg>
+        {magnifier.contextMenu && (
+          <div
+            className="context-menu fixed bg-white border border-gray-300 rounded-lg shadow-lg py-1 z-[100]"
+            style={{ left: magnifier.contextMenu.x, top: magnifier.contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                magnifier.handleMagnify();
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+            >
+              돋보기
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 3. QQ-Plot (Selectable Distribution)
+  const QQPlotChart = () => {
+    const magnifier = useGraphMagnifier();
+    const selectedResult = sortedResults.find(r => r.distributionType === selectedQQDistribution) || recommended;
+    const magnifierSize = 200;
+    const magnifierScale = 3;
+    
+    if (!selectedResult || !selectedResult.qqPlot) {
+      return (
+        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-lg font-semibold text-gray-700">Q-Q Plot</h4>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedQQDistribution}
+                onChange={(e) => setSelectedQQDistribution(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {sortedResults.filter(r => !r.error && r.qqPlot).map((result) => (
+                  <option key={result.distributionType} value={result.distributionType}>
+                    {result.distributionType}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => magnifier.handleMagnify()}
+                className={`p-2 rounded-md transition-colors ${
+                  magnifier.isMagnifying 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="text-gray-500 text-sm">Q-Q Plot 데이터가 없습니다.</div>
+        </div>
+      );
+    }
+
+    const { theoreticalQuantiles, sampleQuantiles } = selectedResult.qqPlot;
+    if (!theoreticalQuantiles || !sampleQuantiles || theoreticalQuantiles.length === 0) {
+      return (
+        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-lg font-semibold text-gray-700">Q-Q Plot</h4>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedQQDistribution}
+                onChange={(e) => setSelectedQQDistribution(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {sortedResults.filter(r => !r.error && r.qqPlot).map((result) => (
+                  <option key={result.distributionType} value={result.distributionType}>
+                    {result.distributionType}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => magnifier.handleMagnify()}
+                className={`p-2 rounded-md transition-colors ${
+                  magnifier.isMagnifying 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="text-gray-500 text-sm">Q-Q Plot 데이터가 없습니다.</div>
+        </div>
+      );
+    }
+
+    const validPairs = theoreticalQuantiles
+      .map((x, i) => ({ x, y: sampleQuantiles[i] }))
+      .filter(p => isFinite(p.x) && isFinite(p.y) && p.x !== null && p.y !== null);
+
+    if (validPairs.length === 0) {
+      return (
+        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-lg font-semibold text-gray-700">Q-Q Plot</h4>
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedQQDistribution}
+                onChange={(e) => setSelectedQQDistribution(e.target.value)}
+                className="px-3 py-1.5 border border-gray-300 rounded-md bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {sortedResults.filter(r => !r.error && r.qqPlot).map((result) => (
+                  <option key={result.distributionType} value={result.distributionType}>
+                    {result.distributionType}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => magnifier.handleMagnify()}
+                className={`p-2 rounded-md transition-colors ${
+                  magnifier.isMagnifying 
+                    ? 'bg-blue-500 text-white' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+                title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div className="text-gray-500 text-sm">Q-Q Plot 데이터가 없습니다.</div>
+        </div>
+      );
+    }
+
+    const xMin = Math.min(...validPairs.map(p => p.x));
+    const xMax = Math.max(...validPairs.map(p => p.x));
+    const yMin = Math.min(...validPairs.map(p => p.y));
+    const yMax = Math.max(...validPairs.map(p => p.y));
+
+    const xRange = xMax - xMin || 1;
+    const yRange = yMax - yMin || 1;
+    const xMinAdjusted = xMin - xRange * 0.05;
+    const xMaxAdjusted = xMax + xRange * 0.05;
+    const yMinAdjusted = yMin - yRange * 0.05;
+    const yMaxAdjusted = yMax + yRange * 0.05;
+
+    const xScale = (x: number) => margin.left + ((x - xMinAdjusted) / (xMaxAdjusted - xMinAdjusted || 1)) * innerWidth;
+    const yScale = (y: number) => margin.top + innerHeight - ((y - yMinAdjusted) / (yMaxAdjusted - yMinAdjusted || 1)) * innerHeight;
+
+    const lineMin = Math.min(xMinAdjusted, yMinAdjusted);
+    const lineMax = Math.max(xMaxAdjusted, yMaxAdjusted);
+
+    const getTicks = (min: number, max: number, count: number) => {
+      if (min === max) return [min];
+      const ticks = [];
+      const step = (max - min) / (count - 1);
+      for (let i = 0; i < count; i++) {
+        ticks.push(min + i * step);
+      }
+      return ticks;
+    };
+
+    const xTicks = getTicks(xMinAdjusted, xMaxAdjusted, 5);
+    const yTicks = getTicks(yMinAdjusted, yMaxAdjusted, 5);
+
+    return (
+      <div className="border border-gray-300 rounded-lg p-4 bg-white">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-lg font-semibold text-gray-700">Q-Q Plot ({selectedResult.distributionType})</h4>
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedQQDistribution}
+              onChange={(e) => setSelectedQQDistribution(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-md bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {sortedResults.filter(r => !r.error && r.qqPlot).map((result) => (
+                <option key={result.distributionType} value={result.distributionType}>
+                  {result.distributionType}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => magnifier.handleMagnify()}
+              className={`p-2 rounded-md transition-colors ${
+                magnifier.isMagnifying 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+              title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <svg 
+          ref={magnifier.svgRef}
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`} 
+          className="w-full h-auto"
+          onContextMenu={magnifier.handleContextMenu}
+          onMouseMove={magnifier.handleMouseMove}
+          onMouseLeave={magnifier.handleMouseLeave}
+        >
+          <defs>
+            <pattern id="qq-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width={chartWidth} height={chartHeight} fill="url(#qq-grid)" />
+
+          {/* Axes */}
+          <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+          <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+
+          {/* Perfect fit line */}
+          <line
+            x1={xScale(lineMin)}
+            y1={yScale(lineMin)}
+            x2={xScale(lineMax)}
+            y2={yScale(lineMax)}
+            stroke="#ef4444"
+            strokeWidth="2"
+            strokeDasharray="5,5"
+            opacity="0.7"
+          />
+
+          {/* X-axis ticks */}
+          {xTicks.map((tick, i) => (
+            <g key={`x-${i}`}>
+              <line x1={xScale(tick)} y1={margin.top + innerHeight} x2={xScale(tick)} y2={margin.top + innerHeight + 10} stroke="#6b7280" strokeWidth="2" />
+              <text x={xScale(tick)} y={margin.top + innerHeight + 35} textAnchor="middle" fontSize="20" fill="#6b7280">
+                {tick.toFixed(2)}
+              </text>
+            </g>
+          ))}
+
+          {/* Y-axis ticks */}
+          {yTicks.map((tick, i) => (
+            <g key={`y-${i}`}>
+              <line x1={margin.left} y1={yScale(tick)} x2={margin.left - 10} y2={yScale(tick)} stroke="#6b7280" strokeWidth="2" />
+              <text x={margin.left - 15} y={yScale(tick) + 6} textAnchor="end" fontSize="20" fill="#6b7280">
+                {tick.toFixed(2)}
+              </text>
+            </g>
+          ))}
+
+          {/* Data points */}
+          {validPairs.map((pair, i) => (
+            <circle key={i} cx={xScale(pair.x)} cy={yScale(pair.y)} r="5" fill="#3b82f6" opacity="0.7" />
+          ))}
+
+          {/* Axis labels */}
+          <text x={chartWidth / 2} y={chartHeight - 20} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold">
+            Theoretical Quantiles
+          </text>
+          <text x="30" y={chartHeight / 2} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold" transform={`rotate(-90 30 ${chartHeight / 2})`}>
+            Sample Quantiles
+          </text>
+
+          {/* Magnifier overlay */}
+          {magnifier.isMagnifying && magnifier.magnifierPos && selectedResult && selectedResult.qqPlot && (
+            <>
+              <defs>
+                <clipPath id="magnifier-clip-qq">
+                  <circle cx={magnifier.magnifierPos.x} cy={magnifier.magnifierPos.y} r={magnifierSize / 2} />
+                </clipPath>
+              </defs>
+              <g clipPath="url(#magnifier-clip-qq)">
+                <rect
+                  x={magnifier.magnifierPos.x - magnifierSize / 2}
+                  y={magnifier.magnifierPos.y - magnifierSize / 2}
+                  width={magnifierSize}
+                  height={magnifierSize}
+                  fill="white"
+                  opacity="0.95"
+                />
+                <g transform={`translate(${magnifier.magnifierPos.x}, ${magnifier.magnifierPos.y}) scale(${magnifierScale}) translate(${-magnifier.magnifierPos.x}, ${-magnifier.magnifierPos.y})`}>
+                  <rect width={chartWidth} height={chartHeight} fill="url(#qq-grid)" />
+                  <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  {(() => {
+                    const { theoreticalQuantiles, sampleQuantiles } = selectedResult.qqPlot;
+                    const validPairs = theoreticalQuantiles
+                      .map((x, i) => ({ x, y: sampleQuantiles[i] }))
+                      .filter(p => isFinite(p.x) && isFinite(p.y) && p.x !== null && p.y !== null);
+                    const xMin = Math.min(...validPairs.map(p => p.x));
+                    const xMax = Math.max(...validPairs.map(p => p.x));
+                    const yMin = Math.min(...validPairs.map(p => p.y));
+                    const yMax = Math.max(...validPairs.map(p => p.y));
+                    const xRange = xMax - xMin || 1;
+                    const yRange = yMax - yMin || 1;
+                    const xMinAdjusted = xMin - xRange * 0.05;
+                    const xMaxAdjusted = xMax + xRange * 0.05;
+                    const yMinAdjusted = yMin - yRange * 0.05;
+                    const yMaxAdjusted = yMax + yRange * 0.05;
+                    const xScaleQQ = (x: number) => margin.left + ((x - xMinAdjusted) / (xMaxAdjusted - xMinAdjusted || 1)) * innerWidth;
+                    const yScaleQQ = (y: number) => margin.top + innerHeight - ((y - yMinAdjusted) / (yMaxAdjusted - yMinAdjusted || 1)) * innerHeight;
+                    const lineMin = Math.min(xMinAdjusted, yMinAdjusted);
+                    const lineMax = Math.max(xMaxAdjusted, yMaxAdjusted);
+                    return (
+                      <>
+                        <line x1={xScaleQQ(lineMin)} y1={yScaleQQ(lineMin)} x2={xScaleQQ(lineMax)} y2={yScaleQQ(lineMax)} stroke="#ef4444" strokeWidth="2" strokeDasharray="5,5" opacity="0.7" />
+                        {validPairs.map((pair, i) => (
+                          <circle key={i} cx={xScaleQQ(pair.x)} cy={yScaleQQ(pair.y)} r="5" fill="#3b82f6" opacity="0.7" />
+                        ))}
+                      </>
+                    );
+                  })()}
+                </g>
+              </g>
+              <circle
+                cx={magnifier.magnifierPos.x}
+                cy={magnifier.magnifierPos.y}
+                r={magnifierSize / 2}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="3"
+              />
+            </>
+          )}
+        </svg>
+        {magnifier.contextMenu && (
+          <div
+            className="context-menu fixed bg-white border border-gray-300 rounded-lg shadow-lg py-1 z-[100]"
+            style={{ left: magnifier.contextMenu.x, top: magnifier.contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                magnifier.handleMagnify();
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+            >
+              돋보기
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // 4. AIC Comparison
+  const AICChart = () => {
+    const magnifier = useGraphMagnifier();
+    const validResults = sortedResults.filter(r => !r.error && r.fitStatistics?.aic !== undefined && r.fitStatistics?.aic !== null);
+    
+    if (validResults.length === 0) {
+      return (
+        <div className="border border-gray-300 rounded-lg p-4 bg-white">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-md font-semibold text-gray-700">AIC Comparison</h4>
+            <button
+              onClick={() => magnifier.handleMagnify()}
+              className={`p-2 rounded-md transition-colors ${
+                magnifier.isMagnifying 
+                  ? 'bg-blue-500 text-white' 
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+              title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+          </div>
+          <div className="text-gray-500 text-sm">AIC 데이터가 없습니다.</div>
+        </div>
+      );
+    }
+
+    const maxAIC = Math.max(...validResults.map(r => r.fitStatistics!.aic!));
+    const minAIC = Math.min(...validResults.map(r => r.fitStatistics!.aic!));
+    const aicRange = maxAIC - minAIC || 1;
+
+    const barWidth = innerWidth / validResults.length * 0.8;
+    const barSpacing = innerWidth / validResults.length * 0.2;
+
+    const magnifierSize = 200;
+    const magnifierScale = 3;
+
+    return (
+      <div className="border border-gray-300 rounded-lg p-4 bg-white relative">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-md font-semibold text-gray-700">AIC Comparison</h4>
+          <button
+            onClick={() => magnifier.handleMagnify()}
+            className={`p-2 rounded-md transition-colors ${
+              magnifier.isMagnifying 
+                ? 'bg-blue-500 text-white' 
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
+            title={magnifier.isMagnifying ? '돋보기 끄기 (ESC)' : '돋보기 켜기'}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+        </div>
+        <svg 
+          ref={magnifier.svgRef}
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`} 
+          className="w-full h-auto"
+          onContextMenu={magnifier.handleContextMenu}
+          onMouseMove={magnifier.handleMouseMove}
+          onMouseLeave={magnifier.handleMouseLeave}
+        >
+          <defs>
+            <pattern id="aic-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e7eb" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width={chartWidth} height={chartHeight} fill="url(#aic-grid)" />
+
+          {/* Axes */}
+          <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+          <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+
+          {/* Bars */}
+          {validResults.map((result, idx) => {
+            const aic = result.fitStatistics!.aic!;
+            const barHeight = ((aic - minAIC) / aicRange) * innerHeight * 0.9;
+            const x = margin.left + idx * (barWidth + barSpacing) + barSpacing / 2;
+            const y = margin.top + innerHeight - barHeight;
+            const isRecommended = result.distributionType === recommended?.distributionType;
+
+            return (
+              <g key={result.distributionType}>
+                <rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={barHeight}
+                  fill={isRecommended ? '#10b981' : colors[idx % colors.length]}
+                  opacity="0.8"
+                />
+                <text
+                  x={x + barWidth / 2}
+                  y={y - 10}
+                  textAnchor="middle"
+                  fontSize="20"
+                  fill="#374151"
+                  fontWeight="bold"
+                >
+                  {aic.toFixed(1)}
+                </text>
+                <text
+                  x={x + barWidth / 2}
+                  y={margin.top + innerHeight + 40}
+                  textAnchor="middle"
+                  fontSize="20"
+                  fill="#374151"
+                  transform={`rotate(-45 ${x + barWidth / 2} ${margin.top + innerHeight + 40})`}
+                >
+                  {result.distributionType}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Y-axis label */}
+          <text x="30" y={chartHeight / 2} textAnchor="middle" fontSize="24" fill="#374151" fontWeight="bold" transform={`rotate(-90 30 ${chartHeight / 2})`}>
+            AIC
+          </text>
+
+          {/* Magnifier overlay */}
+          {magnifier.isMagnifying && magnifier.magnifierPos && (
+            <>
+              <defs>
+                <clipPath id="magnifier-clip-aic">
+                  <circle cx={magnifier.magnifierPos.x} cy={magnifier.magnifierPos.y} r={magnifierSize / 2} />
+                </clipPath>
+              </defs>
+              <g clipPath="url(#magnifier-clip-aic)">
+                <rect
+                  x={magnifier.magnifierPos.x - magnifierSize / 2}
+                  y={magnifier.magnifierPos.y - magnifierSize / 2}
+                  width={magnifierSize}
+                  height={magnifierSize}
+                  fill="white"
+                  opacity="0.95"
+                />
+                <g transform={`translate(${magnifier.magnifierPos.x}, ${magnifier.magnifierPos.y}) scale(${magnifierScale}) translate(${-magnifier.magnifierPos.x}, ${-magnifier.magnifierPos.y})`}>
+                  <rect width={chartWidth} height={chartHeight} fill="url(#aic-grid)" />
+                  <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  <line x1={margin.left} y1={margin.top + innerHeight} x2={margin.left + innerWidth} y2={margin.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                  {validResults.map((result, idx) => {
+                    const aic = result.fitStatistics!.aic!;
+                    const barHeight = ((aic - minAIC) / aicRange) * innerHeight * 0.9;
+                    const x = margin.left + idx * (barWidth + barSpacing) + barSpacing / 2;
+                    const y = margin.top + innerHeight - barHeight;
+                    const isRecommended = result.distributionType === recommended?.distributionType;
+                    return (
+                      <g key={result.distributionType}>
+                        <rect
+                          x={x}
+                          y={y}
+                          width={barWidth}
+                          height={barHeight}
+                          fill={isRecommended ? '#10b981' : colors[idx % colors.length]}
+                          opacity="0.8"
+                        />
+                        <text
+                          x={x + barWidth / 2}
+                          y={y - 10}
+                          textAnchor="middle"
+                          fontSize="20"
+                          fill="#374151"
+                          fontWeight="bold"
+                        >
+                          {aic.toFixed(1)}
+                        </text>
+                        <text
+                          x={x + barWidth / 2}
+                          y={margin.top + innerHeight + 40}
+                          textAnchor="middle"
+                          fontSize="20"
+                          fill="#374151"
+                          transform={`rotate(-45 ${x + barWidth / 2} ${margin.top + innerHeight + 40})`}
+                        >
+                          {result.distributionType}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </g>
+              </g>
+              <circle
+                cx={magnifier.magnifierPos.x}
+                cy={magnifier.magnifierPos.y}
+                r={magnifierSize / 2}
+                fill="none"
+                stroke="#3b82f6"
+                strokeWidth="3"
+              />
+            </>
+          )}
+        </svg>
+        {magnifier.contextMenu && (
+          <div
+            className="context-menu fixed bg-white border border-gray-300 rounded-lg shadow-lg py-1 z-[100]"
+            style={{ left: magnifier.contextMenu.x, top: magnifier.contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                magnifier.handleMagnify();
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+            >
+              돋보기
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-6">
+        <QQPlotChart />
+        <AICChart />
+        <HistogramPDFChart />
+        <CDFChart />
+      </div>
+    </div>
+  );
+};
 
 interface SeverityModelPreviewModalProps {
   module: CanvasModule;
@@ -69,6 +1221,7 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
 
   const recommended = sortedResults.length > 0 ? sortedResults[0] : null;
   const [showSpreadView, setShowSpreadView] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'graphs'>('details');
 
   // 통계 계산 (originalData 사용)
   const statistics = useMemo(() => {
@@ -175,6 +1328,31 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
           </div>
         </header>
         <main className="flex-grow p-6 overflow-auto">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 mb-4">
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'details'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Details
+            </button>
+            <button
+              onClick={() => setActiveTab('graphs')}
+              className={`px-4 py-2 text-sm font-medium ${
+                activeTab === 'graphs'
+                  ? 'border-b-2 border-blue-500 text-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Graphs
+            </button>
+          </div>
+
+          {activeTab === 'details' ? (
           <div className="space-y-6">
             {/* Data Statistics */}
             {statistics && (
@@ -413,6 +1591,14 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
               </div>
             )}
           </div>
+          ) : (
+            <GraphsTab 
+              output={output}
+              sortedResults={sortedResults}
+              recommended={recommended}
+              statistics={statistics}
+            />
+          )}
         </main>
       </div>
     </div>

@@ -3148,8 +3148,8 @@ const renderParameters = (
         }
       }
       
-      const allSeverityTypes = ["Normal", "Lognormal", "Pareto", "Gamma", "Exponential", "Weibull"];
-      const selectedSeverityTypes = (module.parameters.selected_severity_types as string[]) || ["Lognormal", "Exponential", "Gamma", "Pareto"];
+      const allSeverityTypes = ["Normal", "Lognormal", "Pareto", "Gamma", "Exponential", "Weibull", "GeneralizedPareto", "Burr"];
+      const selectedSeverityTypes = (module.parameters.selected_severity_types as string[]) || allSeverityTypes;
       const amountColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
       
       const handleSeverityTypeToggle = (sevType: string) => {

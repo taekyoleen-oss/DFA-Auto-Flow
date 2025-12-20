@@ -75,8 +75,8 @@ const reinsuranceTypes = [
 const xolPricingTypes = [
   ModuleType.ApplyThreshold,
   ModuleType.DefineXolContract,
-  ModuleType.CalculateCededLoss,
-  ModuleType.PriceXolContract,
+  ModuleType.XolCalculator,
+  ModuleType.XolPricing,
 ];
 
 const dfaTypes = [
@@ -102,7 +102,7 @@ const categorizedModules = [
     modules: TOOLBOX_MODULES.filter((m) => dfaTypes.includes(m.type)),
   },
   {
-    name: "XoL Pricing",
+    name: "XoL Analysis",
     modules: TOOLBOX_MODULES.filter((m) => xolPricingTypes.includes(m.type)),
   },
 ];
@@ -154,7 +154,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
   >({
     "Data Preprocess": true,
     "DFA Analysis": true,
-    "XoL Pricing": true,
+    "XoL Analysis": true,
   });
 
   const [lastTapInfo, setLastTapInfo] = useState<{

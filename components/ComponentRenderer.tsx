@@ -296,6 +296,68 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
     userSelect: 'none',
   };
 
+  // Helper function to determine port position
+  const getInputPortStyle = (port: Port, index: number, total: number): React.CSSProperties => {
+    // Special cases for specific modules
+    if (module.type === ModuleType.XolCalculator) {
+      // XoL Calculator: data_in on left (center), contract_in on top (center)
+      if (port.name === 'data_in') {
+        return {
+          position: 'absolute',
+          left: '-9px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+        };
+      } else if (port.name === 'contract_in') {
+        // contract_in on top at 1/4 position
+        return {
+          position: 'absolute',
+          top: '-9px',
+          left: '25%',
+          transform: 'translateX(-50%)',
+        };
+      }
+    }
+    
+    if (module.type === ModuleType.SplitByThreshold || module.type === ModuleType.ApplyThreshold) {
+      // Split By Threshold, Apply Threshold: data_in on left (center), threshold_in on top (center)
+      if (port.name === 'data_in') {
+        return {
+          position: 'absolute',
+          left: '-9px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+        };
+      } else if (port.name === 'threshold_in') {
+        // threshold_in on top at 1/4 position
+        return {
+          position: 'absolute',
+          top: '-9px',
+          left: '25%',
+          transform: 'translateX(-50%)',
+        };
+      }
+    }
+    
+    // Default: all input ports on left side, vertically distributed
+    return {
+      position: 'absolute',
+      left: '-9px',
+      top: `${((index + 1) * 100) / (total + 1)}%`,
+      transform: 'translateY(-50%)',
+    };
+  };
+
+  const getOutputPortStyle = (port: Port, index: number, total: number): React.CSSProperties => {
+    // All output ports on right side, vertically distributed
+    return {
+      position: 'absolute',
+      right: '-9px',
+      top: `${((index + 1) * 100) / (total + 1)}%`,
+      transform: 'translateY(-50%)',
+    };
+  };
+
   return (
     <div
       style={componentStyle}
@@ -307,12 +369,7 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
       {/* Ports are now absolutely positioned relative to the main wrapper */}
       {module.inputs.map((port, index) => {
           const total = module.inputs.length;
-          const style: React.CSSProperties = { 
-              position: 'absolute',
-              top: '-9px', // w-4 is 16px, border is 2px. Half of 16px is 8px.
-              left: `${((index + 1) * 100) / (total + 1)}%`,
-              transform: 'translateX(-50%)',
-          };
+          const style = getInputPortStyle(port, index, total);
           return <PortComponent 
                     key={port.name} 
                     port={port} 
@@ -411,12 +468,7 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
 
       {module.outputs.map((port, index) => {
           const total = module.outputs.length;
-          const style: React.CSSProperties = { 
-              position: 'absolute',
-              bottom: '-9px',
-              left: `${((index + 1) * 100) / (total + 1)}%`,
-              transform: 'translateX(-50%)',
-          };
+          const style = getOutputPortStyle(port, index, total);
           return <PortComponent 
                     key={port.name} 
                     port={port} 

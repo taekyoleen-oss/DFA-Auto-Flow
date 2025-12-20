@@ -918,7 +918,7 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       status: ModuleStatus.Pending,
       parameters: {
         amount_column: "클레임 금액",
-        selected_severity_types: ["Lognormal", "Exponential", "Gamma", "Pareto"],
+        selected_severity_types: ["Normal", "Lognormal", "Pareto", "Gamma", "Exponential", "Weibull", "GeneralizedPareto", "Burr"],
       },
       inputs: [{ name: "data_in", type: "data" }],
       outputs: [{ name: "data_out", type: "distribution" }],

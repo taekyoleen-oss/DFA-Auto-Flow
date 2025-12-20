@@ -1394,6 +1394,19 @@ elif sev_type == "Weibull":
     loc = severity_params.get("loc", 0.0)
     sev_dist = stats.weibull_min(c=shape, scale=scale, loc=loc)
 
+elif sev_type == "GeneralizedPareto":
+    shape = severity_params["shape"]
+    scale = severity_params["scale"]
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.genpareto(c=shape, scale=scale, loc=loc)
+
+elif sev_type == "Burr":
+    c = severity_params["c"]
+    d = severity_params["d"]
+    scale = severity_params["scale"]
+    loc = severity_params.get("loc", 0.0)
+    sev_dist = stats.burr12(c=c, d=d, scale=scale, loc=loc)
+
 else:
     raise ValueError(f"Unknown severity distribution: {sev_type}")
 
@@ -1673,6 +1686,12 @@ elif p_severity_type == "Exponential":
 elif p_severity_type == "Weibull":
     params = stats.weibull_min.fit(amounts, floc=0)
     sev_dist = stats.weibull_min
+elif p_severity_type == "GeneralizedPareto":
+    params = stats.genpareto.fit(amounts, floc=0)
+    sev_dist = stats.genpareto
+elif p_severity_type == "Burr":
+    params = stats.burr12.fit(amounts, floc=0)
+    sev_dist = stats.burr12
 
 print(f"\\n=== 심도 모델 ({p_severity_type}) 적합 결과 ===")
 print(f"파라미터: {params}")

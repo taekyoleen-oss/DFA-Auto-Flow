@@ -6125,6 +6125,14 @@ for dist_type in severity_types:
             params = stats.weibull_min.fit(amounts, floc=0)
             dist = stats.weibull_min(c=params[0], scale=params[2], loc=params[1])
             param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
+        elif dist_type == "GeneralizedPareto":
+            params = stats.genpareto.fit(amounts, floc=0)
+            dist = stats.genpareto(c=params[0], scale=params[2], loc=params[1])
+            param_dict = {"shape": float(params[0]), "loc": float(params[1]), "scale": float(params[2])}
+        elif dist_type == "Burr":
+            params = stats.burr12.fit(amounts, floc=0)
+            dist = stats.burr12(c=params[0], d=params[1], scale=params[3], loc=params[2])
+            param_dict = {"c": float(params[0]), "d": float(params[1]), "loc": float(params[2]), "scale": float(params[3])}
         else:
             all_results.append({"distribution_type": dist_type, "error": f"Unsupported distribution type: {dist_type}"})
             continue

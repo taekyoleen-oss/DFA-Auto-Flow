@@ -545,7 +545,7 @@ export interface FrequencyModelOutput {
 }
 
 export interface SeverityModelFitResult {
-  distributionType: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
+  distributionType: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull" | "GeneralizedPareto" | "Burr";
   parameters: Record<string, number>;
   fitStatistics: {
     aic?: number;
@@ -575,7 +575,7 @@ export interface SeverityModelFitResult {
 export interface SeverityModelOutput {
   type: "SeverityModelOutput";
   results: SeverityModelFitResult[];
-  selectedDistribution?: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
+  selectedDistribution?: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull" | "GeneralizedPareto" | "Burr";
   originalData?: number[]; // 원본 보험금 데이터 (통계 계산용)
 }
 
@@ -591,7 +591,7 @@ export interface FrequencySeverityModelOutput {
     };
   };
   severityModel: {
-    type: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull";
+    type: "Normal" | "Lognormal" | "Pareto" | "Gamma" | "Exponential" | "Weibull" | "GeneralizedPareto" | "Burr";
     parameters: Record<string, number>;
     fitStatistics: {
       aic?: number;
