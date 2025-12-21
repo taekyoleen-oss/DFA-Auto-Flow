@@ -724,6 +724,7 @@ export interface CanvasModule {
     | SplitFreqServOutput
     | AggregateModelOutput
     | SimulateAggDistOutput
+    | SimulateFreqServOutput
     | FrequencyModelOutput
     | SeverityModelOutput
     | FrequencySeverityModelOutput

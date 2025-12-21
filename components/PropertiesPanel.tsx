@@ -24,13 +24,16 @@ import {
   MissingHandlerOutput,
   EncoderOutput,
   NormalizerOutput,
-  AggregateModelOutput,
   SplitFreqServOutput,
-  FrequencyModelOutput,
-  SeverityModelOutput,
+  SimulateFreqServOutput,
+  SimulateAggDistOutput,
 } from "../types";
 import {
   PlayIcon,
+  TableCellsIcon,
+  CommandLineIcon,
+  CogIcon,
+  CodeBracketIcon,
   InformationCircleIcon,
   SparklesIcon,
   ClipboardIcon,
@@ -440,7 +443,7 @@ const getConnectedDataSourceHelper = (
   allModules: CanvasModule[],
   allConnections: Connection[],
   portNameToFind?: string
-): DataPreview | AggregateModelOutput | SplitFreqServOutput | FrequencyModelOutput | SeverityModelOutput | SimulateAggDistOutput | FrequencySeverityModelOutput | undefined => {
+): DataPreview | any => {
   const portName = portNameToFind || "data_in";
   let inputConnection = allConnections.find(
     (c) => c.to.moduleId === moduleId && c.to.portName === portName
@@ -448,14 +451,28 @@ const getConnectedDataSourceHelper = (
 
   // Only perform fallback if no specific port was requested and the initial attempt failed
   if (!inputConnection && !portNameToFind) {
-    // A safer fallback: find the first connection to any 'data' or 'evaluation' type port.
+    // A safer fallback: find the first connection to any 'data' type port.
     inputConnection = allConnections.find((c) => {
       if (c.to.moduleId === moduleId) {
         const targetModule = allModules.find((m) => m.id === moduleId);
         const targetPort = targetModule?.inputs.find(
           (p) => p.name === c.to.portName
         );
-        return targetPort?.type === "data" || targetPort?.type === "evaluation";
+        return targetPort?.type === "data";
+      }
+      return false;
+    });
+  }
+  
+  // If portNameToFind is specified, also try to find connections to distribution or evaluation type ports
+  if (!inputConnection && portNameToFind) {
+    inputConnection = allConnections.find((c) => {
+      if (c.to.moduleId === moduleId && c.to.portName === portNameToFind) {
+        const targetModule = allModules.find((m) => m.id === moduleId);
+        const targetPort = targetModule?.inputs.find(
+          (p) => p.name === portNameToFind
+        );
+        return targetPort?.type === "distribution" || targetPort?.type === "evaluation" || targetPort?.type === "data";
       }
       return false;
     });
@@ -480,53 +497,74 @@ const getConnectedDataSourceHelper = (
     sourceModule.outputData.type === "InflatedDataOutput" ||
     sourceModule.outputData.type === "ClaimDataOutput"
   ) {
-    return (sourceModule.outputData as any).data;
-  } else if (sourceModule.outputData.type === "AggregateModelOutput") {
-    return sourceModule.outputData as AggregateModelOutput;
-  } else if (sourceModule.outputData.type === "ThresholdSplitOutput") {
-    // ThresholdSplitOutput의 경우 포트 이름에 따라 적절한 데이터 반환
-    const fromPortName = inputConnection.from.portName;
-    if (fromPortName === "above_threshold_out") {
-      return (sourceModule.outputData as any).aboveThreshold;
-    } else if (fromPortName === "below_threshold_out") {
-      return (sourceModule.outputData as any).belowThreshold;
-    }
-    // 포트 이름이 없거나 알 수 없는 경우 기본적으로 aboveThreshold 반환 (SplitByFreqServ가 주로 사용)
-    return (sourceModule.outputData as any).aboveThreshold;
+    // FormatChangeOutput, InflatedDataOutput, ClaimDataOutput의 경우 outputData 자체를 반환
+    // (renderParameters에서 data 속성에 접근할 수 있도록)
+    return sourceModule.outputData;
   } else if (sourceModule.outputData.type === "SplitFreqServOutput") {
-    // 포트 이름에 따라 적절한 데이터 반환
+    // SplitFreqServOutput의 경우 포트 이름에 따라 적절한 데이터 반환
     const fromPortName = inputConnection.from.portName;
     if (fromPortName === "frequency_out") {
       return (sourceModule.outputData as SplitFreqServOutput).frequencyData;
     } else if (fromPortName === "severity_out") {
       return (sourceModule.outputData as SplitFreqServOutput).severityData;
     }
-    // 포트 이름이 없거나 알 수 없는 경우, to.portName을 확인하여 추론 시도
-    // 하지만 일반적으로는 포트 이름이 명확해야 하므로 undefined 반환
-    // (PropertiesPanel에서 SplitFreqServOutput 타입을 확인하여 처리)
-    return undefined;
-  } else if (sourceModule.outputData.type === "FrequencyModelOutput") {
-    return sourceModule.outputData as FrequencyModelOutput;
-  } else if (sourceModule.outputData.type === "SeverityModelOutput") {
-    return sourceModule.outputData as SeverityModelOutput;
-  } else if (sourceModule.outputData.type === "SimulateAggDistOutput") {
-    return sourceModule.outputData as SimulateAggDistOutput;
-  } else if (sourceModule.outputData.type === "FrequencySeverityModelOutput") {
-    return sourceModule.outputData as FrequencySeverityModelOutput;
-  } else if ((sourceModule.outputData as any).type === "SimulateFreqServOutput") {
-    // SimulateFreqServOutput 처리: 포트 이름에 따라 적절한 데이터 반환
-    const freqServOutput = sourceModule.outputData as any;
+    // 포트 이름이 명시되지 않은 경우 기본적으로 frequencyData 반환
+    return (sourceModule.outputData as SplitFreqServOutput).frequencyData;
+  } else if (
+    sourceModule.outputData.type === "FrequencyModelOutput" ||
+    sourceModule.outputData.type === "SeverityModelOutput"
+  ) {
+    // FrequencyModelOutput, SeverityModelOutput의 경우 outputData 자체를 반환
+    return sourceModule.outputData;
+  } else if (sourceModule.outputData.type === "SimulateFreqServOutput") {
+    // SimulateFreqServOutput의 경우 포트 이름에 따라 적절한 데이터 반환
     const fromPortName = inputConnection.from.portName;
+    const freqServOutput = sourceModule.outputData as SimulateFreqServOutput;
     
     if (fromPortName === "output_2") {
-      // XoL 형식: data 타입 (DataPreview)
-      return freqServOutput.xolOutput;
+      // output_2 포트는 xolOutput (DataPreview) 반환
+      if (freqServOutput.xolOutput) {
+        return freqServOutput.xolOutput;
+      }
     } else if (fromPortName === "output_1") {
-      // DFA 형식: evaluation 타입 (SimulateAggDistOutput)
-      return freqServOutput.dfaOutput;
+      // output_1 포트는 dfaOutput (SimulateAggDistOutput) 반환
+      if (freqServOutput.dfaOutput) {
+        // dfaOutput의 claimLevelData가 있으면 DataPreview로 변환
+        if (freqServOutput.dfaOutput.claimLevelData && freqServOutput.dfaOutput.claimLevelData.length > 0) {
+          return {
+            type: "DataPreview",
+            columns: [
+              { name: "시뮬레이션 번호", type: "number" },
+              { name: "보험금", type: "number" },
+            ],
+            rows: freqServOutput.dfaOutput.claimLevelData.map(item => ({
+              "시뮬레이션 번호": item.simulationNumber,
+              "보험금": item.claimAmount,
+            })),
+            totalRowCount: freqServOutput.dfaOutput.claimLevelData.length,
+          } as DataPreview;
+        }
+      }
     }
-    // 기본적으로 xolOutput 반환 (data_in 포트의 경우)
+    // 포트 이름이 명시되지 않았거나 해당 포트에 데이터가 없는 경우 xolOutput 우선 반환
     return freqServOutput.xolOutput;
+  } else if (sourceModule.outputData.type === "SimulateAggDistOutput") {
+    // SimulateAggDistOutput의 경우 claimLevelData가 있으면 DataPreview로 변환
+    const aggDistOutput = sourceModule.outputData as SimulateAggDistOutput;
+    if (aggDistOutput.claimLevelData && aggDistOutput.claimLevelData.length > 0) {
+      return {
+        type: "DataPreview",
+        columns: [
+          { name: "시뮬레이션 번호", type: "number" },
+          { name: "보험금", type: "number" },
+        ],
+        rows: aggDistOutput.claimLevelData.map(item => ({
+          "시뮬레이션 번호": item.simulationNumber,
+          "보험금": item.claimAmount,
+        })),
+        totalRowCount: aggDistOutput.claimLevelData.length,
+      } as DataPreview;
+    }
   }
   return undefined;
 };
@@ -554,153 +592,6 @@ const renderParameters = (
 
   switch (module.type) {
     // ... [Previous cases remain unchanged: LoadData, SelectData, HandleMissingValues, TransformData, EncodeCategorical, NormalizeData, TransitionData, ResampleData, SplitData] ...
-    case ModuleType.LoadData: {
-      // 엑셀 파일을 CSV로 변환하는 함수
-      const convertExcelToCSV = (workbook: XLSX.Workbook, sheetName?: string): string => {
-        const targetSheet = sheetName || workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[targetSheet];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          defval: null,
-          raw: false,
-        });
-
-        return jsonData
-          .map((row: any) => {
-            return row
-              .map((cell: any) => {
-                if (cell === null || cell === undefined) return "";
-                const str = String(cell);
-                if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-                  return `"${str.replace(/"/g, '""')}"`;
-                }
-                return str;
-              })
-              .join(",");
-          })
-          .join("\n");
-      };
-
-      const handleBrowseClick = async () => {
-        if (folderHandle && (window as any).showOpenFilePicker) {
-          try {
-            const [fileHandle] = await (window as any).showOpenFilePicker({
-              startIn: folderHandle,
-              types: [
-                {
-                  description: "CSV Files",
-                  accept: { "text/csv": [".csv"] },
-                },
-                {
-                  description: "Excel Files",
-                  accept: {
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
-                      ".xlsx",
-                    ],
-                    "application/vnd.ms-excel": [".xls"],
-                  },
-                },
-              ],
-            });
-            const file = await fileHandle.getFile();
-            const fileName = file.name.toLowerCase();
-
-            if (fileName.endsWith(".xlsx") || fileName.endsWith(".xls")) {
-              // 엑셀 파일 처리
-              const arrayBuffer = await file.arrayBuffer();
-              const workbook = XLSX.read(arrayBuffer, { type: "array" });
-              const firstSheetName = workbook.SheetNames[0];
-              const csvContent = convertExcelToCSV(workbook, firstSheetName);
-
-              updateModuleParameters(module.id, {
-                source: file.name,
-                fileContent: csvContent,
-                fileType: "excel",
-                sheetName: firstSheetName,
-              });
-            } else {
-              // CSV 파일 처리
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                const content = e.target?.result as string;
-                updateModuleParameters(module.id, {
-                  source: file.name,
-                  fileContent: content,
-                  fileType: "csv",
-                });
-              };
-              reader.readAsText(file);
-            }
-          } catch (error: any) {
-            if (error.name !== "AbortError") {
-              console.warn(
-                "Could not use directory picker, falling back to default.",
-                error
-              );
-              fileInputRef.current?.click();
-            }
-          }
-        } else {
-          fileInputRef.current?.click();
-        }
-      };
-
-      return (
-        <div>
-          <label className="block text-sm text-gray-400 mb-1">Source</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={module.parameters.source}
-              onChange={(e) => onParamChange("source", e.target.value)}
-              className="flex-grow bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="No file selected"
-            />
-            <button
-              onClick={handleBrowseClick}
-              className="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
-            >
-              Browse...
-            </button>
-          </div>
-          {/* 파일 타입 표시 */}
-          {module.parameters.fileType === "excel" &&
-            module.parameters.sheetName && (
-              <div className="mt-2 text-xs text-gray-500">
-                Excel Sheet: {module.parameters.sheetName}
-              </div>
-            )}
-          {/* 엑셀 데이터 직접 입력 버튼 */}
-          <button
-            onClick={() => {
-              if (onOpenExcelModal) {
-                onOpenExcelModal();
-              }
-            }}
-            className="mt-2 px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
-          >
-            엑셀 데이터 직접 입력
-          </button>
-          <div className="mt-4">
-            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
-              Examples
-            </h4>
-            <div className="bg-gray-700 p-2 rounded-md space-y-1">
-              {SAMPLE_DATA.map((sample) => (
-                <div
-                  key={sample.name}
-                  onDoubleClick={() => onSampleLoad(sample)}
-                  className="px-2 py-1.5 text-sm text-gray-300 rounded-md hover:bg-gray-600 cursor-pointer"
-                  title="Double-click to load"
-                >
-                  {sample.name}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      );
-    }
     case ModuleType.LoadClaimData: {
       // 엑셀 파일을 CSV로 변환하는 함수
       const convertExcelToCSV = (workbook: XLSX.WorkBook, sheetName?: string): string => {
@@ -792,21 +683,13 @@ const renderParameters = (
         }
       };
 
-      const handleExcelModalApply = (csvContent: string) => {
-        updateModuleParameters(module.id, {
-          source: "pasted_data.csv",
-          fileContent: csvContent,
-          fileType: "pasted",
-        });
-      };
-
       return (
         <div>
           <label className="block text-sm text-gray-400 mb-1">Source</label>
           <div className="flex gap-2">
             <input
               type="text"
-              value={module.parameters.source}
+              value={module.parameters.source || ""}
               onChange={(e) => onParamChange("source", e.target.value)}
               className="flex-grow bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="No file selected"
@@ -836,6 +719,82 @@ const renderParameters = (
           >
             엑셀 데이터 직접 입력
           </button>
+          <div className="mt-4">
+            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+              Examples
+            </h4>
+            <div className="bg-gray-700 p-2 rounded-md space-y-1">
+              {SAMPLE_DATA.map((sample) => (
+                <div
+                  key={sample.name}
+                  onDoubleClick={() => onSampleLoad(sample)}
+                  className="px-2 py-1.5 text-sm text-gray-300 rounded-md hover:bg-gray-600 cursor-pointer"
+                  title="Double-click to load"
+                >
+                  {sample.name}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    case ModuleType.LoadData:
+    case ModuleType.XolLoading: {
+      const handleBrowseClick = async () => {
+        if (folderHandle && (window as any).showOpenFilePicker) {
+          try {
+            const [fileHandle] = await (window as any).showOpenFilePicker({
+              startIn: folderHandle,
+              types: [
+                {
+                  description: "CSV Files",
+                  accept: { "text/csv": [".csv"] },
+                },
+              ],
+            });
+            const file = await fileHandle.getFile();
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const content = e.target?.result as string;
+              updateModuleParameters(module.id, {
+                source: file.name,
+                fileContent: content,
+              });
+            };
+            reader.readAsText(file);
+          } catch (error: any) {
+            if (error.name !== "AbortError") {
+              console.warn(
+                "Could not use directory picker, falling back to default.",
+                error
+              );
+              fileInputRef.current?.click();
+            }
+          }
+        } else {
+          fileInputRef.current?.click();
+        }
+      };
+
+      return (
+        <div>
+          <label className="block text-sm text-gray-400 mb-1">Source</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={module.parameters.source}
+              onChange={(e) => onParamChange("source", e.target.value)}
+              className="flex-grow bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="No file selected"
+            />
+            <button
+              onClick={handleBrowseClick}
+              className="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+            >
+              Browse...
+            </button>
+          </div>
           <div className="mt-4">
             <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
               Examples
@@ -939,8 +898,6 @@ const renderParameters = (
               <span className="text-xs font-bold text-gray-400">Data Type</span>
             </div>
             {inputColumns.map((col) => {
-              // Default to true (all selected) if not explicitly configured
-              // This ensures all columns are selected by default
               const selection = currentSelections[col.name] || {
                 selected: true,
                 type: col.type,
@@ -2483,7 +2440,7 @@ const renderParameters = (
       );
     case ModuleType.ApplyInflation: {
       const sourceData = getConnectedDataSource(module.id);
-      // FormatChangeOutput, InflatedDataOutput 등의 경우 data 속성에서 컬럼 가져오기
+      // FormatChangeOutput, InflatedDataOutput 경우 data 속성에서 컬럼 가져오기
       let inputColumns: ColumnInfo[] = [];
       if (sourceData) {
         if (sourceData.type === "FormatChangeOutput" || sourceData.type === "InflatedDataOutput" || sourceData.type === "ClaimDataOutput") {
@@ -2494,7 +2451,7 @@ const renderParameters = (
       }
       const allColumns = inputColumns.map(col => col.name);
       
-      // 기본 옵션 추가 (컬럼이 없을 때도 선택 가능하도록)
+      // 기본 옵션 추가 (컬럼이 없을 때 선택 가능하도록)
       const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액"];
       const yearOptions = allColumns.length > 0 ? allColumns : ["연도", "날짜"];
       
@@ -2529,18 +2486,28 @@ const renderParameters = (
     }
     case ModuleType.FormatChange: {
       const sourceData = getConnectedDataSource(module.id);
-      const inputColumns = sourceData?.columns || [];
-      const inputRows = sourceData?.rows || [];
+      // FormatChangeOutput, InflatedDataOutput 경우 data 속성에서 컬럼 가져오기
+      let inputColumns: ColumnInfo[] = [];
+      let inputRows: Record<string, any>[] = [];
+      if (sourceData) {
+        if (sourceData.type === "FormatChangeOutput" || sourceData.type === "InflatedDataOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+          inputRows = (sourceData as any).data?.rows || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+          inputRows = sourceData.rows || [];
+        }
+      }
       
-      // 날짜 형식 판단 함수
+      // 날짜 형식 감지 함수
       const isDateColumn = (col: ColumnInfo): boolean => {
-        // 컬럼명에 "날짜" 또는 "date"가 포함되어야 함
+        // 컬럼 이름에 "날짜"나 "date"가 포함되어 있는지 확인
         const nameLower = col.name.toLowerCase();
         if (!nameLower.includes("날짜") && !nameLower.includes("date")) {
           return false;
         }
         
-        // 실제 데이터가 날짜 형식인지 확인
+        // 실제 데이터로 날짜 형식인지 확인
         if (inputRows.length > 0) {
           const sampleValues = inputRows
             .slice(0, Math.min(10, inputRows.length))
@@ -2558,17 +2525,16 @@ const renderParameters = (
             /^\d{1,2}[-/.]\d{1,2}[-/.]\d{4}/, // MM-DD-YYYY, DD/MM/YYYY
           ];
           
-          // 샘플 값 중 일부라도 날짜 형식이면 날짜 컬럼으로 인정
+          // 샘플 값 중 50% 이상이 날짜 형식이면 날짜 컬럼으로 인정
           const dateMatchCount = sampleValues.filter(val => {
             const str = String(val);
             return datePatterns.some(pattern => pattern.test(str));
           }).length;
           
-          // 샘플의 50% 이상이 날짜 형식이면 날짜 컬럼으로 인정
           return dateMatchCount >= Math.ceil(sampleValues.length * 0.5);
         }
         
-        // 데이터가 없으면 컬럼명만으로 판단
+        // 데이터가 없으면 컬럼 이름만으로 판단
         return true;
       };
       
@@ -2585,38 +2551,77 @@ const renderParameters = (
             options={dateColumns.length > 0 ? dateColumns : []}
           />
           {dateColumns.length === 0 && (
-            <p className="text-xs text-yellow-500 mt-1">날짜 형식이 없습니다.</p>
+            <p className="text-xs text-yellow-500 mt-1">날짜 형식 컬럼이 없습니다.</p>
           )}
         </div>
       );
     }
     case ModuleType.SplitByThreshold: {
       const sourceData = getConnectedDataSource(module.id);
-      // Handle different output types (InflatedDataOutput, FormatChangeOutput, ClaimDataOutput, etc.)
+      // FormatChangeOutput, InflatedDataOutput 경우 data 속성에서 컬럼 가져오기
       let inputColumns: ColumnInfo[] = [];
       if (sourceData) {
-        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+        if (sourceData.type === "FormatChangeOutput" || sourceData.type === "InflatedDataOutput" || sourceData.type === "ClaimDataOutput") {
           inputColumns = (sourceData as any).data?.columns || [];
         } else if (sourceData.type === "DataPreview") {
           inputColumns = sourceData.columns || [];
         }
       }
       const allColumns = inputColumns.map(col => col.name);
+      
+      // 기본 옵션 추가 (컬럼이 없을 때 선택 가능하도록)
       const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액"];
+      const yearOptions = allColumns.length > 0 ? allColumns : ["연도", "날짜"];
+      
+      // threshold_in 포트를 통해 연결된 SettingThreshold 모듈에서 threshold 값 가져오기
+      const thresholdConnection = allConnections.find((c) => {
+        if (c.to.moduleId === module.id) {
+          const targetModule = allModules.find((m) => m.id === module.id);
+          const targetPort = targetModule?.inputs.find(
+            (p) => p.name === c.to.portName
+          );
+          return targetPort?.name === "threshold_in" && targetPort?.type === "threshold";
+        }
+        return false;
+      });
+      
+      let thresholdValue = module.parameters.threshold || 1000000;
+      if (thresholdConnection) {
+        const sourceModule = allModules.find(
+          (m) => m.id === thresholdConnection.from.moduleId
+        );
+        if (sourceModule?.outputData?.type === "SettingThresholdOutput") {
+          const selectedThreshold = (sourceModule.outputData as any).selectedThreshold;
+          if (selectedThreshold !== undefined && selectedThreshold !== null) {
+            thresholdValue = selectedThreshold;
+          }
+        }
+      }
       
       return (
         <div className="space-y-4">
           <PropertyInput
             label="Threshold"
-            value={module.parameters.threshold || 1000000}
+            value={thresholdValue}
             type="number"
             onChange={(v) => onParamChange("threshold", Number(v))}
           />
+          {thresholdConnection && (
+            <p className="text-xs text-gray-500">
+              Setting Threshold 모듈에서 선택된 값이 사용됩니다.
+            </p>
+          )}
           <PropertySelect
             label="Amount Column"
             value={module.parameters.amount_column || "클레임 금액"}
             onChange={(v) => onParamChange("amount_column", v)}
             options={amountOptions}
+          />
+          <PropertySelect
+            label="Year Column"
+            value={module.parameters.year_column || "연도"}
+            onChange={(v) => onParamChange("year_column", v)}
+            options={yearOptions}
           />
         </div>
       );
@@ -2674,22 +2679,46 @@ const renderParameters = (
         ? numericColumns.map(col => col.name)
         : ["클레임 금액"];
       
-      // Find year column candidates (date columns or columns with "year", "연도" in name)
-      const yearColumnCandidates = inputColumns.filter(col => {
-        const name = col.name.toLowerCase();
-        return name.includes("year") || name.includes("연도") || name.includes("날짜") || name.includes("date");
-      });
-      const yearColumnOptions = yearColumnCandidates.length > 0
-        ? yearColumnCandidates.map(col => col.name)
-        : [];
+      // 연도 컬럼 옵션 생성
+      const yearColumnOptions = inputColumns
+        .filter((col) => 
+          col.type === "number" && 
+          (col.name.includes("연도") || 
+           col.name.toLowerCase().includes("year") ||
+           col.name === "연도")
+        )
+        .map(col => col.name);
+      
+      // 클레임 관련 컬럼 자동 감지 (기본값으로 사용)
+      const findClaimColumn = (): string | null => {
+        const claimKeywords = ["클레임", "claim", "금액", "amount", "보험금", "loss"];
+        for (const col of numericColumns) {
+          const colNameLower = col.name.toLowerCase();
+          if (claimKeywords.some(keyword => colNameLower.includes(keyword.toLowerCase()))) {
+            return col.name;
+          }
+        }
+        // 클레임 관련 컬럼이 없으면 첫 번째 숫자 컬럼 사용
+        return numericColumns.length > 0 ? numericColumns[0].name : null;
+      };
       
       const { target_column, thresholds = [], year_column = "" } = module.parameters;
       
+      // target_column이 없으면 클레임 관련 컬럼을 기본값으로 설정
+      const defaultTargetColumn = target_column || findClaimColumn() || "";
+      if (!target_column && defaultTargetColumn) {
+        // 기본값 설정 (한 번만 실행되도록 useEffect에서 처리하는 것이 좋지만, 여기서는 즉시 설정)
+        setTimeout(() => {
+          onParamChange("target_column", defaultTargetColumn);
+        }, 0);
+      }
+      
       // Calculate mean for the target column if data is available
-      const calculateMean = (): number => {
-        if (!target_column || inputRows.length === 0) return 0;
+      const calculateMean = (columnName?: string): number => {
+        const colToUse = columnName || target_column || defaultTargetColumn;
+        if (!colToUse || inputRows.length === 0) return 0;
         const values = inputRows
-          .map(row => row[target_column])
+          .map(row => row[colToUse])
           .filter(val => val !== null && val !== undefined && val !== "")
           .map(val => parseFloat(String(val)))
           .filter(val => !isNaN(val));
@@ -2705,18 +2734,29 @@ const renderParameters = (
       // If thresholds is empty and target_column is set, show calculated mean
       // Otherwise show existing thresholds
       const displayThresholds = (() => {
-        if (thresholds.length === 0 && target_column) {
-          const calculatedMean = calculateMean();
-          return calculatedMean > 0 ? [calculatedMean] : [0];
+        const colToUse = target_column || defaultTargetColumn;
+        if (thresholds.length === 0 && colToUse) {
+          const calculatedMean = calculateMean(colToUse);
+          if (calculatedMean > 0) {
+            // 첫 번째 threshold를 평균값으로 자동 설정
+            setTimeout(() => {
+              if (thresholds.length === 0) {
+                onParamChange("thresholds", [calculatedMean]);
+              }
+            }, 0);
+            return [calculatedMean];
+          }
+          return [0];
         }
         return thresholds.length > 0 ? thresholds : [0];
       })();
       
       const handleAddThreshold = () => {
         let initialValue = 0;
+        const colToUse = target_column || defaultTargetColumn;
         if (displayThresholds.length === 0) {
           // First threshold: use mean-based value
-          initialValue = calculateMean();
+          initialValue = calculateMean(colToUse);
         } else {
           // Subsequent thresholds: use first threshold value
           initialValue = displayThresholds[0] || 0;
@@ -2755,7 +2795,7 @@ const renderParameters = (
         <div className="space-y-4">
           <PropertySelect
             label="Target Column"
-            value={target_column || ""}
+            value={target_column || defaultTargetColumn || ""}
             onChange={(v) => {
               onParamChange("target_column", v);
               // If thresholds is empty and target column is selected, initialize with calculated mean
@@ -2777,6 +2817,27 @@ const renderParameters = (
                 if (initialValue > 0) {
                   onParamChange("thresholds", [initialValue]);
                 }
+              } else if (thresholds.length > 0 && thresholds[0] === 0) {
+                // 첫 번째 threshold가 0이면 평균값으로 업데이트
+                const tempCalculateMean = (): number => {
+                  if (!v || inputRows.length === 0) return 0;
+                  const values = inputRows
+                    .map(row => row[v])
+                    .filter(val => val !== null && val !== undefined && val !== "")
+                    .map(val => parseFloat(String(val)))
+                    .filter(val => !isNaN(val));
+                  if (values.length === 0) return 0;
+                  const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+                  if (mean === 0) return 0;
+                  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.abs(mean))));
+                  return Math.floor(mean / magnitude) * magnitude;
+                };
+                const meanValue = tempCalculateMean();
+                if (meanValue > 0) {
+                  const newThresholds = [...thresholds];
+                  newThresholds[0] = meanValue;
+                  onParamChange("thresholds", newThresholds);
+                }
               }
             }}
             options={[
@@ -2785,23 +2846,21 @@ const renderParameters = (
             ]}
           />
           <p className="text-xs text-gray-500">
-            Threshold 분석을 수행할 숫자형 컬럼을 선택하세요.
+            Threshold 분석을 수행할 대상 컬럼을 선택하세요.
           </p>
           
-          <div className="pt-2 border-t border-gray-700">
-            <PropertySelect
-              label="Year Column"
-              value={year_column || ""}
-              onChange={(v) => onParamChange("year_column", v)}
-              options={[
-                { value: "", label: "선택하세요" },
-                ...yearColumnOptions.map(col => ({ value: col, label: col }))
-              ]}
-            />
-            <p className="text-xs text-gray-500">
-              연도별 건수 분석을 위한 연도 컬럼을 선택하세요.
-            </p>
-          </div>
+          <PropertySelect
+            label="연도 컬럼 (선택사항)"
+            value={year_column || ""}
+            onChange={(v) => onParamChange("year_column", v)}
+            options={[
+              { value: "", label: "선택하지 않음" },
+              ...yearColumnOptions.map(name => ({ value: name, label: name }))
+            ]}
+          />
+          <p className="text-xs text-gray-500">
+            연도별 분석을 수행하려면 연도 컬럼을 선택하세요. 선택하지 않으면 전체 데이터에 대한 분석만 수행됩니다.
+          </p>
           
           <div className="pt-2 border-t border-gray-700">
             <div className="flex items-center justify-between mb-2">
@@ -2852,7 +2911,7 @@ const renderParameters = (
                 ))}
               </div>
             <p className="text-xs text-gray-500 mt-2">
-              여러 Threshold 값을 설정하여 각 값보다 큰 행의 건수를 분석할 수 있습니다.
+              여러 Threshold 값을 설정하여 각 값의 건수를 분석할 수 있습니다.
             </p>
           </div>
         </div>
@@ -2861,8 +2920,6 @@ const renderParameters = (
     case ModuleType.FitAggregateModel: {
       const sourceData = getConnectedDataSource(module.id);
       // Handle different output types (ThresholdSplitOutput, DataPreview, etc.)
-      // getConnectedDataSourceHelper가 이미 ThresholdSplitOutput을 처리하므로
-      // sourceData는 DataPreview 타입이거나 undefined일 수 있음
       let inputColumns: ColumnInfo[] = [];
       if (sourceData) {
         if (sourceData.type === "DataPreview") {
@@ -2937,14 +2994,14 @@ const renderParameters = (
             {amountColumns.length > 0 ? (
               <>
                 <PropertySelect
-                  label="Column to Fit (적합할 열)"
+                  label="Column to Fit (금액 컬럼)"
                   value={module.parameters.amount_column || amountColumns[0]}
                   onChange={(v) => onParamChange("amount_column", v)}
                   options={amountColumns}
                 />
                 <div>
                   <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Group By Column (집계 기준 열)
+                    Group By Column (연도별 그룹화)
                   </label>
                   <select
                     value={module.parameters.group_by_column || "none"}
@@ -2966,553 +3023,27 @@ const renderParameters = (
                 </div>
               </>
             ) : (
-              <>
-                <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-                  <p className="text-sm text-yellow-400 mb-2">
-                    {sourceData 
-                      ? `Connected but no columns found. Source type: ${(sourceData as any).type || 'unknown'}`
-                      : "Connect a data source module to see available columns."}
-                  </p>
-                  {sourceData && (
-                    <p className="text-xs text-yellow-300 mt-1">
-                      Debug: sourceData exists but inputColumns.length = {inputColumns.length}
-                    </p>
-                  )}
-                </div>
-                {module.parameters.amount_column && (
-                  <div className="p-2 bg-gray-800 rounded border border-gray-600">
-                    <label className="block text-sm font-semibold text-gray-300 mb-1">
-                      Column to Fit (적합할 열)
-                    </label>
-                    <p className="text-sm text-gray-400 font-mono">
-                      {module.parameters.amount_column}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Connect a data source to change this column.
-                    </p>
-                  </div>
-                )}
-              </>
+              <p className="text-sm text-gray-500">
+                Connect a data source module to configure columns.
+              </p>
             )}
           </div>
         </>
       );
     }
-    case ModuleType.SplitByFreqServ: {
-      const sourceData = getConnectedDataSource(module.id);
-      let inputColumns: ColumnInfo[] = [];
-      if (sourceData) {
-        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
-          inputColumns = (sourceData as any).data?.columns || [];
-        } else if (sourceData.type === "DataPreview") {
-          inputColumns = sourceData.columns || [];
-        }
-      }
-      const allColumns = inputColumns.map(col => col.name);
-      const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액_infl"];
-      const dateOptions = allColumns.length > 0 ? allColumns : ["날짜"];
-      
-      // 사용 가능한 컬럼 중에서 기본값 선택
-      const defaultAmountColumn = amountOptions.includes("클레임 금액_infl") 
-        ? "클레임 금액_infl" 
-        : amountOptions.includes("클레임 금액") 
-        ? "클레임 금액" 
-        : amountOptions[0] || "클레임 금액_infl";
-      
-      return (
-        <div className="space-y-4">
-          <PropertySelect
-            label="Amount Column"
-            value={module.parameters.amount_column || defaultAmountColumn}
-            onChange={(v) => onParamChange("amount_column", v)}
-            options={amountOptions}
-          />
-          <PropertySelect
-            label="Date Column"
-            value={module.parameters.date_column || "날짜"}
-            onChange={(v) => onParamChange("date_column", v)}
-            options={dateOptions}
-          />
-        </div>
-      );
-    }
-    case ModuleType.FitFrequencyModel: {
-      // FitFrequencyModel은 frequency_out 포트에서 데이터를 가져와야 함
-      // getConnectedDataSourceHelper가 from.portName을 확인하므로, 
-      // 연결이 frequency_out에서 오는 경우 자동으로 frequencyData를 반환함
-      const sourceData = getConnectedDataSource(module.id);
-      let inputColumns: ColumnInfo[] = [];
-      if (sourceData) {
-        if (sourceData.type === "DataPreview") {
-          inputColumns = sourceData.columns || [];
-        } else if (sourceData.type === "SplitFreqServOutput") {
-          // SplitFreqServOutput인 경우 frequencyData 사용
-          inputColumns = (sourceData as SplitFreqServOutput).frequencyData?.columns || [];
-        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
-          inputColumns = (sourceData as any).data?.columns || [];
-        }
-      }
-      
-      const allFrequencyTypes = ["Poisson", "NegativeBinomial", "ZeroInflatedPoisson", "ZeroInflatedNegativeBinomial"];
-      const selectedFrequencyTypes = (module.parameters.selected_frequency_types as string[]) || ["Poisson", "NegativeBinomial"];
-      const countColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
-      
-      const handleFrequencyTypeToggle = (freqType: string) => {
-        const current = selectedFrequencyTypes.includes(freqType);
-        if (current) {
-          onParamChange("selected_frequency_types", selectedFrequencyTypes.filter(d => d !== freqType));
-        } else {
-          onParamChange("selected_frequency_types", [...selectedFrequencyTypes, freqType]);
-        }
-      };
-      
-      const handleSelectAllFrequencyTypes = (selectAll: boolean) => {
-        if (selectAll) {
-          onParamChange("selected_frequency_types", allFrequencyTypes);
-        } else {
-          onParamChange("selected_frequency_types", []);
-        }
-      };
-      
-      return (
-        <div className="space-y-4">
-          <div className="mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-semibold text-gray-300">Frequency Distribution Types</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleSelectAllFrequencyTypes(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
-                >
-                  Select All
-                </button>
-                <button
-                  onClick={() => handleSelectAllFrequencyTypes(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
-                >
-                  Deselect All
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
-              {allFrequencyTypes.map((freqType) => (
-                <label
-                  key={freqType}
-                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedFrequencyTypes.includes(freqType)}
-                    onChange={() => handleFrequencyTypeToggle(freqType)}
-                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-gray-200">{freqType}</span>
-                </label>
-              ))}
-            </div>
-            {selectedFrequencyTypes.length === 0 && (
-              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
-            )}
-          </div>
-          {countColumns.length > 0 ? (
-            <PropertySelect
-              label="Count Column (건수 열)"
-              value={module.parameters.count_column || countColumns[0]}
-              onChange={(v) => onParamChange("count_column", v)}
-              options={countColumns}
-            />
-          ) : (
-            <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-              <p className="text-sm text-yellow-400">
-                Connect frequency data from Split By Freq-Sev module to see available columns.
-              </p>
-            </div>
-          )}
-        </div>
-      );
-    }
-    case ModuleType.FitSeverityModel: {
-      // FitSeverityModel은 severity_out 포트에서 데이터를 가져와야 함
-      // getConnectedDataSourceHelper가 from.portName을 확인하므로,
-      // 연결이 severity_out에서 오는 경우 자동으로 severityData를 반환함
-      const sourceData = getConnectedDataSource(module.id);
-      let inputColumns: ColumnInfo[] = [];
-      if (sourceData) {
-        if (sourceData.type === "DataPreview") {
-          inputColumns = sourceData.columns || [];
-        } else if (sourceData.type === "SplitFreqServOutput") {
-          // SplitFreqServOutput인 경우 severityData 사용
-          inputColumns = (sourceData as SplitFreqServOutput).severityData?.columns || [];
-        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
-          inputColumns = (sourceData as any).data?.columns || [];
-        }
-      }
-      
-      const allSeverityTypes = ["Normal", "Lognormal", "Pareto", "Gamma", "Exponential", "Weibull", "GeneralizedPareto", "Burr"];
-      const selectedSeverityTypes = (module.parameters.selected_severity_types as string[]) || allSeverityTypes;
-      const amountColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
-      
-      const handleSeverityTypeToggle = (sevType: string) => {
-        const current = selectedSeverityTypes.includes(sevType);
-        if (current) {
-          onParamChange("selected_severity_types", selectedSeverityTypes.filter(d => d !== sevType));
-        } else {
-          onParamChange("selected_severity_types", [...selectedSeverityTypes, sevType]);
-        }
-      };
-      
-      const handleSelectAllSeverityTypes = (selectAll: boolean) => {
-        if (selectAll) {
-          onParamChange("selected_severity_types", allSeverityTypes);
-        } else {
-          onParamChange("selected_severity_types", []);
-        }
-      };
-      
-      return (
-        <div className="space-y-4">
-          <div className="mb-4">
-            <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-semibold text-gray-300">Severity Distribution Types</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleSelectAllSeverityTypes(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
-                >
-                  Select All
-                </button>
-                <button
-                  onClick={() => handleSelectAllSeverityTypes(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
-                >
-                  Deselect All
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
-              {allSeverityTypes.map((sevType) => (
-                <label
-                  key={sevType}
-                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedSeverityTypes.includes(sevType)}
-                    onChange={() => handleSeverityTypeToggle(sevType)}
-                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                  />
-                  <span className="text-gray-200">{sevType}</span>
-                </label>
-              ))}
-            </div>
-            {selectedSeverityTypes.length === 0 && (
-              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
-            )}
-          </div>
-          {amountColumns.length > 0 ? (
-            <PropertySelect
-              label="Amount Column (금액 열)"
-              value={module.parameters.amount_column || amountColumns[0]}
-              onChange={(v) => onParamChange("amount_column", v)}
-              options={amountColumns}
-            />
-          ) : (
-            <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-              <p className="text-sm text-yellow-400">
-                Connect severity data from Split By Freq-Sev module to see available columns.
-              </p>
-            </div>
-          )}
-        </div>
-      );
-    }
-    case ModuleType.SimulateFreqServ: {
-      const frequencyInput = getConnectedDataSource(module.id, "frequency_in");
-      const severityInput = getConnectedDataSource(module.id, "severity_in");
-      
-      let availableFrequencyTypes: string[] = [];
-      let availableSeverityTypes: string[] = [];
-      let selectedFrequency: string | undefined;
-      let selectedSeverity: string | undefined;
-      let defaultFrequencyParams: Record<string, number> = {};
-      let defaultSeverityParams: Record<string, number> = {};
-      
-      if (frequencyInput && frequencyInput.type === "FrequencyModelOutput") {
-        availableFrequencyTypes = frequencyInput.results?.map((r: any) => r.distributionType) || [];
-        selectedFrequency = frequencyInput.selectedDistribution || availableFrequencyTypes[0];
-        
-        if (selectedFrequency) {
-          const selectedResult = frequencyInput.results?.find((r: any) => r.distributionType === selectedFrequency);
-          if (selectedResult) {
-            defaultFrequencyParams = selectedResult.parameters || {};
-          }
-        }
-      }
-      
-      if (severityInput && severityInput.type === "SeverityModelOutput") {
-        availableSeverityTypes = severityInput.results?.map((r: any) => r.distributionType) || [];
-        selectedSeverity = severityInput.selectedDistribution || availableSeverityTypes[0];
-        
-        if (selectedSeverity) {
-          const selectedResult = severityInput.results?.find((r: any) => r.distributionType === selectedSeverity);
-          if (selectedResult) {
-            defaultSeverityParams = selectedResult.parameters || {};
-          }
-        }
-      }
-
-      const customFrequencyParams = (module.parameters.custom_frequency_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
-      const customSeverityParams = (module.parameters.custom_severity_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
-
-      const simulationCountOptions = [
-        { value: 100, label: "100" },
-        { value: 1000, label: "1,000" },
-        { value: 10000, label: "10,000" },
-        { value: 100000, label: "100,000" },
-        { value: 1000000, label: "1,000,000" },
-      ];
-      
-      const currentCount = module.parameters.simulation_count as number || 10000;
-      const customCount = module.parameters.custom_count as string || "";
-      
-      const renderParameterInput = (
-        paramName: string,
-        defaultValue: number,
-        customParams: Record<string, { useCustom: boolean; value: number }>,
-        onUpdate: (newParams: Record<string, { useCustom: boolean; value: number }>) => void
-      ) => {
-        const paramConfig = customParams[paramName] || { useCustom: false, value: defaultValue };
-        const useCustom = paramConfig.useCustom;
-        const displayValue = useCustom ? paramConfig.value : defaultValue;
-        
-        return (
-          <div key={paramName} className="bg-gray-800 rounded-lg p-3 border border-gray-600">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-gray-300 font-medium">{paramName}</label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={useCustom}
-                  onChange={(e) => {
-                    const newCustomParams = { ...customParams };
-                    newCustomParams[paramName] = {
-                      useCustom: e.target.checked,
-                      value: e.target.checked ? defaultValue : displayValue
-                    };
-                    onUpdate(newCustomParams);
-                  }}
-                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                />
-                <span className="text-xs text-gray-400">Use Custom</span>
-              </label>
-            </div>
-            {useCustom ? (
-              <input
-                type="number"
-                value={displayValue}
-                onChange={(e) => {
-                  const newValue = parseFloat(e.target.value);
-                  if (!isNaN(newValue)) {
-                    const newCustomParams = { ...customParams };
-                    newCustomParams[paramName] = {
-                      useCustom: true,
-                      value: newValue
-                    };
-                    onUpdate(newCustomParams);
-                  }
-                }}
-                step="any"
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            ) : (
-              <div className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-300 text-sm">
-                {defaultValue.toFixed(6)}
-              </div>
-            )}
-          </div>
-        );
-      };
-      
-      return (
-        <div className="space-y-4">
-          {availableFrequencyTypes.length > 0 ? (
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
-                Selected Frequency Distribution
-              </label>
-              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
-                <p className="text-sm text-gray-200 font-semibold">
-                  {selectedFrequency || "Not selected"}
-                </p>
-              </div>
-              
-              {/* Frequency Parameters */}
-              {selectedFrequency && Object.keys(defaultFrequencyParams).length > 0 && (
-                <div className="mt-3">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Frequency Parameters
-                  </label>
-                  <div className="space-y-2">
-                    {Object.entries(defaultFrequencyParams).map(([paramName, defaultValue]) =>
-                      renderParameterInput(
-                        paramName,
-                        defaultValue,
-                        customFrequencyParams,
-                        (newParams) => onParamChange("custom_frequency_parameters", newParams)
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-              <p className="text-sm text-yellow-400">
-                Connect a Fit Frequency Model module to see available distributions.
-              </p>
-            </div>
-          )}
-          {availableSeverityTypes.length > 0 ? (
-            <div className="mb-4">
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
-                Selected Severity Distribution
-              </label>
-              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
-                <p className="text-sm text-gray-200 font-semibold">
-                  {selectedSeverity || "Not selected"}
-                </p>
-              </div>
-              
-              {/* Severity Parameters */}
-              {selectedSeverity && Object.keys(defaultSeverityParams).length > 0 && (
-                <div className="mt-3">
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
-                    Severity Parameters
-                  </label>
-                  <div className="space-y-2">
-                    {Object.entries(defaultSeverityParams).map(([paramName, defaultValue]) =>
-                      renderParameterInput(
-                        paramName,
-                        defaultValue,
-                        customSeverityParams,
-                        (newParams) => onParamChange("custom_severity_parameters", newParams)
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-              <p className="text-sm text-yellow-400">
-                Connect a Fit Severity Model module to see available distributions.
-              </p>
-            </div>
-          )}
-          <PropertySelect
-            label="Simulation Count"
-            value={currentCount}
-            onChange={(v) => {
-              const numValue = typeof v === 'string' ? parseInt(v, 10) : v;
-              onParamChange("simulation_count", numValue === 0 ? 0 : numValue);
-              if (numValue !== 0) {
-                onParamChange("custom_count", "");
-              }
-            }}
-            options={[
-              ...simulationCountOptions.map(opt => ({ value: opt.value, label: opt.label })),
-              { value: 0, label: "Custom" }
-            ]}
-          />
-          {currentCount === 0 && (
-            <div className="mt-2">
-              <label className="block text-sm font-semibold text-gray-300 mb-1">
-                Custom Count
-              </label>
-              <input
-                type="number"
-                value={customCount}
-                onChange={(e) => onParamChange("custom_count", e.target.value)}
-                placeholder="Enter custom count"
-                min="1"
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-          )}
-          <PropertyInput
-            label="Random State"
-            value={module.parameters.random_state as number || 43}
-            type="number"
-            onChange={(v) => onParamChange("random_state", Number(v))}
-          />
-          <PropertySelect
-            label="Output Format"
-            value={module.parameters.output_format as string || "dfa"}
-            onChange={(v) => onParamChange("output_format", v)}
-            options={[
-              { value: "dfa", label: "연도별 집계(DFA 사용)으로 출력 1 연결" },
-              { value: "xol", label: "사고별 집계(XoL 사용)으로 출력 2 연결" },
-            ]}
-          />
-          <p className="text-xs text-gray-500">
-            If models are not connected, the module will fit models from input data using default parameters.
-          </p>
-        </div>
-      );
-    }
-    case ModuleType.CombineLossModel: {
-      const aggDistInput = getConnectedDataSource(module.id, "agg_dist_in");
-      const freqServInput = getConnectedDataSource(module.id, "freq_serv_in");
-      
-      return (
-        <div className="space-y-4">
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-gray-300 mb-2">
-              Aggregate Distribution Input
-            </label>
-            {aggDistInput && aggDistInput.type === "SimulateAggDistOutput" ? (
-              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
-                <p className="text-sm text-gray-200 font-semibold">
-                  Connected: Simulate Agg Dist
-                </p>
-                <p className="text-xs text-gray-400 mt-1">
-                  Simulations: {(aggDistInput as any).simulationCount || 0}
-                </p>
-              </div>
-            ) : (
-              <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-                <p className="text-sm text-yellow-400">
-                  Connect a Simulate Agg Dist module to the "agg_dist_in" port.
-                </p>
-              </div>
-            )}
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-gray-300 mb-2">
-              Frequency-Severity Input
-            </label>
-            {freqServInput && freqServInput.type === "SimulateAggDistOutput" ? (
-              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
-                <p className="text-sm text-gray-200 font-semibold">
-                  Connected: Simulate Freq-Sev Table
-                </p>
-              </div>
-            ) : (
-              <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-                <p className="text-sm text-yellow-400">
-                  Connect a Simulate Freq-Sev Table module to the "freq_serv_in" port.
-                </p>
-              </div>
-            )}
-          </div>
-          <p className="text-xs text-gray-500">
-            This module combines two simulation results and calculates VaR (Value at Risk) and TVaR (Tail Value at Risk) at various confidence levels.
-          </p>
-        </div>
-      );
-    }
     case ModuleType.SimulateAggDist: {
-      const sourceData = getConnectedDataSource(module.id);
+      // SimulateAggDist는 model_in 포트를 사용하므로 별도로 처리
+      const modelConnection = allConnections.find(
+        (c) => c.to.moduleId === module.id && c.to.portName === "model_in"
+      );
+      let sourceData: any = undefined;
+      if (modelConnection) {
+        const sourceModule = allModules.find((m) => m.id === modelConnection.from.moduleId);
+        if (sourceModule?.outputData && sourceModule.outputData.type === "AggregateModelOutput") {
+          sourceData = sourceModule.outputData;
+        }
+      }
+      
       let availableDistributions: string[] = [];
       let selectedDistribution: string | undefined;
       let defaultParameters: Record<string, number> = {};
@@ -3676,6 +3207,482 @@ const renderParameters = (
         </>
       );
     }
+    case ModuleType.SplitByFreqServ: {
+      const sourceData = getConnectedDataSource(module.id);
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "InflatedDataOutput" || sourceData.type === "FormatChangeOutput" || sourceData.type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        }
+      }
+      const allColumns = inputColumns.map(col => col.name);
+      const amountOptions = allColumns.length > 0 ? allColumns : ["클레임 금액_infl"];
+      
+      // 연도 컬럼 찾기 (컬럼 이름에 "연도"나 "year"가 포함된 컬럼)
+      const yearColumnCandidates = inputColumns.filter(col => {
+        const name = col.name.toLowerCase();
+        return name.includes("연도") || name.includes("year");
+      });
+      const yearOptions = yearColumnCandidates.length > 0
+        ? yearColumnCandidates.map(col => col.name)
+        : allColumns.length > 0 ? allColumns : ["연도"];
+      
+      // 사용 가능한 컬럼 중에서 기본값 선택
+      const defaultAmountColumn = amountOptions.includes("클레임 금액_infl") 
+        ? "클레임 금액_infl" 
+        : amountOptions.includes("클레임 금액") 
+        ? "클레임 금액" 
+        : amountOptions[0] || "클레임 금액_infl";
+      
+      const defaultYearColumn = yearOptions.includes("연도") 
+        ? "연도" 
+        : yearOptions[0] || "연도";
+      
+      return (
+        <div className="space-y-4">
+          <PropertySelect
+            label="Amount Column"
+            value={module.parameters.amount_column || defaultAmountColumn}
+            onChange={(v) => onParamChange("amount_column", v)}
+            options={amountOptions}
+          />
+          <PropertySelect
+            label="Year Column"
+            value={module.parameters.year_column || defaultYearColumn}
+            onChange={(v) => onParamChange("year_column", v)}
+            options={yearOptions}
+          />
+        </div>
+      );
+    }
+    case ModuleType.FitFrequencyModel: {
+      // FitFrequencyModel은 frequency_out 포트에서 데이터를 가져옵니다
+      // getConnectedDataSourceHelper가 from.portName을 확인해서 
+      // 만약 frequency_out에서 오는 경우 자동으로 frequencyData를 반환합니다
+      const sourceData = getConnectedDataSource(module.id);
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        } else if (sourceData.type === "SplitFreqServOutput") {
+          // SplitFreqServOutput의 경우 frequencyData 사용
+          inputColumns = (sourceData as SplitFreqServOutput).frequencyData?.columns || [];
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        }
+      }
+      
+      const allFrequencyTypes = ["Poisson", "NegativeBinomial"];
+      const selectedFrequencyTypes = (module.parameters.selected_frequency_types as string[]) || ["Poisson", "NegativeBinomial"];
+      const countColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
+      
+      const handleFrequencyTypeToggle = (freqType: string) => {
+        const current = selectedFrequencyTypes.includes(freqType);
+        if (current) {
+          onParamChange("selected_frequency_types", selectedFrequencyTypes.filter(d => d !== freqType));
+        } else {
+          onParamChange("selected_frequency_types", [...selectedFrequencyTypes, freqType]);
+        }
+      };
+      
+      const handleSelectAllFrequencyTypes = (selectAll: boolean) => {
+        if (selectAll) {
+          onParamChange("selected_frequency_types", allFrequencyTypes);
+        } else {
+          onParamChange("selected_frequency_types", []);
+        }
+      };
+      
+      return (
+        <div className="space-y-4">
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-300">Frequency Distribution Types</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSelectAllFrequencyTypes(true)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => handleSelectAllFrequencyTypes(false)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
+              {allFrequencyTypes.map((freqType) => (
+                <label
+                  key={freqType}
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedFrequencyTypes.includes(freqType)}
+                    onChange={() => handleFrequencyTypeToggle(freqType)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-gray-200">{freqType}</span>
+                </label>
+              ))}
+            </div>
+            {selectedFrequencyTypes.length === 0 && (
+              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
+            )}
+          </div>
+          {countColumns.length > 0 ? (
+            <PropertySelect
+              label="Count Column (건수 컬럼)"
+              value={module.parameters.count_column || countColumns[0]}
+              onChange={(v) => onParamChange("count_column", v)}
+              options={countColumns}
+            />
+          ) : (
+            <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect frequency data from Split By Freq-Sev module to see available columns.
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    case ModuleType.FitSeverityModel: {
+      // FitSeverityModel은 severity_out 포트에서 데이터를 가져옵니다
+      // getConnectedDataSourceHelper가 from.portName을 확인해서 
+      // 만약 severity_out에서 오는 경우 자동으로 severityData를 반환합니다
+      const sourceData = getConnectedDataSource(module.id);
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        } else if (sourceData.type === "SplitFreqServOutput") {
+          // SplitFreqServOutput의 경우 severityData 사용
+          inputColumns = (sourceData as SplitFreqServOutput).severityData?.columns || [];
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        }
+      }
+      
+      const allSeverityTypes = ["Normal", "Lognormal", "Pareto", "Gamma", "Exponential", "Weibull", "GeneralizedPareto", "Burr"];
+      const selectedSeverityTypes = (module.parameters.selected_severity_types as string[]) || allSeverityTypes;
+      const amountColumns = inputColumns.filter(col => col.type === "number").map(col => col.name);
+      
+      const handleSeverityTypeToggle = (sevType: string) => {
+        const current = selectedSeverityTypes.includes(sevType);
+        if (current) {
+          onParamChange("selected_severity_types", selectedSeverityTypes.filter(d => d !== sevType));
+        } else {
+          onParamChange("selected_severity_types", [...selectedSeverityTypes, sevType]);
+        }
+      };
+      
+      const handleSelectAllSeverityTypes = (selectAll: boolean) => {
+        if (selectAll) {
+          onParamChange("selected_severity_types", allSeverityTypes);
+        } else {
+          onParamChange("selected_severity_types", []);
+        }
+      };
+      
+      return (
+        <div className="space-y-4">
+          <div className="mb-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-semibold text-gray-300">Severity Distribution Types</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleSelectAllSeverityTypes(true)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Select All
+                </button>
+                <button
+                  onClick={() => handleSelectAllSeverityTypes(false)}
+                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                >
+                  Deselect All
+                </button>
+              </div>
+            </div>
+            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
+              {allSeverityTypes.map((sevType) => (
+                <label
+                  key={sevType}
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedSeverityTypes.includes(sevType)}
+                    onChange={() => handleSeverityTypeToggle(sevType)}
+                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                  />
+                  <span className="text-gray-200">{sevType}</span>
+                </label>
+              ))}
+            </div>
+            {selectedSeverityTypes.length === 0 && (
+              <p className="text-xs text-yellow-500 mt-2">At least one distribution must be selected.</p>
+            )}
+          </div>
+          {amountColumns.length > 0 ? (
+            <PropertySelect
+              label="Amount Column (금액 컬럼)"
+              value={module.parameters.amount_column || amountColumns[0]}
+              onChange={(v) => onParamChange("amount_column", v)}
+              options={amountColumns}
+            />
+          ) : (
+            <div className="p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect severity data from Split By Freq-Sev module to see available columns.
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    case ModuleType.SimulateFreqServ: {
+      const frequencyInput = getConnectedDataSource(module.id, "frequency_in");
+      const severityInput = getConnectedDataSource(module.id, "severity_in");
+      
+      let availableFrequencyTypes: string[] = [];
+      let availableSeverityTypes: string[] = [];
+      let selectedFrequency: string | undefined;
+      let selectedSeverity: string | undefined;
+      let defaultFrequencyParams: Record<string, number> = {};
+      let defaultSeverityParams: Record<string, number> = {};
+      
+      if (frequencyInput && frequencyInput.type === "FrequencyModelOutput") {
+        availableFrequencyTypes = frequencyInput.results?.map((r: any) => r.distributionType) || [];
+        selectedFrequency = frequencyInput.selectedDistribution || availableFrequencyTypes[0];
+        
+        if (selectedFrequency) {
+          const selectedResult = frequencyInput.results?.find((r: any) => r.distributionType === selectedFrequency);
+          if (selectedResult) {
+            defaultFrequencyParams = selectedResult.parameters || {};
+          }
+        }
+      }
+      
+      if (severityInput && severityInput.type === "SeverityModelOutput") {
+        availableSeverityTypes = severityInput.results?.map((r: any) => r.distributionType) || [];
+        selectedSeverity = severityInput.selectedDistribution || availableSeverityTypes[0];
+        
+        if (selectedSeverity) {
+          const selectedResult = severityInput.results?.find((r: any) => r.distributionType === selectedSeverity);
+          if (selectedResult) {
+            defaultSeverityParams = selectedResult.parameters || {};
+          }
+        }
+      }
+
+      const customFrequencyParams = (module.parameters.custom_frequency_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
+      const customSeverityParams = (module.parameters.custom_severity_parameters as Record<string, { useCustom: boolean; value: number }>) || {};
+
+      const simulationCountOptions = [
+        { value: 100, label: "100" },
+        { value: 1000, label: "1,000" },
+        { value: 10000, label: "10,000" },
+        { value: 100000, label: "100,000" },
+        { value: 1000000, label: "1,000,000" },
+      ];
+      
+      const currentCount = module.parameters.simulation_count as number || 10000;
+      const customCount = module.parameters.custom_count as string || "";
+
+      const renderParameterInput = (
+        paramName: string,
+        defaultValue: number,
+        customParams: Record<string, { useCustom: boolean; value: number }>,
+        onUpdate: (newParams: Record<string, { useCustom: boolean; value: number }>) => void
+      ) => {
+        const paramConfig = customParams[paramName] || { useCustom: false, value: defaultValue };
+        const useCustom = paramConfig.useCustom;
+        const displayValue = useCustom ? paramConfig.value : defaultValue;
+        
+        return (
+          <div key={paramName} className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm text-gray-300 font-medium">{paramName}</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useCustom}
+                  onChange={(e) => {
+                    const newCustomParams = { ...customParams };
+                    newCustomParams[paramName] = {
+                      useCustom: e.target.checked,
+                      value: e.target.checked ? defaultValue : displayValue
+                    };
+                    onUpdate(newCustomParams);
+                  }}
+                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                />
+                <span className="text-xs text-gray-400">Use Custom</span>
+              </label>
+            </div>
+            {useCustom ? (
+              <input
+                type="number"
+                value={displayValue}
+                onChange={(e) => {
+                  const newValue = parseFloat(e.target.value);
+                  if (!isNaN(newValue)) {
+                    const newCustomParams = { ...customParams };
+                    newCustomParams[paramName] = {
+                      useCustom: true,
+                      value: newValue
+                    };
+                    onUpdate(newCustomParams);
+                  }
+                }}
+                step="any"
+                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-300 text-sm">
+                {defaultValue.toFixed(6)}
+              </div>
+            )}
+          </div>
+        );
+      };
+      
+      return (
+        <div className="space-y-4">
+          {availableFrequencyTypes.length > 0 ? (
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Selected Frequency Distribution
+              </label>
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  {selectedFrequency || "Not selected"}
+                </p>
+              </div>
+              
+              {/* Frequency Parameters */}
+              {selectedFrequency && Object.keys(defaultFrequencyParams).length > 0 && (
+                <div className="mt-3">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Frequency Parameters
+                  </label>
+                  <div className="space-y-2">
+                    {Object.entries(defaultFrequencyParams).map(([paramName, defaultValue]) =>
+                      renderParameterInput(
+                        paramName,
+                        defaultValue,
+                        customFrequencyParams,
+                        (newParams) => onParamChange("custom_frequency_parameters", newParams)
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect a Fit Frequency Model module to see available distributions.
+              </p>
+            </div>
+          )}
+          {availableSeverityTypes.length > 0 ? (
+            <div className="mb-4">
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Selected Severity Distribution
+              </label>
+              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                <p className="text-sm text-gray-200 font-semibold">
+                  {selectedSeverity || "Not selected"}
+                </p>
+              </div>
+              
+              {/* Severity Parameters */}
+              {selectedSeverity && Object.keys(defaultSeverityParams).length > 0 && (
+                <div className="mt-3">
+                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                    Severity Parameters
+                  </label>
+                  <div className="space-y-2">
+                    {Object.entries(defaultSeverityParams).map(([paramName, defaultValue]) =>
+                      renderParameterInput(
+                        paramName,
+                        defaultValue,
+                        customSeverityParams,
+                        (newParams) => onParamChange("custom_severity_parameters", newParams)
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mb-4 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+              <p className="text-sm text-yellow-400">
+                Connect a Fit Severity Model module to see available distributions.
+              </p>
+            </div>
+          )}
+          
+          <PropertySelect
+            label="Simulation Count"
+            value={currentCount}
+            onChange={(v) => {
+              const numValue = typeof v === 'string' ? parseInt(v, 10) : v;
+              onParamChange("simulation_count", numValue === 0 ? 0 : numValue);
+              if (numValue !== 0) {
+                onParamChange("custom_count", "");
+              }
+            }}
+            options={[
+              ...simulationCountOptions.map(opt => ({ value: opt.value, label: opt.label })),
+              { value: 0, label: "Custom" }
+            ]}
+          />
+          {currentCount === 0 && (
+            <div className="mt-2">
+              <label className="block text-sm font-semibold text-gray-300 mb-1">
+                Custom Count
+              </label>
+              <input
+                type="number"
+                value={customCount}
+                onChange={(e) => onParamChange("custom_count", e.target.value)}
+                placeholder="Enter custom count"
+                min="1"
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
+          <PropertyInput
+            label="Random State"
+            value={module.parameters.random_state as number || 43}
+            type="number"
+            onChange={(v) => onParamChange("random_state", Number(v))}
+          />
+          <PropertySelect
+            label="Output Format"
+            value={module.parameters.output_format as string || "dfa"}
+            onChange={(v) => onParamChange("output_format", v)}
+            options={[
+              { value: "dfa", label: "연도별 집계(DFA 사용) - 출력1" },
+              { value: "xol", label: "사고별 집계(XoL 사용) - 출력2" },
+            ]}
+          />
+          <p className="text-xs text-gray-500">
+            출력1(DFA): 연도별 집계 형식으로 evaluation 타입으로 출력됩니다.
+            출력2(XoL): 사고별 집계 형식으로 data 타입으로 출력됩니다.
+          </p>
+        </div>
+      );
+    }
     case ModuleType.DefineXolContract: {
       const {
         deductible,
@@ -3727,6 +3734,23 @@ const renderParameters = (
       if (sourceData) {
         if (sourceData.type === "DataPreview") {
           inputColumns = sourceData.columns || [];
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        } else if ((sourceData as any).type === "SimulateFreqServOutput") {
+          // SimulateFreqServOutput의 경우 xolOutput 사용
+          const freqServOutput = sourceData as SimulateFreqServOutput;
+          if (freqServOutput.xolOutput) {
+            inputColumns = freqServOutput.xolOutput.columns || [];
+          }
+        } else if ((sourceData as any).type === "SimulateAggDistOutput") {
+          // SimulateAggDistOutput의 경우 claimLevelData를 DataPreview로 변환
+          const aggDistOutput = sourceData as SimulateAggDistOutput;
+          if (aggDistOutput.claimLevelData && aggDistOutput.claimLevelData.length > 0) {
+            inputColumns = [
+              { name: "시뮬레이션 번호", type: "number" },
+              { name: "보험금", type: "number" },
+            ];
+          }
         }
       }
       
@@ -3738,7 +3762,7 @@ const renderParameters = (
       return (
         <div>
           <PropertySelect
-            label="클레임 행"
+            label="클레임 금액"
             value={claim_column || ""}
             onChange={(v) => onParamChange("claim_column", v)}
             options={[
@@ -3749,7 +3773,7 @@ const renderParameters = (
             ]}
           />
           <p className="text-xs text-gray-500 mt-1">
-            XoL 계산에 사용할 클레임 컬럼을 선택하세요.
+            XoL 계산에 사용할 클레임 금액 컬럼을 선택하세요.
           </p>
           
           <PropertySelect
@@ -3775,25 +3799,10 @@ const renderParameters = (
           />
           <p className="text-xs text-gray-500 mt-1">
             {isSimulationData 
-              ? "시뮬레이션 데이터의 경우 시뮬레이션 번호가 연도로 사용됩니다."
+              ? "시뮬레이션 데이터인 경우 시뮬레이션 번호가 연도로 사용됩니다."
               : "연도별 집계에 사용할 연도 컬럼을 선택하세요."
             }
           </p>
-        </div>
-      );
-    }
-    case ModuleType.XolPricing: {
-      const { expenseRate } = module.parameters;
-      
-      return (
-        <div>
-          <PropertyInput
-            label="Expense Rate"
-            value={expenseRate || 0.2}
-            type="number"
-            step="0.01"
-            onChange={(v) => onParamChange("expenseRate", v)}
-          />
         </div>
       );
     }
@@ -3843,120 +3852,6 @@ const renderParameters = (
         </div>
       );
   }
-};
-
-const ReinstatementPremiumRateEditor: React.FC<{
-  module: CanvasModule;
-  onParamChange: (key: string, value: any) => void;
-}> = ({ module, onParamChange }) => {
-  const {
-    defaultReinstatementRate = 100,
-    yearRates = [],
-    reinstatements = 5,
-  } = module.parameters;
-
-  const handleAddYear = () => {
-    const nextYear = yearRates.length + 1;
-    const newYearRates = [...yearRates, { year: nextYear, rate: defaultReinstatementRate }];
-    onParamChange("yearRates", newYearRates);
-  };
-
-  const handleRemoveYear = (index: number) => {
-    const newYearRates = yearRates.filter((_, i) => i !== index);
-    // 년도 번호 재정렬
-    const reorderedRates = newYearRates.map((yr, i) => ({ ...yr, year: i + 1 }));
-    onParamChange("yearRates", reorderedRates);
-  };
-
-  const handleYearRateChange = (index: number, rate: number) => {
-    const newYearRates = [...yearRates];
-    newYearRates[index] = { ...newYearRates[index], rate };
-    onParamChange("yearRates", newYearRates);
-  };
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-semibold text-gray-300 mb-2">
-          기본복원비율
-        </label>
-        <select
-          value={defaultReinstatementRate}
-          onChange={(e) => onParamChange("defaultReinstatementRate", parseFloat(e.target.value))}
-          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value={100}>100%</option>
-          <option value={0}>0%</option>
-        </select>
-        <p className="text-xs text-gray-500 mt-1">
-          모든 복원횟수에 적용되는 기본 비율입니다.
-        </p>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-semibold text-gray-300">
-            년도별 복원비율
-          </label>
-          <button
-            onClick={handleAddYear}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
-          >
-            추가
-          </button>
-        </div>
-        {yearRates.length === 0 ? (
-          <p className="text-xs text-gray-500 py-2">
-            년도별 비율을 추가하려면 "추가" 버튼을 클릭하세요.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {yearRates.map((yearRate, index) => (
-              <div
-                key={index}
-                className="flex items-center gap-2 p-2 bg-gray-800 rounded-md"
-              >
-                <span className="text-sm text-gray-400 w-20">
-                  {yearRate.year}차년도:
-                </span>
-                <input
-                  type="number"
-                  value={yearRate.rate}
-                  onChange={(e) =>
-                    handleYearRateChange(index, parseFloat(e.target.value) || 0)
-                  }
-                  className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="100"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                />
-                <span className="text-xs text-gray-500 w-6">%</span>
-                <button
-                  onClick={() => handleRemoveYear(index)}
-                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
-                >
-                  삭제
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className="text-xs text-gray-500 mt-2">
-          년도별로 다른 비율을 설정할 수 있습니다. 설정하지 않은 년도는 기본복원비율이 적용됩니다.
-        </p>
-      </div>
-
-      <div className="pt-2 border-t border-gray-700">
-        <p className="text-xs text-gray-400 mb-2">복원횟수: {reinstatements}</p>
-        <p className="text-xs text-gray-500">
-          모든 복원횟수({reinstatements}회)는 기본복원비율({defaultReinstatementRate}%)이 적용되며,
-          {yearRates.length > 0 && ` ${yearRates.map(yr => `${yr.year}차년도`).join(", ")}에만 다른 비율이 적용됩니다.`}
-          {yearRates.length === 0 && " 년도별 비율이 설정되지 않았습니다."}
-        </p>
-      </div>
-    </div>
-  );
 };
 
 const StatRow: React.FC<{ label: string; value: React.ReactNode }> = ({
@@ -4194,6 +4089,120 @@ const DataTableStats: React.FC<{
   );
 };
 
+const ReinstatementPremiumRateEditor: React.FC<{
+  module: CanvasModule;
+  onParamChange: (key: string, value: any) => void;
+}> = ({ module, onParamChange }) => {
+  const {
+    defaultReinstatementRate = 100,
+    yearRates = [],
+    reinstatements = 5,
+  } = module.parameters;
+
+  const handleAddYear = () => {
+    const nextYear = yearRates.length + 1;
+    const newYearRates = [...yearRates, { year: nextYear, rate: defaultReinstatementRate }];
+    onParamChange("yearRates", newYearRates);
+  };
+
+  const handleRemoveYear = (index: number) => {
+    const newYearRates = yearRates.filter((_, i) => i !== index);
+    // 연도 번호 재설정
+    const reorderedRates = newYearRates.map((yr, i) => ({ ...yr, year: i + 1 }));
+    onParamChange("yearRates", reorderedRates);
+  };
+
+  const handleYearRateChange = (index: number, rate: number) => {
+    const newYearRates = [...yearRates];
+    newYearRates[index] = { ...newYearRates[index], rate };
+    onParamChange("yearRates", newYearRates);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-sm font-semibold text-gray-300 mb-2">
+          기본 복원보험료율
+        </label>
+        <select
+          value={defaultReinstatementRate}
+          onChange={(e) => onParamChange("defaultReinstatementRate", parseFloat(e.target.value))}
+          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value={100}>100%</option>
+          <option value={0}>0%</option>
+        </select>
+        <p className="text-xs text-gray-500 mt-1">
+          모든 복원회수에 적용되는 기본 비율입니다.
+        </p>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-sm font-semibold text-gray-300">
+            연도별 복원보험료율
+          </label>
+          <button
+            onClick={handleAddYear}
+            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md transition-colors"
+          >
+            추가
+          </button>
+        </div>
+        {yearRates.length === 0 ? (
+          <p className="text-xs text-gray-500 py-2">
+            연도별 비율을 추가하려면 "추가" 버튼을 클릭하세요.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {yearRates.map((yearRate, index) => (
+              <div
+                key={index}
+                className="flex items-center gap-2 p-2 bg-gray-800 rounded-md"
+              >
+                <span className="text-sm text-gray-400 w-20">
+                  {yearRate.year}년차
+                </span>
+                <input
+                  type="number"
+                  value={yearRate.rate}
+                  onChange={(e) =>
+                    handleYearRateChange(index, parseFloat(e.target.value) || 0)
+                  }
+                  className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="100"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                />
+                <span className="text-xs text-gray-500 w-6">%</span>
+                <button
+                  onClick={() => handleRemoveYear(index)}
+                  className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded transition-colors"
+                >
+                  제거
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-gray-500 mt-2">
+          연도별로 다른 비율을 설정할 수 있습니다. 설정하지 않은 연도는 기본 복원보험료율이 적용됩니다.
+        </p>
+      </div>
+
+      <div className="pt-2 border-t border-gray-700">
+        <p className="text-xs text-gray-400 mb-2">복원회수: {reinstatements}</p>
+        <p className="text-xs text-gray-500">
+          모든 복원회수({reinstatements}회)에 기본 복원보험료율({defaultReinstatementRate}%)이 적용되며,
+          {yearRates.length > 0 && ` ${yearRates.map(yr => `${yr.year}년차`).join(", ")}만 다른 비율이 적용됩니다.`}
+          {yearRates.length === 0 && " 연도별 비율이 설정되지 않았습니다."}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const PanelModelMetrics: React.FC<{
   metrics: Record<string, string | number>;
 }> = ({ metrics }) => (
@@ -4228,7 +4237,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
-  const resizableContainerRef = useRef<HTMLDivElement>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<"Input" | "Output">(
     "Input"
   );
@@ -4266,7 +4274,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
     const fileName = file.name.toLowerCase();
 
-    // LoadClaimData와 LoadData의 경우 엑셀 파일 처리
+    // LoadClaimData나 LoadData의 경우 엑셀 파일 처리
     if ((module.type === ModuleType.LoadClaimData || module.type === ModuleType.LoadData) && (fileName.endsWith(".xlsx") || fileName.endsWith(".xls"))) {
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -4429,7 +4437,10 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       );
     }
 
-    if (module.type === ModuleType.LoadData) {
+    if (
+      module.type === ModuleType.LoadData ||
+      module.type === ModuleType.XolLoading
+    ) {
       return (
         <StatRow label="File Name" value={module.parameters.source || "N/A"} />
       );
@@ -4573,11 +4584,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       "HierarchicalClusteringOutput",
       "PCAOutput",
       "DBSCANOutput",
-      "ClaimDataOutput",
-      "InflatedDataOutput",
-      "FormatChangeOutput",
-      "AggregateModelOutput",
-      "SimulateAggDistOutput",
     ];
 
     const canVisualize = () => {
@@ -4588,9 +4594,6 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           "KMeansOutput",
           "HierarchicalClusteringOutput",
           "DBSCANOutput",
-          "ClaimDataOutput",
-          "InflatedDataOutput",
-          "FormatChangeOutput",
         ].includes(module.outputData.type)
       )
         return true;
@@ -4604,18 +4607,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     const previewContent = (() => {
       switch (module.type) {
         case ModuleType.LoadData:
-        case ModuleType.LoadClaimData:
-        case ModuleType.ApplyInflation:
-          if (outputData.type === "DataPreview" || outputData.type === "ClaimDataOutput" || outputData.type === "InflatedDataOutput") {
-            const actualData = outputData.type === "ClaimDataOutput" || outputData.type === "InflatedDataOutput" 
-              ? (outputData as any).data 
-              : outputData;
+          if (outputData.type === "DataPreview") {
             return (
               <>
                 <h3 className="text-md font-semibold mb-2 text-gray-300">
                   Column Structure
                 </h3>
-                <ColumnInfoTable columns={actualData.columns} />
+                <ColumnInfoTable columns={outputData.columns} />
               </>
             );
           }
@@ -4843,14 +4841,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   return (
     <div
-      ref={resizableContainerRef}
       className="bg-gray-800 text-white h-full flex flex-col"
     >
       <input
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept={(module?.type === ModuleType.LoadClaimData || module?.type === ModuleType.LoadData) ? ".csv,.xlsx,.xls" : ".csv"}
+        accept={module?.type === ModuleType.LoadClaimData || module?.type === ModuleType.LoadData ? ".csv,.xlsx,.xls" : ".csv"}
         className="hidden"
       />
       <div className="flex-grow flex flex-col min-h-0">
@@ -4870,142 +4867,58 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </p>
         </div>
 
+        {module && (
           <div className="flex-shrink-0 border-b border-gray-700">
             <div className="flex">
               <button
                 onClick={() => setActiveTab("properties")}
-              disabled={!module}
-              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                disabled={!module}
+                className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "properties"
                     ? "bg-gray-700 text-white"
                     : "text-gray-400 hover:bg-gray-700/50"
-              } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-              Properties
+                Properties
               </button>
               <button
                 onClick={() => setActiveTab("preview")}
-              disabled={!module}
-              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                disabled={!module}
+                className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "preview"
                     ? "bg-gray-700 text-white"
                     : "text-gray-400 hover:bg-gray-700/50"
-              } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-              {module?.type === ModuleType.DefineXolContract ? "복원P 비율" : "Preview"}
+                {module?.type === ModuleType.DefineXolContract ? "Reinst Ratio" : "Preview"}
               </button>
               <button
                 onClick={() => setActiveTab("code")}
-              disabled={!module}
-              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                disabled={!module}
+                className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "code"
                     ? "bg-gray-700 text-white"
                     : "text-gray-400 hover:bg-gray-700/50"
-              } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
+                } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-              Code
-            </button>
-            <button
-              onClick={() => setActiveTab("terminal")}
-              className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
-                activeTab === "terminal"
-                  ? "bg-gray-700 text-white"
-                  : "text-gray-400 hover:bg-gray-700/50"
-              }`}
-            >
-              Terminal
+                Code
+              </button>
+              <button
+                onClick={() => setActiveTab("terminal")}
+                className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
+                  activeTab === "terminal"
+                    ? "bg-gray-700 text-white"
+                    : "text-gray-400 hover:bg-gray-700/50"
+                }`}
+              >
+                Terminal
               </button>
             </div>
           </div>
+        )}
 
         <div className="flex-grow overflow-y-auto panel-scrollbar p-3">
-          {activeTab === "terminal" ? (
-            <div className="h-full flex flex-col bg-gray-900 rounded-lg">
-              <div
-                ref={logContainerRef}
-                className="flex-grow overflow-y-auto text-xs font-mono p-2 space-y-1"
-                onContextMenu={(e) => {
-                  // 텍스트가 선택되어 있으면 컨텍스트 메뉴에서 복사 가능하도록
-                  const selection = window.getSelection();
-                  if (selection && selection.toString().trim()) {
-                    // 브라우저 기본 컨텍스트 메뉴 사용 (복사 옵션 포함)
-                    return;
-                  }
-                  // 텍스트가 선택되지 않았으면 기본 동작 방지
-                  e.preventDefault();
-                }}
-              >
-                {logs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="flex group hover:bg-gray-800/50 rounded px-1 py-0.5"
-                  >
-                    <span className="text-gray-500 mr-2 flex-shrink-0 select-none">
-                      {log.timestamp}
-                    </span>
-                    <span
-                      className={`mr-2 font-bold flex-shrink-0 select-none ${
-                        log.level === "INFO"
-                          ? "text-blue-400"
-                          : log.level === "WARN"
-                          ? "text-yellow-400"
-                          : log.level === "ERROR"
-                          ? "text-red-400"
-                          : "text-green-400"
-                      }`}
-                    >
-                      {log.level}:
-                    </span>
-                    <span
-                      className="flex-1 whitespace-pre-wrap break-words cursor-text select-text"
-                      onDoubleClick={(e) => {
-                        e.preventDefault();
-                        const text = log.message;
-                        navigator.clipboard.writeText(text).then(() => {
-                          setIsCopied(true);
-                          setTimeout(() => setIsCopied(false), 2000);
-                        });
-                      }}
-                      onMouseUp={(e) => {
-                        // 텍스트 선택 후 Ctrl+C 또는 우클릭으로 복사 가능
-                        const selection = window.getSelection();
-                        if (selection && selection.toString().trim()) {
-                          // 선택된 텍스트가 있으면 복사 가능
-                        }
-                      }}
-                      title="텍스트를 선택하여 복사하거나 더블클릭하여 전체 메시지 복사"
-                    >
-                      {log.message}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        const text = `${log.timestamp} ${log.level}: ${log.message}`;
-                        navigator.clipboard.writeText(text).then(() => {
-                          setIsCopied(true);
-                          setTimeout(() => setIsCopied(false), 2000);
-                        });
-                      }}
-                      className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                      title="전체 로그 복사"
-                    >
-                      {isCopied ? (
-                        <CheckIcon className="w-4 h-4 text-green-400" />
-                      ) : (
-                        <ClipboardIcon className="w-4 h-4 text-gray-400 hover:text-gray-300" />
-                      )}
-                    </button>
-                  </div>
-                ))}
-                {logs.length === 0 && (
-                  <div className="text-gray-500 text-center py-4">
-                    로그가 없습니다
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : !module ? (
+          {!module ? (
             <div className="flex items-center justify-center h-full">
               <p className="text-gray-500">
                 Select a module to see its properties.
@@ -5030,14 +4943,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 </PropertyGroup>
               )}
               {activeTab === "preview" && (
-                <>
+                <div>
                   {module.type === ModuleType.DefineXolContract ? (
                     <ReinstatementPremiumRateEditor
                       module={module}
                       onParamChange={handleParamChange}
                     />
                   ) : (
-                    <div>
+                    <>
                       <div className="flex mb-3 rounded-md bg-gray-700 p-1">
                         <button
                           onClick={() => setActivePreviewTab("Input")}
@@ -5065,9 +4978,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                           ? renderInputPreview()
                           : renderOutputPreview()}
                       </div>
-                    </div>
+                    </>
                   )}
-                </>
+                </div>
               )}
               {activeTab === "code" && (
                 <div>
@@ -5086,6 +4999,93 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     <pre className="p-4 text-xs text-gray-300 overflow-x-auto">
                       <code>{codeSnippet}</code>
                     </pre>
+                  </div>
+                </div>
+              )}
+              {activeTab === "terminal" && (
+                <div className="flex flex-col h-full">
+                  <div
+                    ref={logContainerRef}
+                    className="flex-grow overflow-y-auto bg-gray-900 text-xs font-mono p-2 space-y-1"
+                    onContextMenu={(e) => {
+                      // 텍스트가 선택되어 있으면 컨텍스트 메뉴에서 복사 가능하도록
+                      const selection = window.getSelection();
+                      if (selection && selection.toString().trim()) {
+                        // 브라우저 기본 컨텍스트 메뉴 사용 (복사 옵션 포함)
+                        return;
+                      }
+                      // 텍스트가 선택되지 않았으면 기본 동작 방지
+                      e.preventDefault();
+                    }}
+                  >
+                    {logs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex group hover:bg-gray-800/50 rounded px-1 py-0.5"
+                      >
+                        <span className="text-gray-500 mr-2 flex-shrink-0 select-none">
+                          {log.timestamp}
+                        </span>
+                        <span
+                          className={`mr-2 font-bold flex-shrink-0 select-none ${
+                            log.level === "INFO"
+                              ? "text-blue-400"
+                              : log.level === "WARN"
+                              ? "text-yellow-400"
+                              : log.level === "ERROR"
+                              ? "text-red-400"
+                              : "text-green-400"
+                          }`}
+                        >
+                          {log.level}:
+                        </span>
+                        <span
+                          className="flex-1 whitespace-pre-wrap break-words cursor-text select-text"
+                          onDoubleClick={(e) => {
+                            e.preventDefault();
+                            const text = log.message;
+                            navigator.clipboard.writeText(text).then(() => {
+                              setIsCopied(true);
+                              setTimeout(() => setIsCopied(false), 2000);
+                            });
+                          }}
+                          onMouseUp={(e) => {
+                            // 텍스트 선택 후 Ctrl+C 또는 우클릭으로 복사 가능
+                            const selection = window.getSelection();
+                            if (selection && selection.toString().trim()) {
+                              // 선택된 텍스트가 있으면 복사 가능
+                            }
+                          }}
+                          title="텍스트를 선택하여 복사하거나 더블클릭하여 전체 메시지 복사"
+                        >
+                          {log.message}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const text = `${log.timestamp} ${log.level}: ${log.message}`;
+                            navigator.clipboard.writeText(text).then(() => {
+                              setIsCopied(true);
+                              setTimeout(() => setIsCopied(false), 2000);
+                            });
+                          }}
+                          className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                          title="전체 로그 복사"
+                        >
+                          {isCopied ? (
+                            <CheckIcon className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <ClipboardIcon className="w-4 h-4 text-gray-400 hover:text-gray-300" />
+                          )}
+                        </button>
+                      </div>
+                    ))}
+                    {logs.length === 0 && (
+                      <div className="text-gray-500 text-center py-4">
+                        로그가 없습니다
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

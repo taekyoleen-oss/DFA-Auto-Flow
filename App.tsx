@@ -2416,6 +2416,8 @@ ${header}
         setViewingFinalXolPrice(module);
       } else if (module.outputData.type === "XolPricingOutput") {
         setViewingXolPricing(module);
+      } else if (module.outputData.type === "XolContractOutput") {
+        setViewingDataForModule(module);
       } else if (module.outputData.type === "EvaluationOutput") {
         setViewingEvaluation(module);
       } else if (module.outputData.type === "SimulateAggDistOutput") {
@@ -2427,6 +2429,11 @@ ${header}
       } else if (module.outputData.type === "SeverityModelOutput") {
         setViewingSeverityModel(module);
       } else if (module.outputData.type === "CombineLossModelOutput") {
+        setViewingDataForModule(module);
+      } else if (module.outputData.type === "ClaimDataOutput" ||
+                 module.outputData.type === "InflatedDataOutput" ||
+                 module.outputData.type === "FormatChangeOutput" ||
+                 module.outputData.type === "DataPreview") {
         setViewingDataForModule(module);
       } else {
         setViewingDataForModule(module);
@@ -3246,6 +3253,7 @@ ${header}
 
           const {
             amount_column = "클레임 금액",
+            year_column = "연도",
           } = module.parameters;
 
           addLog("INFO", "Threshold 기준 분리 중...");
@@ -3254,13 +3262,11 @@ ${header}
             const pyodideModule = await import("./utils/pyodideRunner");
             const { splitByThresholdPython } = pyodideModule;
 
-            // date_column은 제거하고, amount_column만 사용
-            // Python 코드에서도 date_column을 사용하지 않도록 수정 필요
             const result = await splitByThresholdPython(
               actualData.rows || [],
               thresholdValue,
               amount_column,
-              "", // date_column 제거
+              year_column || "",
               60000
             );
 
@@ -9779,7 +9785,9 @@ result
           viewingDataForModule.outputData?.type ===
             "HierarchicalClusteringOutput" ||
           viewingDataForModule.outputData?.type === "DBSCANOutput" ||
-          viewingDataForModule.outputData?.type === "PCAOutput") && (
+          viewingDataForModule.outputData?.type === "PCAOutput" ||
+          viewingDataForModule.outputData?.type === "XolContractOutput" ||
+          viewingDataForModule.type === ModuleType.DefineXolContract) && (
           <ErrorBoundary>
           <DataPreviewModal
             module={viewingDataForModule}
@@ -9820,16 +9828,17 @@ result
                   return m;
                 });
 
-                // threshold_out에 연결된 모듈들의 threshold 파라미터 업데이트
-                const connectedModules = connections
+                // threshold_out에 연결된 Split By Threshold 모듈들의 threshold 파라미터 업데이트
+                const connectedModuleIds = connections
                   .filter(c => 
                     c.from.moduleId === moduleId && 
                     c.from.portName === "threshold_out"
                   )
                   .map(c => c.to.moduleId);
 
+                // 연결된 모듈들의 threshold 파라미터 업데이트
                 return updatedModules.map(m => {
-                  if (connectedModules.includes(m.id) && 
+                  if (connectedModuleIds.includes(m.id) && 
                       (m.type === ModuleType.SplitByThreshold || m.type === ModuleType.ApplyThreshold)) {
                     return {
                       ...m,

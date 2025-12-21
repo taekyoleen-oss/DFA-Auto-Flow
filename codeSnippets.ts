@@ -1226,29 +1226,28 @@ from datetime import datetime
 # Parameters from UI
 p_threshold = {threshold}
 p_amount_column = {amount_column}
-p_date_column = {date_column}
+p_year_column = {year_column}
 
 # Assuming 'dataframe' is passed from previous step
-# 날짜 컬럼을 datetime으로 변환
-dataframe[p_date_column] = pd.to_datetime(dataframe[p_date_column])
-dataframe['year'] = dataframe[p_date_column].dt.year
-
 # Threshold 기준으로 분리
 below_threshold_df = dataframe[dataframe[p_amount_column] < p_threshold].copy()
 above_threshold_df = dataframe[dataframe[p_amount_column] >= p_threshold].copy()
 
-# 첫 번째 출력: Threshold보다 작은 값, 연도별 합계만
-below_yearly = below_threshold_df.groupby('year')[p_amount_column].sum().reset_index()
-below_yearly.columns = ['year', 'total_amount']
+# 첫 번째 출력: Year Column을 기준으로 GroupBy하고 Amount Column의 합계 계산
+if p_year_column and p_year_column != "" and p_year_column in below_threshold_df.columns:
+    below_grouped = below_threshold_df.groupby(p_year_column)[p_amount_column].sum().reset_index()
+    below_grouped.columns = [p_year_column, p_amount_column]
+else:
+    below_grouped = below_threshold_df.copy()
 
-# 두 번째 출력: Threshold보다 크거나 같은 값, 원본 레이아웃 유지
-above_threshold_df = above_threshold_df.drop(columns=['year'])
+# 두 번째 출력: Threshold보다 크거나 같은 금액의 원본 데이터
+above_result = above_threshold_df.copy()
 
 print(f"Threshold 분리 완료 (기준: {p_threshold:,}원)")
-print(f"Threshold 미만: {len(below_threshold_df)}건, 연도별 합계:")
-print(below_yearly)
-print(f"\\nThreshold 이상: {len(above_threshold_df)}건")
-print(above_threshold_df.head())
+print(f"첫 번째 출력 (Threshold 미만, 연도별 합계): {len(below_grouped)}건")
+print(below_grouped)
+print(f"\\n두 번째 출력 (Threshold 이상, 원본 데이터): {len(above_result)}건")
+print(above_result.head())
 `,
 
     SplitByFreqServ: `

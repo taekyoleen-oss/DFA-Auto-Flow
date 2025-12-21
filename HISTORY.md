@@ -1,5 +1,1140 @@
 # Change History
 
+## 2025-01-17 00:35:00
+
+### refactor(ui): Restore terminal as tab in Properties Panel and add protection rules
+
+**Description:**
+- Properties Panel의 터미널을 탭으로 구성하도록 복원
+  - Terminal 탭 추가: Properties, Preview, Code, Terminal (4개 탭)
+  - 하단에 있던 별도 터미널 패널 제거
+  - 터미널 리사이즈 기능 제거 (탭 내부에서 표시되므로 불필요)
+  - 탭 아이콘 크기: 모든 탭 아이콘을 `w-5 h-5` (20px x 20px)로 유지
+  - 탭 순서: Properties → Preview → Code → Terminal
+  - Terminal 탭 아이콘: CommandLineIcon 사용
+- Properties Panel 탭 구조 보호 규칙 추가
+  - .cursorrules에 Properties Panel 탭 구조 보호 규칙 추가
+  - 탭 구성, 아이콘 크기, 탭 순서 변경 금지 규칙 명시
+  - 향후 앱 변경 시 다른 로직은 변경하지 못하도록 보호
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - Terminal 탭 추가, 하단 터미널 패널 제거, 리사이즈 로직 제거
+- `.cursorrules` - Properties Panel 탭 구조 보호 규칙 추가
+
+**Reason:**
+- 사용자 요청에 따라 터미널을 탭으로 구성하도록 복원
+- 탭 아이콘 및 크기를 원래대로 유지
+- 향후 변경 시 탭 구조가 보호되도록 Rules에 명시
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:34:00
+
+### feat(ui): Sync Split By Threshold threshold parameter with Setting Threshold selection
+
+**Description:**
+- Setting Threshold 모듈의 View Details에서 "선택된 Threshold" 콤보박스 변경 시, 연결된 Split By Threshold 모듈의 threshold 속성도 동일한 값으로 자동 업데이트
+  - Setting Threshold의 threshold_out 포트에 연결된 Split By Threshold 모듈 찾기
+  - 연결된 모듈의 parameters.threshold 값을 Setting Threshold의 선택된 값으로 업데이트
+  - ApplyThreshold 모듈도 동일하게 처리
+  - onThresholdChange 콜백에서 한 번의 setModules 호출로 모든 업데이트 처리
+
+**Files Affected:**
+- `App.tsx` - SettingThresholdPreviewModal의 onThresholdChange 콜백에서 연결된 모듈의 threshold 파라미터 업데이트 로직 개선
+
+**Reason:**
+- 사용자 요청에 따라 Setting Threshold에서 선택한 값이 연결된 Split By Threshold 모듈의 속성에도 반영되도록 개선
+- 사용자 편의성 향상 및 데이터 일관성 유지
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:33:00
+
+### refactor(python): Redesign Split By Threshold output ports logic
+
+**Description:**
+- Split By Threshold 모듈의 출력 포트 로직 재설계
+  - 첫 번째 출력 포트: Year Column을 기준으로 GroupBy하고 Amount Column의 합계 계산
+    - `groupby(year_column)[amount_column].sum()` 수행
+    - Year Column이 없으면 원본 데이터 반환
+  - 두 번째 출력 포트: Threshold보다 크거나 같은 금액의 원본 데이터 반환
+    - 원본 레이아웃 유지, 모든 컬럼 포함
+  - 불필요한 datetime 변환 및 year 컬럼 추가 로직 제거
+  - Year Column을 직접 사용하여 GroupBy 수행
+
+**Files Affected:**
+- `utils/pyodideRunner.ts` - splitByThresholdPython 함수의 로직 재설계
+- `codeSnippets.ts` - SplitByThreshold 템플릿 코드 업데이트
+
+**Reason:**
+- 사용자 요청에 따라 출력 포트 계산 로직을 명확하게 재설계
+- 첫 번째 출력은 Year Column 기준 집계, 두 번째 출력은 원본 데이터 유지
+- 불필요한 데이터 변환 제거로 성능 및 명확성 향상
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:32:00
+
+### fix(ui): Remove duplicate aggregation logic in Split By Threshold View Details
+
+**Description:**
+- Split By Threshold 모듈의 View Details에서 중복된 연도별 집계 로직 제거
+  - Python 코드에서 이미 연도별 집계를 수행하므로 View Details에서는 원본 데이터를 그대로 표시
+  - 첫 번째 탭은 첫 번째 출력 포트(belowThreshold)의 테이블을 그대로 표시
+  - 두 번째 탭은 두 번째 출력 포트(aboveThreshold)의 테이블을 그대로 표시
+  - Python의 splitByThresholdPython 함수가 year_column이 있을 때 연도별 집계를 수행하여 반환
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - thresholdSplitData useMemo에서 연도별 집계 로직 제거, 원본 데이터 반환으로 변경
+
+**Reason:**
+- 사용자 요청에 따라 첫 번째 탭이 첫 번째 출력 포트의 테이블을 표시하도록 수정
+- Python에서 이미 연도별 집계를 수행하므로 중복 처리 제거
+- 출력 포트의 원본 데이터를 정확히 표시
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:31:00
+
+### feat(ui): Add yearly claim aggregation for Split By Threshold below tab
+
+**Description:**
+- Split By Threshold 모듈의 View Details 첫 번째 탭("< Threshold")에 연도별 클레임 합계 기능 추가
+  - 첫 번째 탭(below)에서 모듈 속성의 Year Column과 Amount Column을 사용하여 연도별 집계
+  - Year Column을 기준으로 Amount Column의 금액을 합산하여 표시
+  - 연도별로 정렬하여 표시
+  - 기본 탭을 'below'로 변경하여 첫 번째 탭이 기본으로 선택되도록 함
+  - 두 번째 탭(above)은 기존대로 원본 데이터 표시
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - thresholdSplitData useMemo에 연도별 집계 로직 추가, 기본 탭을 'below'로 변경
+
+**Reason:**
+- 사용자 요청에 따라 첫 번째 탭에서 연도별 클레임 합계를 표시하여 데이터 분석 편의성 향상
+- 모듈 속성에서 설정한 Year Column과 Amount Column을 사용하여 유연성 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:30:00
+
+### feat(ui): Update Split By Threshold View Details tab names with threshold values
+
+**Description:**
+- Split By Threshold 모듈의 View Details 탭 이름을 threshold 값을 포함하도록 변경
+  - 첫 번째 탭: "Below Threshold" → "< Threshold" (threshold 값 포함)
+  - 두 번째 탭: "Above Threshold" → ">= Threshold" (threshold 값 포함)
+  - threshold 값은 모듈의 parameters에서 가져와서 천단위 구분자와 함께 표시
+  - 탭 순서 변경: 첫 번째 탭이 below, 두 번째 탭이 above
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - SplitByThreshold 모듈의 탭 이름과 순서 변경
+
+**Reason:**
+- 사용자 요청에 따라 탭 이름에 threshold 값을 표시하여 더 명확하게 표시
+- "< Threshold"와 ">= Threshold" 형식으로 threshold 기준을 명확히 표현
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:29:00
+
+### refactor(ui): Change Split By Threshold Year Column to match Apply Inflation module
+
+**Description:**
+- Split By Threshold 모듈의 Year Column 속성을 Apply Inflation 모듈과 동일하게 변경
+  - 파라미터 이름을 `date_column`에서 `year_column`으로 변경
+  - 라벨을 "Year Column"으로 변경 (Apply Inflation과 동일)
+  - 모든 컬럼을 옵션으로 제공 (날짜 필터링 제거, Apply Inflation과 동일)
+  - 기본값을 "연도"로 설정 (Apply Inflation과 동일)
+  - useEffect 자동 설정 로직을 year_column에 맞게 수정
+  - App.tsx, pyodideRunner.ts, codeSnippets.ts에서 파라미터 이름 변경
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - SplitByThreshold 케이스의 Year Column 구현을 Apply Inflation과 동일하게 변경, useEffect 수정
+- `App.tsx` - date_column을 year_column으로 변경
+- `utils/pyodideRunner.ts` - splitByThresholdPython 함수의 파라미터를 year_column으로 변경
+- `codeSnippets.ts` - SplitByThreshold 템플릿의 파라미터를 year_column으로 변경
+
+**Reason:**
+- 사용자 요청에 따라 Apply Inflation 모듈의 Year Column과 동일한 방식으로 구현
+- 일관성 있는 UI/UX 제공
+- 연도 컬럼 선택을 더 직관적으로 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:28:00
+
+### style(ui): Rename Date Column label to "Year" in Split By Threshold module
+
+**Description:**
+- Split By Threshold 모듈의 Date Column(연도) 라벨을 "Year"로 변경
+  - PropertiesPanel.tsx에서 라벨을 "Date Column (연도)"에서 "Year"로 변경
+  - 앞의 모듈(왼쪽으로 연결된 모듈)에서 열을 불러오는 기능은 이미 구현되어 있음
+  - getConnectedDataSource 함수를 통해 연결된 모듈의 출력 데이터에서 컬럼 정보를 가져옴
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - SplitByThreshold 케이스의 Date Column 라벨을 "Year"로 변경
+
+**Reason:**
+- 사용자 요청에 따라 라벨을 더 간결하고 명확하게 변경
+- "Year"라는 이름이 연도 컬럼 선택의 목적을 더 명확하게 표현
+
+**Commit Hash:** afebf692820ca761b7921e866c3af4f32b3f7be2
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+
+# Or direct recovery
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+```
+
+## 2025-01-17 00:27:00
+
+### feat(ui): Add auto-select for Date Column in Split By Threshold module
+
+**Description:**
+- Split By Threshold 모듈의 Date Column 속성에 자동 선택 기능 추가
+  - 입력 데이터에서 날짜 컬럼을 자동으로 감지하여 콤보박스에 표시
+  - 가장 유사한 컬럼을 기본값으로 자동 설정
+  - 우선순위: "연도" > "year" > "날짜" > "date" > 첫 번째 날짜 컬럼
+  - useEffect를 사용하여 date_column이 없을 때 자동으로 설정
+  - 사용자가 명시적으로 선택하지 않은 경우에만 자동 설정
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - SplitByThreshold 케이스에 자동 선택 로직 추가, useEffect로 자동 설정
+
+**Reason:**
+- 사용자 요청에 따라 Date Column 선택을 자동화하여 사용 편의성 향상
+- 가장 유사한 컬럼을 자동으로 찾아 기본값으로 설정
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:26:00
+
+### feat(ui): Add Date Column parameter to Split By Threshold module
+
+**Description:**
+- Split By Threshold 모듈의 속성에 연도(날짜) 컬럼 선택 옵션 추가
+  - PropertiesPanel.tsx에 Date Column 선택 UI 추가
+  - FormatChange 모듈과 동일한 날짜 컬럼 필터링 로직 적용
+  - App.tsx에서 SplitByThreshold 실행 시 date_column 파라미터 전달
+  - splitByThresholdPython 함수는 이미 date_column 파라미터를 지원하므로 추가 수정 불필요
+  - date_column이 있으면 연도별 합계로 처리, 없으면 원본 레이아웃 유지
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - SplitByThreshold 케이스에 Date Column 선택 UI 추가
+- `App.tsx` - SplitByThreshold 실행 시 date_column 파라미터 전달
+
+**Reason:**
+- 사용자 요청에 따라 Split By Threshold 모듈에 연도 컬럼 선택 기능 추가
+- 연도별 집계 기능을 활용할 수 있도록 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:25:00
+
+### fix(ui): Restore Split By Threshold View Details
+
+**Description:**
+- Split By Threshold 모듈의 View Details 복원
+  - PropertiesPanel.tsx에 ThresholdSplitOutput을 visualizableTypes에 추가하여 View Details 버튼 표시
+  - DataPreviewModal.tsx에 ThresholdSplitOutput 처리 로직 추가
+  - 탭 구성 추가: "Above Threshold"와 "Below Threshold" 탭으로 데이터 분리 표시
+  - 각 탭에서 해당 데이터(aboveThreshold/belowThreshold)를 테이블로 표시
+  - 숫자 형식 천단위 구분 및 오른쪽 정렬 적용 (연도 컬럼 제외)
+  - 통계량 표시 기능 추가
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - ThresholdSplitOutput을 visualizableTypes에 추가
+- `components/DataPreviewModal.tsx` - ThresholdSplitOutput 처리 로직 및 탭 UI 추가
+
+**Reason:**
+- Split By Threshold 모듈의 View Details가 보이지 않는 문제 해결
+- 기존 커밋된 내용을 참고하여 복원
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:24:00
+
+### chore(backup): Update XoL Calculator View Details backup to latest version
+
+**Description:**
+- XoL Calculator의 View Details를 PreviewBackup 폴더에 최신 내용으로 업데이트
+  - 기존 백업 파일을 최신 내용으로 교체
+  - "건별 XoL 적용" 탭: 테이블(10행, 가로 스크롤), 통계량, 히스토그램(보험금, XoL Claim(Incl. Limit))
+  - "연도별 XoL 적용" 탭: 테이블(text-sm), 통계 정보, 통계량 + 그래프
+  - YearlyAmountBarPlot 컴포넌트, getXolData 함수, 히스토그램 렌더링 함수 포함
+  - README.md에 상세 내용 추가
+
+**Files Affected:**
+- `PreviewBackup/XoLCalculator_ViewDetails_Backup.tsx` - 최신 내용으로 업데이트
+- `PreviewBackup/README.md` - XoL Calculator 백업 파일 상세 내용 추가
+
+**Reason:**
+- 사용자 요청에 따라 XoL Calculator의 View Details를 최신 상태로 백업하여 복구 가능하도록 함
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:23:00
+
+### style(ui): Increase font size in XoL Calculator "연도별 XoL 적용" tab table
+
+**Description:**
+- XoL Calculator의 "연도별 XoL 적용" 탭 테이블 폰트 크기 증가
+  - 테이블 폰트 크기를 `text-xs`에서 `text-sm`으로 변경 (한 단계 증가)
+  - 가독성 향상을 위해 폰트 크기 조정
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - "연도별 XoL 적용" 탭 테이블 폰트 크기 변경
+
+**Reason:**
+- 사용자 요청에 따라 테이블의 폰트 크기를 한 단계 올려 가독성을 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:22:00
+
+### feat(ui): Add horizontal scroll to XoL Calculator "건별 XoL 적용" tab table
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭 테이블에 가로 스크롤 추가
+  - 테이블 컨테이너에 `overflow-x-auto` 추가하여 가로 스크롤 가능하도록 수정
+  - `overflow-hidden`을 `overflow-x-auto overflow-y-hidden`으로 변경
+  - 테이블에 `minWidth: 'max-content'` 스타일 추가하여 컬럼이 많을 때 가로 스크롤 활성화
+  - 세로 스크롤은 제거하고 가로 스크롤만 활성화
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Calculator "건별 XoL 적용" 탭 테이블에 가로 스크롤 추가
+
+**Reason:**
+- 사용자 요청에 따라 테이블에 가로 스크롤을 추가하여 컬럼이 많을 때도 모든 데이터를 볼 수 있도록 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:21:00
+
+### feat(ui): Reorder layout in XoL Calculator "건별 XoL 적용" tab
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭 레이아웃 순서 변경
+  - 테이블을 가장 위로 이동
+  - 통계량을 테이블 아래로 이동
+  - 기존에는 통계량이 위, 테이블이 아래였으나 순서 변경
+  - 히스토그램은 여전히 가장 아래에 위치
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Calculator "건별 XoL 적용" 탭 레이아웃 순서 변경
+
+**Reason:**
+- 사용자 요청에 따라 테이블을 가장 위에 배치하고 통계량을 그 아래에 배치하여 정보를 더 명확하게 표시
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:20:00
+
+### fix(ui): Fix React Hooks rule violation in XoL Calculator histogram
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭에서 React Hooks 규칙 위반 에러 수정
+  - 조건부 렌더링 안에서 `useMemo`를 사용하던 것을 일반 변수 계산으로 변경
+  - "Rendered fewer hooks than expected" 에러 해결
+  - 보험금과 XoL Claim(Incl. Limit) 히스토그램 데이터 계산을 `useMemo` 대신 일반 변수로 변경
+  - React Hooks 규칙 준수: hooks는 항상 같은 순서로 호출되어야 함
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - 조건부 렌더링 안에서 useMemo 제거, 일반 변수 계산으로 변경
+
+**Reason:**
+- React Hooks 규칙 위반으로 인한 에러를 해결하여 애플리케이션이 정상적으로 작동하도록 수정
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:19:00
+
+### fix(ui): Fix "연도별 XoL 적용" tab not showing data
+
+**Description:**
+- XoL Calculator의 "연도별 XoL 적용" 탭에서 데이터가 없을 때 안내 메시지 표시 추가
+  - 연도 컬럼이 없거나 데이터가 없을 때 명확한 안내 메시지 표시
+  - xolData.rows가 없거나 columns가 없을 때 조건부 렌더링 추가
+  - 사용자가 왜 데이터가 보이지 않는지 이해할 수 있도록 개선
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - "연도별 XoL 적용" 탭에 데이터 없을 때 안내 메시지 추가
+
+**Reason:**
+- 사용자 요청에 따라 "연도별 XoL 적용" 탭이 보이지 않는 문제를 해결하고, 데이터가 없을 때 명확한 안내를 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:18:00
+
+### fix(ui): Fix histogram display in XoL Calculator "건별 XoL 적용" tab
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭에서 히스토그램이 표시되지 않는 문제 수정
+  - Setting Threshold의 Graph 탭 방식을 참조하여 SVG 기반 히스토그램 구현
+  - 보험금(claim_column)과 XoL Claim(Incl. Limit) 히스토그램을 각각 useMemo로 계산
+  - 30개 bins 사용, Setting Threshold와 동일한 스타일 적용
+  - X축 눈금 6개 표시, Y축 눈금 5개 표시
+  - SVG로 직접 렌더링하여 히스토그램 바, 축, 라벨 표시
+  - 각 히스토그램에 제목과 데이터 없음 메시지 추가
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Calculator "건별 XoL 적용" 탭 히스토그램 구현 수정
+
+**Reason:**
+- 사용자 요청에 따라 Setting Threshold의 Graph 탭을 참조하여 히스토그램이 정상적으로 표시되도록 수정
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:17:00
+
+### feat(ui): Redesign XoL Calculator "건별 XoL 적용" tab layout
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭 레이아웃 재구성
+  - 테이블을 10개의 행만 보이도록 제한 (slice(0, 10))
+  - 테이블이 가로 전체를 차지하도록 수정 (기존에는 통계량과 나란히 배치)
+  - 테이블 상단에 선택된 컬럼의 통계량 표시 (ColumnStatistics)
+  - 맨 하단에 속성에서 정한 대상(claim_column)에 대한 보험금과 XoL Claim(Incl. Limit)를 히스토그램으로 각각 상하로 표시
+  - 히스토그램은 HistogramPlot 컴포넌트 사용
+  - 테이블 하단에 전체 행 수 표시 (Showing 10 of X rows)
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Calculator "건별 XoL 적용" 탭 레이아웃 재구성, 히스토그램 추가
+
+**Reason:**
+- 사용자 요청에 따라 테이블을 10행으로 제한하고 가로 전체를 차지하도록 하며, 상단에 통계량, 하단에 히스토그램을 배치하여 정보를 더 명확하게 표시
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:16:00
+
+### feat(ui): Increase table height and enable full scroll in XoL Calculator "건별 XoL 적용" tab
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭에서 테이블 높이 증가 및 전체 스크롤 개선
+  - 테이블과 통계량 영역에 최소 높이 설정 (min-h-[600px])으로 테이블 높이 증가
+  - 테이블 영역에 overflow-y-auto 적용하여 테이블 내부 스크롤 가능
+  - overflow-hidden 제거하여 전체 컨테이너의 세로 스크롤이 작동하도록 수정
+  - 전체 스크롤을 통해 아래의 그래프(Plot)를 볼 수 있도록 개선
+  - 테이블 영역에 border 추가로 영역 구분 명확화
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Calculator "건별 XoL 적용" 탭 테이블 높이 증가 및 스크롤 구조 개선
+
+**Reason:**
+- 사용자 요청에 따라 테이블의 위아래 길이를 늘리고, 전체적인 세로 스크롤을 통해 아래 그래프를 볼 수 있도록 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:15:00
+
+### feat(ui): Improve XoL Calculator View Details layout for "건별 XoL 적용" tab
+
+**Description:**
+- XoL Calculator의 "건별 XoL 적용" 탭 레이아웃 개선
+  - 왼쪽에 테이블 배치, 오른쪽에 통계량 표시
+  - 테이블 내에서 연도를 제외한 숫자 형식은 천단위 구분 적용 및 오른쪽 정렬
+  - Plot는 테이블과 통계량 아래에 표시 (기존에는 오른쪽에 표시)
+  - View Details에 스크롤 추가 (overflow-y-auto)
+  - 테이블 헤더도 숫자 컬럼은 오른쪽 정렬
+  - 통계량 영역에 배경색(gray-50) 적용
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Calculator "건별 XoL 적용" 탭 레이아웃 수정, 숫자 형식 처리 개선, 스크롤 추가
+
+**Reason:**
+- 사용자 요청에 따라 XoL Calculator의 View Details 레이아웃을 개선하여 테이블과 통계량을 더 명확하게 구분하고, Plot를 아래에 배치하여 가독성 향상
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:14:00
+
+### fix(ui): Fix XoL Contract View Details not opening
+
+**Description:**
+- XoL Contract 모듈의 View Details가 열리지 않는 문제 수정
+  - `PropertiesPanel.tsx`의 `visualizableTypes` 배열에 `XolContractOutput` 추가
+  - `canVisualize()` 함수에 `DefineXolContract` 모듈 타입 체크 추가
+  - `App.tsx`에서 `DataPreviewModal` 렌더링 조건에 `XolContractOutput` 및 `ModuleType.DefineXolContract` 추가
+  - 이제 XoL Contract 모듈에서 View Details 버튼이 정상적으로 표시되고 모달이 열림
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - visualizableTypes에 XolContractOutput 추가, canVisualize 함수에 DefineXolContract 체크 추가
+- `App.tsx` - DataPreviewModal 렌더링 조건에 XolContractOutput 및 DefineXolContract 모듈 타입 추가
+
+**Reason:**
+- 사용자 요청에 따라 XoL Contract의 View Details가 정상적으로 열리도록 수정
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:13:00
+
+### feat(ui): Enhance XoL Contract View Details with comprehensive input data summary
+
+**Description:**
+- XoL Contract 모듈의 View Details에 입력 데이터를 XoL에 맞게 상세 요약 표시 기능 추가 및 개선
+  - XoL Contract 파라미터 표시: Deductible, Limit, Reinstatements, Aggregate Deductible, Expense Ratio, Reinstatement Premiums
+  - 기본 통계 (Basic Statistics):
+    - Total Claims, Total Amount, Mean Amount, Median Amount, Std Dev, Min Amount, Max Amount
+  - XoL 적용 결과 (XoL Application Results):
+    - Total Retention / Mean Retention (Deductible 이하 금액)
+    - Total Excess / Mean Excess (Deductible 초과 금액)
+    - Total XoL Claim / Mean XoL Claim (XoL 적용 금액)
+    - XoL Ratio (XoL 적용 비율)
+  - XoL 적용 건수 통계 (XoL Application Counts):
+    - Claims Exceeding Deductible (Deductible 초과 건수 및 비율)
+    - Claims Hitting Limit (Limit 도달 건수 및 비율)
+    - Claims Fully Covered (XoL 적용 건수 및 비율)
+    - Claims Below Deductible (Deductible 미만 건수 및 비율)
+  - 연도별 통계 테이블 (Yearly Statistics):
+    - Year, Count, Total Amount, Mean Amount
+    - Total Retention, Total Excess, Total XoL Claim, XoL Ratio
+  - 입력 데이터가 연결되지 않은 경우 안내 메시지 표시
+  - 입력 데이터에서 클레임 금액 컬럼과 연도 컬럼 자동 감지
+  - XoL 적용 계산: Deductible과 Limit을 적용한 Retention, Excess, XoL Claim 계산
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - XoL Contract 전용 View Details 추가 및 개선, 상세 통계 계산 로직 추가
+- `App.tsx` - XolContractOutput 타입일 때 DataPreviewModal 열도록 수정
+
+**Reason:**
+- 사용자 요청에 따라 XoL Contract의 입력 데이터를 XoL에 맞게 더 상세하게 요약하여 표시하여 계약 조건과 데이터의 관계를 명확히 파악할 수 있도록 함
+- Retention, Excess, XoL Claim을 구분하여 표시하여 XoL 적용 결과를 더 명확하게 이해할 수 있도록 함
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:12:00
+
+### style(ui): Remove thousand separators from year columns in View Details
+
+**Description:**
+- View Details에서 연도 컬럼에 천단위 구분 제거
+  - 연도 컬럼 식별: 컬럼 이름이 '연도', 'year', 'Year' 또는 소문자 'year'인 경우
+  - Load Claim Data, Format Change, Apply Inflation, Select Data, Apply Threshold의 Detail 탭 테이블에서 연도는 천단위 구분 없이 표시
+  - Split By Freq-Sve의 Frequency/Severity 탭에서 연도는 천단위 구분 없이 표시
+  - 연도 컬럼은 숫자형이어도 천단위 구분을 적용하지 않음
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Load Claim Data 등의 Detail 탭에서 연도 컬럼 처리 추가
+- `components/SplitFreqServPreviewModal.tsx` - 연도 표시 확인 (이미 천단위 구분 없이 표시됨)
+
+**Reason:**
+- 사용자 요청에 따라 연도는 천단위 구분 없이 표시하여 가독성 향상
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:11:00
+
+### feat(ui): Split By Freq-Sve View Details into Frequency and Severity tabs
+
+**Description:**
+- Split By Freq-Sve 모듈의 View Details를 두 개의 탭으로 분리
+  - 첫 번째 탭: "Frequency" - 빈도 모델 표시 (Yearly Frequency 데이터 및 통계량)
+  - 두 번째 탭: "Severity" - 심도 모델 표시 (Yearly Severity 데이터 및 Amount 데이터)
+- Download CSV 버튼을 아이콘만으로 표시
+  - 텍스트 제거하고 ArrowDownTrayIcon만 표시
+  - hover 효과 및 title 속성 추가
+  - 스타일을 아이콘 버튼 형태로 변경 (p-1.5, rounded, hover:bg-gray-100)
+
+**Files Affected:**
+- `components/SplitFreqServPreviewModal.tsx` - 탭 구조 추가, Download CSV 버튼 스타일 변경
+
+**Reason:**
+- 사용자 요청에 따라 빈도 모델과 심도 모델을 탭으로 분리하여 더 명확한 UI 제공
+- Download CSV 버튼을 아이콘만으로 표시하여 공간 절약 및 깔끔한 UI
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:10:00
+
+### feat(ui): Apply Load Claim Data View Details to Apply Threshold module
+
+**Description:**
+- Apply Threshold 모듈에 Load Claim Data와 동일한 View Details 적용
+  - Detail 탭: 테이블 (숫자 천단위 구분, 우측 정렬) + 통계량 (테두리 없음, 옅은 회색 배경)
+  - Graphs 탭: 히스토그램 (Setting Threshold 스타일)
+  - activeLoadClaimDataTab 상태 관리
+  - graphColumn 상태 관리
+  - 히스토그램 데이터 계산 useMemo
+  - 기존 View Details를 Load Claim Data 스타일로 대체
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Apply Threshold에 Load Claim Data와 동일한 View Details 적용
+
+**Reason:**
+- 사용자 요청에 따라 Apply Threshold 모듈에도 Load Claim Data와 동일한 View Details를 적용하여 일관성 있는 UI 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:09:00
+
+### chore(backup): Backup Setting Threshold View Details to PreviewBackup folder
+
+**Description:**
+- Setting Threshold의 View Details를 PreviewBackup 폴더에 백업
+  - `PreviewBackup/SettingThreshold_ViewDetails_Backup.tsx` 파일 생성
+  - SettingThresholdPreviewModal.tsx의 전체 내용 백업
+  - HistogramChart 컴포넌트 포함
+  - 분석 탭 및 분포 탭 전체 구현 백업
+  - Spread View 및 CSV 다운로드 기능 포함
+
+**Files Affected:**
+- `PreviewBackup/SettingThreshold_ViewDetails_Backup.tsx` - Setting Threshold View Details 백업 파일 생성
+
+**Reason:**
+- 사용자 요청에 따라 Setting Threshold의 View Details를 백업하여 복구 가능하도록 보존
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:08:00
+
+### feat(ui): Apply Load Claim Data View Details to Format Change, Apply Inflation, and Select Data modules
+
+**Description:**
+- Load Claim Data의 View Details를 PreviewBackup에 백업
+  - `PreviewBackup/LoadClaimData_ViewDetails_Backup.tsx` 파일 생성
+  - Detail 탭과 Graphs 탭의 전체 구현 백업
+- Format Change, Apply Inflation, Select Data 모듈에 Load Claim Data와 동일한 View Details 적용
+  - Detail 탭: 테이블 (숫자 천단위 구분, 우측 정렬) + 통계량 (테두리 없음, 옅은 회색 배경)
+  - Graphs 탭: 히스토그램 (Setting Threshold 스타일)
+  - activeLoadClaimDataTab 상태 관리
+  - graphColumn 상태 관리
+  - 히스토그램 데이터 계산 useMemo
+  - 기존 View Details를 Load Claim Data 스타일로 대체
+
+**Files Affected:**
+- `PreviewBackup/LoadClaimData_ViewDetails_Backup.tsx` - Load Claim Data View Details 백업 파일 생성
+- `components/DataPreviewModal.tsx` - Format Change, Apply Inflation, Select Data에 Load Claim Data와 동일한 View Details 적용
+
+**Reason:**
+- 사용자 요청에 따라 Load Claim Data의 View Details를 다른 모듈에도 동일하게 적용하여 일관성 있는 UI 제공
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:07:00
+
+### style(ui): Format numbers with thousand separators and right-align in Load Claim Data Detail tab table
+
+**Description:**
+- Load Claim Data의 View Details의 Detail 탭 테이블에서 숫자 포맷팅 및 정렬 개선
+  - 숫자형 컬럼의 값에 천단위 구분 적용 (toLocaleString 사용, ko-KR 로케일)
+  - 숫자형 컬럼을 우측 정렬 (text-right 클래스 추가)
+  - 숫자 포맷: 최대 소수점 2자리, 최소 소수점 0자리
+  - 숫자가 아닌 값은 기존대로 왼쪽 정렬 유지
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Load Claim Data Detail 탭 테이블 셀 렌더링 로직 수정
+
+**Reason:**
+- 사용자 요청에 따라 숫자 가독성 향상 및 정렬 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:06:00
+
+### style(ui): Remove border and add light gray background to Load Claim Data Detail tab statistics
+
+**Description:**
+- Load Claim Data의 View Details의 Detail 탭에서 통계량 부분 스타일 수정
+  - 통계량 부분의 테두리 제거 (ColumnStatistics 컴포넌트에 noBorder prop 추가)
+  - 통계량 부분의 배경을 옅은 회색(bg-gray-50)으로 변경
+  - ColumnStatistics 컴포넌트에 스타일 커스터마이징을 위한 optional props 추가 (noBorder, backgroundColor)
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - ColumnStatistics 컴포넌트에 스타일 prop 추가, Load Claim Data Detail 탭 통계량 부분 스타일 수정
+
+**Reason:**
+- 사용자 요청에 따라 통계량 부분의 테두리 제거 및 배경색 변경
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:05:00
+
+### style(ui): Remove border from Load Claim Data View Details and add X-axis labels to Graphs histogram
+
+**Description:**
+- Load Claim Data의 View Details에서 테두리 제거
+  - Detail 탭의 테이블 테두리 제거 (border border-gray-200 rounded-lg 클래스 제거)
+- Graphs 탭의 히스토그램에 가로축 숫자 표시 추가
+  - X축에 6개의 숫자를 넓은 간격으로 표시
+  - 최소값부터 최대값까지 균등하게 분배
+  - tick 라인과 숫자 라벨 추가
+  - 숫자 포맷: toLocaleString 사용, 최대 소수점 2자리
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Load Claim Data Detail 탭 테두리 제거, Graphs 탭 X축 라벨 추가
+
+**Reason:**
+- 사용자 요청에 따라 테두리 제거 및 가로축 숫자 표시 개선
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:04:00
+
+### feat(ui): Update Load Claim Data Graphs tab to match Setting Threshold style
+
+**Description:**
+- Load Claim Data의 View Details의 Graphs 탭을 Setting Threshold의 Graphs 탭과 동일한 형태로 수정
+  - Setting Threshold의 HistogramChart 스타일 적용
+  - SVG 기반 히스토그램 차트로 변경 (800x400 크기)
+  - Y축 라벨 (0, 0.25, 0.5, 0.75, 1.0 비율)
+  - X축 라벨: "값 (Value)", Y축 라벨: "빈도 (Frequency)"
+  - 히스토그램 바 색상: #3b82f6, opacity 0.7
+  - 30개 bins 사용
+  - 제목: "데이터 분포 히스토그램"
+  - 동일한 패딩 및 스타일 적용
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Load Claim Data Graphs 탭 히스토그램 차트 스타일 수정
+
+**Reason:**
+- 사용자 요청에 따라 Load Claim Data의 Graphs 탭을 Setting Threshold와 동일한 형태로 통일
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:03:00
+
+### feat(ui): Modify Load Claim Data View Details with Detail and Graphs tabs
+
+**Description:**
+- Load Claim Data 모듈의 View Details를 탭 구조로 변경
+  - "Detail" 탭 추가:
+    - 왼쪽: 현재 테이블 표시
+    - 오른쪽: 선택된 열의 통계량 표시 (ColumnStatistics)
+    - 그래프 제거 (히스토그램 제거)
+  - "Graphs" 탭 추가:
+    - 콤보박스로 숫자형 열 선택
+    - 선택된 열에 대한 히스토그램 표시 (HistogramPlot)
+- Load Claim Data 모듈 전용 탭 상태 관리 추가 (activeLoadClaimDataTab, graphColumn)
+
+**Files Affected:**
+- `components/DataPreviewModal.tsx` - Load Claim Data 모듈 전용 탭 및 UI 로직 추가
+
+**Reason:**
+- 사용자 요청에 따라 Load Claim Data의 View Details를 Detail/Graphs 탭으로 분리하여 테이블과 그래프를 별도로 관리
+
+**Commit Hash:** (will be updated after commit)
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+
+# Or direct recovery
+git reset --hard <커밋해시>
+```
+
+## 2025-01-17 00:02:00
+
+### fix(toolbox): Update Toolbox structure to match yesterday evening commit (8d4f7a5)
+
+**Description:**
+- Toolbox의 카테고리 구조를 어제 저녁 커밋(8d4f7a5)에 맞게 수정
+  - 카테고리 구조 변경:
+    - "Data Preprocess" (preprocessTypes에 LoadClaimData, SettingThreshold 추가)
+    - "DFA Analysis" (dfaTypes 사용)
+    - "XoL Analysis" (xolPricingTypes 사용, 이름 변경: "XoL Pricing" → "XoL Analysis")
+  - 제거된 카테고리: "Data Analysis", "Tradition Analysis", "Reinsurance Analysis"
+  - preprocessTypes 업데이트: LoadClaimData, SettingThreshold 추가, TransformData, TransitionData 제거
+
+**Files Affected:**
+- `components/Toolbox.tsx` - categorizedModules 구조 및 preprocessTypes 수정
+
+**Reason:**
+- 어제 저녁 커밋(8d4f7a5)에 맞게 Toolbox 구조 업데이트
+
+**Commit Hash:** afebf692820ca761b7921e866c3af4f32b3f7be2
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+
+# Or direct recovery
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+```
+
+## 2025-01-17 00:01:00
+
+### fix(toolbox): Update Toolbox module list to match recent commits
+
+**Description:**
+- Toolbox의 XoL Pricing 카테고리 모듈 목록 수정
+  - 제거: XoL Loading, Calculate Ceded Loss, Price XoL Contract
+  - 추가: XoL Calculator, XoL Pricing
+  - 카테고리 이름 변경: "XoL Reinsurance Pricing" → "XoL Pricing"
+
+**Files Affected:**
+- `components/Toolbox.tsx` - xolPricingTypes 배열 및 카테고리 이름 수정
+
+**Reason:**
+- 최근 커밋(c959f76)에 맞게 Toolbox 모듈 목록 업데이트
+
+**Commit Hash:** afebf692820ca761b7921e866c3af4f32b3f7be2
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+
+# Or direct recovery
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+```
+
+## 2025-01-17 00:00:00
+
+### fix(ui): Remove PCA Visualization View Details and restore XoL Calculator View Details with tabs
+
+**Description:**
+- PCA Visualization의 View Details 제거
+  - PropertiesPanel.tsx에서 PCAOutput을 visualizableTypes에서 제거하여 PCA 모듈의 View Details 버튼 비활성화
+  - DataPreviewModal.tsx에서 PCA Visualization 탭 제거
+- XoL Calculator의 View Details를 과거 버전으로 복원
+  - "건별 XoL 적용" 및 "연도별 XoL 적용" 탭 추가
+  - 연도별 집계 기능 복원 (연도별 XoL Claim 및 XoL Premium Rate 계산)
+  - 통계 정보 섹션 추가: XoL Claim 평균, 표준편차, XoL Premium Rate 평균, Reluctance Factor
+  - 연도별 XoL Claim(Incl. Agg/Reinst) 그래프 표시
+  - YearlyAmountBarPlot 컴포넌트 추가
+
+**Files Affected:**
+- `components/PropertiesPanel.tsx` - PCAOutput을 visualizableTypes에서 제거
+- `components/DataPreviewModal.tsx` - PCA Visualization 탭 제거, XoL Calculator View Details 복원 (건별/연도별 탭)
+- `App.tsx` - DataPreviewModal 호출 시 allModules와 allConnections 전달
+
+**Reason:**
+- 사용자 요청에 따라 PCA Visualization의 View Details 제거
+- XoL Calculator의 View Details를 과거 버전(건별 XoL 및 연도별 XoL 탭)으로 복원
+
+**Commit Hash:** afebf692820ca761b7921e866c3af4f32b3f7be2
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+
+# Or direct recovery
+git reset --hard afebf692820ca761b7921e866c3af4f32b3f7be2
+```
+
 ## 2025-12-19 07:27:15
 
 ### feat(ui): Update Save button icon and XoL Loss Model sample

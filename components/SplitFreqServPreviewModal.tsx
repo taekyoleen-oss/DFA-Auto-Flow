@@ -18,6 +18,7 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
   useCopyOnCtrlC(viewDetailsRef);
   const [showSpreadView, setShowSpreadView] = useState(false);
   const [spreadViewTab, setSpreadViewTab] = useState<'frequency' | 'severity' | 'amount'>('frequency');
+  const [activeTab, setActiveTab] = useState<'frequency' | 'severity'>('frequency');
 
   // Spread View용 데이터 변환
   const spreadViewData = useMemo(() => {
@@ -108,7 +109,32 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
             </button>
           </div>
         </header>
-        <main className="flex-grow p-6 overflow-auto" ref={viewDetailsRef}>
+        <main className="flex-grow p-6 overflow-auto flex flex-col" ref={viewDetailsRef}>
+          {/* Tabs */}
+          <div className="flex gap-2 mb-4 border-b border-gray-200 flex-shrink-0">
+            <button
+              onClick={() => setActiveTab('frequency')}
+              className={`px-4 py-2 font-medium text-sm transition-colors ${
+                activeTab === 'frequency'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Frequency
+            </button>
+            <button
+              onClick={() => setActiveTab('severity')}
+              className={`px-4 py-2 font-medium text-sm transition-colors ${
+                activeTab === 'severity'
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Severity
+            </button>
+          </div>
+          <div className="flex-grow overflow-auto">
+          {activeTab === 'frequency' ? (
           <div className="space-y-6">
             {/* Yearly Frequency */}
             <div>
@@ -141,10 +167,10 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                       link.download = `${module.name}_frequency.csv`;
                       link.click();
                     }}
-                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                    className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                    title="Download CSV"
                   >
-                    <ArrowDownTrayIcon className="w-4 h-4" />
-                    Download CSV
+                    <ArrowDownTrayIcon className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -189,7 +215,7 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                     {output.yearlyFrequency.map((item, idx) => (
                       <tr key={idx}>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.year}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.count}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{item.count.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -257,7 +283,9 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                 );
               })()}
             </div>
-
+            </div>
+          ) : (
+            <div className="space-y-6">
             {/* Yearly Severity */}
             <div>
               <div className="flex items-center justify-between mb-4">
@@ -291,10 +319,10 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                       link.download = `${module.name}_severity.csv`;
                       link.click();
                     }}
-                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                    className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                    title="Download CSV"
                   >
-                    <ArrowDownTrayIcon className="w-4 h-4" />
-                    Download CSV
+                    <ArrowDownTrayIcon className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -313,7 +341,7 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                       <tr key={idx}>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.year}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.totalAmount.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{item.count}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{item.count.toLocaleString()}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.meanAmount.toLocaleString()}</td>
                       </tr>
                     ))}
@@ -357,10 +385,10 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                       link.download = `${module.name}_amount.csv`;
                       link.click();
                     }}
-                    className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1"
+                    className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded transition-colors"
+                    title="Download CSV"
                   >
-                    <ArrowDownTrayIcon className="w-4 h-4" />
-                    Download CSV
+                    <ArrowDownTrayIcon className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -396,6 +424,8 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
                 )}
               </div>
             </div>
+            </div>
+          )}
           </div>
         </main>
       </div>

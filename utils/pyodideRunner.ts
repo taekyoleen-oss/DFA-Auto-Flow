@@ -5335,7 +5335,7 @@ export async function splitByThresholdPython(
   data: any[],
   threshold: number,
   amount_column: string,
-  date_column: string,
+  year_column: string,
   timeoutMs: number = 60000
 ): Promise<{
   belowThreshold: { rows: any[]; columns: Array<{ name: string; type: string }> };
@@ -5351,7 +5351,7 @@ export async function splitByThresholdPython(
     py.globals.set("js_data", data);
     py.globals.set("js_threshold", threshold);
     py.globals.set("js_amount_column", amount_column);
-    py.globals.set("js_date_column", date_column);
+    py.globals.set("js_year_column", year_column);
 
     const code = `
 import pandas as pd
@@ -5361,32 +5361,28 @@ from datetime import datetime
 df = pd.DataFrame(js_data.to_py())
 threshold = js_threshold
 amount_column = js_amount_column
-date_column = js_date_column
-
-# date_column이 있으면 날짜 컬럼을 datetime으로 변환하고 year 컬럼 추가
-if date_column and date_column != "" and date_column in df.columns:
-    df[date_column] = pd.to_datetime(df[date_column], errors='coerce')
-    df['year'] = df[date_column].dt.year
+year_column = js_year_column
 
 # Threshold 기준으로 분리
 below_threshold_df = df[df[amount_column] < threshold].copy()
 above_threshold_df = df[df[amount_column] >= threshold].copy()
 
-# 첫 번째 출력: Threshold보다 작은 값
-# date_column이 있으면 연도별 합계만, 없으면 원본 레이아웃 유지
-if date_column and date_column != "" and 'year' in df.columns:
-    below_yearly = below_threshold_df.groupby('year')[amount_column].sum().reset_index()
-    below_yearly.columns = ['year', 'total_amount']
-    below_result_rows = below_yearly.to_dict('records')
-    below_result_columns = [{'name': 'year', 'type': 'number'}, {'name': 'total_amount', 'type': 'number'}]
+# 첫 번째 출력: Year Column을 기준으로 GroupBy하고 Amount Column의 합계 계산
+if year_column and year_column != "" and year_column in below_threshold_df.columns:
+    # Year Column이 있으면 GroupBy하여 합계 계산
+    below_grouped = below_threshold_df.groupby(year_column)[amount_column].sum().reset_index()
+    below_grouped.columns = [year_column, amount_column]
+    below_result_rows = below_grouped.to_dict('records')
+    below_result_columns = [
+        {'name': year_column, 'type': 'number' if pd.api.types.is_numeric_dtype(below_grouped[year_column]) else 'string'},
+        {'name': amount_column, 'type': 'number'}
+    ]
 else:
+    # Year Column이 없으면 원본 데이터 반환
     below_result_rows = below_threshold_df.to_dict('records')
     below_result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(below_threshold_df[col]) else 'string'} for col in below_threshold_df.columns]
 
-# 두 번째 출력: Threshold보다 크거나 같은 값, 원본 레이아웃 유지
-# date_column이 있으면 year 컬럼 제거
-if date_column and date_column != "" and 'year' in above_threshold_df.columns:
-    above_threshold_df = above_threshold_df.drop(columns=['year'])
+# 두 번째 출력: Threshold보다 크거나 같은 금액의 원본 데이터
 above_result_rows = above_threshold_df.to_dict('records')
 above_result_columns = [{'name': col, 'type': 'number' if pd.api.types.is_numeric_dtype(above_threshold_df[col]) else 'string'} for col in above_threshold_df.columns]
 

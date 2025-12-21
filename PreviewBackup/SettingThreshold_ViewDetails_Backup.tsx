@@ -1,3 +1,24 @@
+/**
+ * Setting Threshold View Details 백업 파일
+ *
+ * 이 파일은 SettingThresholdPreviewModal.tsx의 전체 내용을 백업한 것입니다.
+ * Setting Threshold의 View Details가 의도치 않게 수정될 경우 이 파일을 참조하여 복구할 수 있습니다.
+ *
+ * 백업 일자: 2025-01-17
+ *
+ * 복구 방법:
+ * 1. SettingThresholdPreviewModal.tsx 파일을 확인합니다.
+ * 2. 이 파일의 내용으로 교체합니다.
+ *
+ * 포함된 내용:
+ * - HistogramChart 컴포넌트 (Threshold 라인 포함)
+ * - SettingThresholdPreviewModal 컴포넌트
+ * - 분석 탭: 전체 요약, 연도별 건수 테이블
+ * - 분포 탭: 데이터 분포 히스토그램
+ * - Spread View 기능
+ * - CSV 다운로드 기능
+ */
+
 import React, { useMemo, useState, useRef } from 'react';
 import { CanvasModule, SettingThresholdOutput } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
@@ -398,8 +419,7 @@ export const SettingThresholdPreviewModal: React.FC<SettingThresholdPreviewModal
                       </div>
                     </div>
 
-                    {/* Yearly Counts - 연도별 데이터가 있을 때만 표시 */}
-                    {yearlyCounts && yearlyCounts.length > 0 && (
+                    {/* Yearly Counts */}
                     <div className="bg-white border border-gray-200 rounded-lg p-4">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-gray-800">연도별 건수</h3>
@@ -491,8 +511,8 @@ export const SettingThresholdPreviewModal: React.FC<SettingThresholdPreviewModal
                           );
                         })()}
                         
-                        {/* Year rows - 연도별 데이터가 있을 때만 표시 */}
-                        {yearlyCounts && yearlyCounts.length > 0 && yearlyCounts.map((yc, rowIdx) => (
+                        {/* Year rows */}
+                        {yearlyCounts.map((yc, rowIdx) => (
                           <div 
                             key={rowIdx}
                             className="grid gap-2 py-1 hover:bg-gray-50 border-b border-gray-100"
@@ -506,12 +526,11 @@ export const SettingThresholdPreviewModal: React.FC<SettingThresholdPreviewModal
                         ))}
                       </div>
                     </div>
-                    )}
                   </div>
                 ) : (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                     <p className="text-yellow-800">
-                      분석 데이터가 없습니다.
+                      연도별 건수 데이터가 없습니다. 속성창에서 연도 컬럼을 선택해주세요.
                     </p>
                   </div>
                 )}
@@ -558,4 +577,5 @@ export const SettingThresholdPreviewModal: React.FC<SettingThresholdPreviewModal
     </>
   );
 };
+
 
