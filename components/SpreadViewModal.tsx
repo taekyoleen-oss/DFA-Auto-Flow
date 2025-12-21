@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { XCircleIcon } from './icons';
+import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 
 interface SpreadViewModalProps {
   onClose: () => void;
@@ -305,6 +305,39 @@ export const SpreadViewModal: React.FC<SpreadViewModalProps> = ({
     return dataRow?.[colName] != null ? String(dataRow[colName]) : '';
   };
 
+  // CSV 다운로드 함수
+  const handleDownloadCSV = useCallback(() => {
+    if (!data || data.length === 0) return;
+    
+    const csvContent = [
+      columns.map(col => col.name).join(','),
+      ...data.map(row => 
+        columns.map(col => {
+          const value = row[col.name];
+          if (value === null || value === undefined) return '';
+          const str = String(value);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        }).join(',')
+      )
+    ].join('\n');
+    
+    const bom = '\uFEFF';
+    const blob = new Blob([bom + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    const fileName = title ? `${title.replace(/[^a-zA-Z0-9]/g, '_')}_data.csv` : 'spread_view_data.csv';
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [data, columns, title]);
+
   const displayRowCount = data.length + 1; // 헤더 포함
   const displayColCount = columns.length;
 
@@ -350,19 +383,34 @@ export const SpreadViewModal: React.FC<SpreadViewModalProps> = ({
               셀을 선택하고 오른쪽 클릭하여 복사할 수 있습니다
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-800 transition-colors"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <XCircleIcon className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadCSV}
+              className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-1 transition-colors"
+              onMouseDown={(e) => e.stopPropagation()}
+              title="CSV 다운로드"
+            >
+              <ArrowDownTrayIcon className="w-5 h-5" />
+              <span>다운로드</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-800 transition-colors"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <XCircleIcon className="w-6 h-6" />
+            </button>
+          </div>
         </div>
 
         {/* 스프레드시트 그리드 */}
         <div
           className="flex-grow overflow-auto bg-white"
           style={{ maxHeight: 'calc(90vh - 100px)' }}
+          onWheel={(e) => {
+            // 스프레드 뷰에서 스크롤할 때 캔버스 확대/축소가 발생하지 않도록 이벤트 전파 차단
+            e.stopPropagation();
+          }}
         >
           <div className="inline-block min-w-full">
             <table className="border-collapse">

@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useRef, MouseEvent, TouchEvent, useEffect } from 'react';
-import { CanvasModule, Connection, ModuleType } from '../types';
+import { CanvasModule, Connection, ModuleType, DataPreview, ColumnInfo } from '../types';
 import { ComponentRenderer as ModuleNode } from './ComponentRenderer';
 import { ShapeRenderer } from './ShapeRenderer';
+import { SpreadViewModal } from './SpreadViewModal';
 
 interface CanvasProps {
   modules: CanvasModule[];
@@ -46,6 +47,11 @@ export const Canvas: React.FC<CanvasProps> = ({
   const [selectionBox, setSelectionBox] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
   const isSelecting = useRef(false);
   const isSpacePressed = useRef(false);
+  const [connectionDataView, setConnectionDataView] = useState<{
+    connection: Connection;
+    data: Array<Record<string, any>>;
+    columns: Array<{ name: string; type?: string }>;
+  } | null>(null);
   
   // Refs for optimized dragging
   const dragInfoRef = useRef<{
@@ -521,6 +527,11 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
   
   const handleWheel = (e: React.WheelEvent) => {
+        // SpreadViewModal이 열려 있을 때는 캔버스 확대/축소를 막음
+        if (connectionDataView) {
+            return;
+        }
+        
         e.preventDefault();
         const delta = e.deltaY * -0.001;
         const newScale = Math.max(0.2, Math.min(2, scale + delta));
@@ -795,6 +806,172 @@ export const Canvas: React.FC<CanvasProps> = ({
         setConnections(prev => prev.filter(c => c.id !== connectionId));
     }, [setConnections, suggestion]);
 
+    // 베지어 곡선의 중간점 계산 함수
+    const getBezierMidpoint = useCallback((
+        start: { x: number; y: number },
+        end: { x: number; y: number }
+    ): { x: number; y: number } => {
+        // Cubic Bezier 곡선: M${start.x},${start.y} C${start.x},${start.y + 75} ${end.x},${end.y - 75} ${end.x},${end.y}
+        // P0 = start, P1 = (start.x, start.y + 75), P2 = (end.x, end.y - 75), P3 = end
+        // t = 0.5일 때의 점 계산
+        const t = 0.5;
+        const p0 = { x: start.x, y: start.y };
+        const p1 = { x: start.x, y: start.y + 75 };
+        const p2 = { x: end.x, y: end.y - 75 };
+        const p3 = { x: end.x, y: end.y };
+        
+        const mt = 1 - t;
+        const x = mt * mt * mt * p0.x + 3 * mt * mt * t * p1.x + 3 * mt * t * t * p2.x + t * t * t * p3.x;
+        const y = mt * mt * mt * p0.y + 3 * mt * mt * t * p1.y + 3 * mt * t * t * p2.y + t * t * t * p3.y;
+        
+        return { x, y };
+    }, []);
+
+    // 연결선을 통해 전달되는 데이터를 가져오는 함수
+    const getConnectionData = useCallback((connection: Connection): {
+        data: Array<Record<string, any>>;
+        columns: Array<{ name: string; type?: string }>;
+    } | null => {
+        const fromModule = modules.find(m => m.id === connection.from.moduleId);
+        if (!fromModule || !fromModule.outputData) return null;
+
+        const outputData = fromModule.outputData;
+        const fromPortName = connection.from.portName;
+
+        // DataPreview 타입
+        if (outputData.type === "DataPreview") {
+            const dataPreview = outputData as DataPreview;
+            return {
+                data: dataPreview.rows || [],
+                columns: dataPreview.columns || [],
+            };
+        }
+
+        // ClaimDataOutput, InflatedDataOutput, FormatChangeOutput
+        if (
+            outputData.type === "ClaimDataOutput" ||
+            outputData.type === "InflatedDataOutput" ||
+            outputData.type === "FormatChangeOutput"
+        ) {
+            const data = (outputData as any).data;
+            if (data && data.type === "DataPreview") {
+                return {
+                    data: data.rows || [],
+                    columns: data.columns || [],
+                };
+            }
+        }
+
+        // SplitDataOutput
+        if (outputData.type === "SplitDataOutput") {
+            if (fromPortName === "train_data_out") {
+                const trainData = outputData.train;
+                return {
+                    data: trainData?.rows || [],
+                    columns: trainData?.columns || [],
+                };
+            } else if (fromPortName === "test_data_out") {
+                const testData = outputData.test;
+                return {
+                    data: testData?.rows || [],
+                    columns: testData?.columns || [],
+                };
+            }
+        }
+
+        // ThresholdSplitOutput
+        if (outputData.type === "ThresholdSplitOutput") {
+            if (fromPortName === "below_threshold_out") {
+                const belowData = outputData.belowThreshold;
+                return {
+                    data: belowData?.rows || [],
+                    columns: belowData?.columns || [],
+                };
+            } else if (fromPortName === "above_threshold_out") {
+                const aboveData = outputData.aboveThreshold;
+                return {
+                    data: aboveData?.rows || [],
+                    columns: aboveData?.columns || [],
+                };
+            }
+        }
+
+        // SplitFreqServOutput
+        if (outputData.type === "SplitFreqServOutput") {
+            if (fromPortName === "frequency_out") {
+                const freqData = outputData.frequencyData;
+                return {
+                    data: freqData?.rows || [],
+                    columns: freqData?.columns || [],
+                };
+            } else if (fromPortName === "severity_out") {
+                const sevData = outputData.severityData;
+                return {
+                    data: sevData?.rows || [],
+                    columns: sevData?.columns || [],
+                };
+            }
+        }
+
+        // SimulateFreqServOutput
+        if ((outputData as any).type === "SimulateFreqServOutput") {
+            const freqServOutput = outputData as any;
+            if (fromPortName === "output_2" && freqServOutput.xolOutput) {
+                const xolData = freqServOutput.xolOutput;
+                return {
+                    data: xolData.rows || [],
+                    columns: xolData.columns || [],
+                };
+            } else if (fromPortName === "output_1" && freqServOutput.dfaOutput) {
+                const dfaOutput = freqServOutput.dfaOutput;
+                if (dfaOutput.claimLevelData && dfaOutput.claimLevelData.length > 0) {
+                    return {
+                        data: dfaOutput.claimLevelData.map((item: any) => ({
+                            "시뮬레이션 번호": item.simulationNumber,
+                            "보험금": item.claimAmount,
+                        })),
+                        columns: [
+                            { name: "시뮬레이션 번호", type: "number" },
+                            { name: "보험금", type: "number" },
+                        ],
+                    };
+                }
+            }
+        }
+
+        // SimulateAggDistOutput
+        if (outputData.type === "SimulateAggDistOutput") {
+            const aggDistOutput = outputData as any;
+            if (aggDistOutput.claimLevelData && aggDistOutput.claimLevelData.length > 0) {
+                return {
+                    data: aggDistOutput.claimLevelData.map((item: any) => ({
+                        "시뮬레이션 번호": item.simulationNumber,
+                        "보험금": item.claimAmount,
+                    })),
+                    columns: [
+                        { name: "시뮬레이션 번호", type: "number" },
+                        { name: "보험금", type: "number" },
+                    ],
+                };
+            }
+        }
+
+        return null;
+    }, [modules]);
+
+    // 연결선 중간 사각형 클릭 핸들러
+    const handleConnectionMarkerClick = useCallback((connection: Connection, e: React.MouseEvent) => {
+        e.stopPropagation();
+        const connectionData = getConnectionData(connection);
+        if (connectionData && connectionData.data.length > 0) {
+            setConnectionDataView({
+                connection,
+                data: connectionData.data,
+                columns: connectionData.columns,
+            });
+        }
+    }, [getConnectionData]);
+
     const allModules = suggestion ? [...modules, suggestion.module] : modules;
     const allConnections = suggestion ? [...connections, suggestion.connection] : connections;
 
@@ -903,6 +1080,11 @@ export const Canvas: React.FC<CanvasProps> = ({
                 const isSuggestionConn = !!suggestion && suggestion.connection.id === conn.id;
                 const pathD = `M${start.x},${start.y} C${start.x},${start.y + 75} ${end.x},${end.y - 75} ${end.x},${end.y}`;
 
+                // 연결선 중간점 계산
+                const midpoint = getBezierMidpoint(start, end);
+                const connectionData = getConnectionData(conn);
+                const hasData = connectionData !== null && connectionData.data.length > 0;
+
                 return (
                     <g key={conn.id} onDoubleClick={() => handleConnectionDoubleClick(conn.id)}>
                         <path
@@ -922,6 +1104,40 @@ export const Canvas: React.FC<CanvasProps> = ({
                             style={{ cursor: 'pointer', pointerEvents: 'stroke' }}
                             title="Double-click to delete connection"
                         />
+                        {/* 연결선 중간 사각형 마커 */}
+                        {hasData && (
+                            <g>
+                                <rect
+                                    x={midpoint.x - 8}
+                                    y={midpoint.y - 8}
+                                    width={16}
+                                    height={16}
+                                    fill="#3b82f6"
+                                    stroke="#1e40af"
+                                    strokeWidth="2"
+                                    rx="2"
+                                    style={{ cursor: 'pointer', pointerEvents: 'all' }}
+                                    onClick={(e) => handleConnectionMarkerClick(conn, e)}
+                                    onMouseEnter={(e) => {
+                                        (e.currentTarget as SVGRectElement).setAttribute('fill', '#2563eb');
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        (e.currentTarget as SVGRectElement).setAttribute('fill', '#3b82f6');
+                                    }}
+                                />
+                                <text
+                                    x={midpoint.x}
+                                    y={midpoint.y + 4}
+                                    textAnchor="middle"
+                                    fontSize="10"
+                                    fill="#FFFFFF"
+                                    fontWeight="bold"
+                                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                                >
+                                    ⚡
+                                </text>
+                            </g>
+                        )}
                     </g>
                 )
             })}
@@ -953,6 +1169,16 @@ export const Canvas: React.FC<CanvasProps> = ({
             )()}
         </g>
       </svg>
+
+      {/* Connection Data View Modal */}
+      {connectionDataView && (
+        <SpreadViewModal
+          onClose={() => setConnectionDataView(null)}
+          data={connectionDataView.data}
+          columns={connectionDataView.columns}
+          title={`Connection Data: ${allModules.find(m => m.id === connectionDataView.connection.from.moduleId)?.name || 'Unknown'} → ${allModules.find(m => m.id === connectionDataView.connection.to.moduleId)?.name || 'Unknown'}`}
+        />
+      )}
     </div>
   );
 };
