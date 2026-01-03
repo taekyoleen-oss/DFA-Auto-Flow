@@ -73,6 +73,7 @@ export enum ModuleType {
   SimulateFreqServ = "SimulateFreqServ",
   CombineLossModel = "CombineLossModel",
   SettingThreshold = "SettingThreshold",
+  ThresholdAnalysis = "ThresholdAnalysis",
 
   // Deprecating these
   LogisticTradition = "LogisticTradition",
@@ -685,6 +686,40 @@ export interface SettingThresholdOutput {
   };
 }
 
+export interface ThresholdAnalysisOutput {
+  type: "ThresholdAnalysisOutput";
+  targetColumn: string;
+  data: number[]; // 원본 데이터 값들
+  histogram?: {
+    bins: number[];
+    frequencies: number[];
+  };
+  ecdf?: {
+    sortedValues: number[];
+    cumulativeProbabilities: number[];
+  };
+  qqPlot?: {
+    theoreticalQuantiles: number[];
+    sampleQuantiles: number[];
+  };
+  meanExcessPlot?: {
+    thresholds: number[];
+    meanExcesses: number[];
+  };
+  statistics: {
+    min: number;
+    max: number;
+    mean: number;
+    median: number;
+    std: number;
+    q25: number;
+    q75: number;
+    q90: number;
+    q95: number;
+    q99: number;
+  };
+}
+
 export interface CanvasModule {
   id: string;
   name: string;
@@ -729,7 +764,8 @@ export interface CanvasModule {
     | SeverityModelOutput
     | FrequencySeverityModelOutput
     | CombineLossModelOutput
-    | SettingThresholdOutput;
+    | SettingThresholdOutput
+    | ThresholdAnalysisOutput;
   // Shape-specific properties
   shapeData?: {
     // For TextBox

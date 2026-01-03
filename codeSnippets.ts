@@ -1897,6 +1897,130 @@ print(json.dumps(output, indent=2))
 # output을 반환 (마지막 줄)
 output
 `,
+
+    ThresholdAnalysis: `
+import pandas as pd
+import numpy as np
+import json
+from scipy import stats
+
+# Parameters from UI
+p_target_column = {target_column}
+
+# Assuming 'dataframe' is passed from previous step
+# Check if target column exists
+if p_target_column not in dataframe.columns:
+    raise ValueError(f"Column '{p_target_column}' not found in dataframe")
+
+# Get the target column data (numeric only)
+target_data = pd.to_numeric(dataframe[p_target_column], errors='coerce')
+target_data = target_data.dropna()
+
+if len(target_data) == 0:
+    raise ValueError(f"No valid numeric data found in column '{p_target_column}'")
+
+# Convert to numpy array and sort
+data_values = np.sort(target_data.values)
+n = len(data_values)
+
+# Calculate basic statistics
+statistics = {
+    'min': float(data_values[0]),
+    'max': float(data_values[-1]),
+    'mean': float(np.mean(data_values)),
+    'median': float(np.median(data_values)),
+    'std': float(np.std(data_values)),
+    'q25': float(np.percentile(data_values, 25)),
+    'q75': float(np.percentile(data_values, 75)),
+    'q90': float(np.percentile(data_values, 90)),
+    'q95': float(np.percentile(data_values, 95)),
+    'q99': float(np.percentile(data_values, 99))
+}
+
+# 1. Histogram
+num_bins = 50
+hist_values = data_values.tolist()
+bins = np.linspace(float(data_values[0]), float(data_values[-1]), num_bins + 1).tolist()
+frequencies, _ = np.histogram(hist_values, bins=bins)
+frequencies = frequencies.tolist()
+
+histogram = {
+    'bins': bins,
+    'frequencies': frequencies
+}
+
+# 2. ECDF (Empirical Cumulative Distribution Function)
+sorted_values = data_values.tolist()
+cumulative_probabilities = np.arange(1, n + 1) / n
+cumulative_probabilities = cumulative_probabilities.tolist()
+
+ecdf = {
+    'sortedValues': sorted_values,
+    'cumulativeProbabilities': cumulative_probabilities
+}
+
+# 3. QQ-Plot (Quantile-Quantile Plot)
+# Normal distribution을 기준으로 QQ-Plot 생성
+theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, n))
+sample_quantiles = data_values
+
+qq_plot = {
+    'theoreticalQuantiles': theoretical_quantiles.tolist(),
+    'sampleQuantiles': sample_quantiles.tolist()
+}
+
+# 4. Mean Excess Plot
+# 여러 threshold 값에 대해 Mean Excess 계산
+# threshold는 데이터의 percentile 기반으로 생성
+percentiles = np.linspace(0, 95, 20)  # 0%부터 95%까지 20개 지점
+thresholds = np.percentile(data_values, percentiles).tolist()
+mean_excesses = []
+
+for threshold in thresholds:
+    excess_data = data_values[data_values > threshold] - threshold
+    if len(excess_data) > 0:
+        mean_excess = float(np.mean(excess_data))
+    else:
+        mean_excess = 0.0
+    mean_excesses.append(mean_excess)
+
+mean_excess_plot = {
+    'thresholds': thresholds,
+    'meanExcesses': mean_excesses
+}
+
+# Prepare output
+output = {
+    'type': 'ThresholdAnalysisOutput',
+    'targetColumn': p_target_column,
+    'data': data_values.tolist()[:1000],  # 최대 1000개만 저장 (성능 고려)
+    'histogram': histogram,
+    'ecdf': ecdf,
+    'qqPlot': qq_plot,
+    'meanExcessPlot': mean_excess_plot,
+    'statistics': statistics
+}
+
+print("=" * 60)
+print(f"Threshold Analysis: {p_target_column}")
+print("=" * 60)
+print(f"\\nTotal data points: {n:,}")
+print(f"\\nStatistics:")
+for key, value in statistics.items():
+    print(f"  {key}: {value:,.2f}")
+print(f"\\nHistogram bins: {len(bins)}")
+print(f"ECDF points: {len(sorted_values)}")
+print(f"QQ-Plot points: {len(theoretical_quantiles)}")
+print(f"Mean Excess Plot thresholds: {len(thresholds)}")
+print("\\n" + "=" * 60)
+print("Analysis complete")
+print("=" * 60)
+print("\\nOutput JSON:")
+print(json.dumps(output, indent=2))
+
+# output을 반환 (마지막 줄)
+output
+`,
 };
 
 export const getModuleCode = (

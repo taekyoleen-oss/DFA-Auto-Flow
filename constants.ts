@@ -360,6 +360,12 @@ export const TOOLBOX_MODULES = [
     icon: FilterIcon,
     description: "Analyzes data distribution and counts rows above various threshold values to help determine optimal threshold.",
   },
+  {
+    type: ModuleType.ThresholdAnalysis,
+    name: "Threshold Analysis",
+    icon: ChartCurveIcon,
+    description: "Performs statistical threshold analysis using empirical distributions (Histogram, ECDF, QQ-Plot) and Mean Excess Plot to identify tail behavior changes.",
+  },
 ];
 
 // fix: Replaced all instances of status: 'Pending' with status: ModuleStatus.Pending to conform to the ModuleStatus enum type.
@@ -966,6 +972,17 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       inputs: [{ name: "data_in", type: "data" }],
       outputs: [
         { name: "threshold_out", type: "threshold" },
+      ],
+    },
+    {
+      type: ModuleType.ThresholdAnalysis,
+      status: ModuleStatus.Pending,
+      parameters: {
+        target_column: null,
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [
+        { name: "analysis_out", type: "evaluation" },
       ],
     },
   ];

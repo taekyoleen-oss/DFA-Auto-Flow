@@ -52,6 +52,7 @@ import {
   FrequencySeverityModelOutput,
   CombineLossModelOutput,
   SettingThresholdOutput,
+  ThresholdAnalysisOutput,
 } from "./types";
 import { DEFAULT_MODULES, TOOLBOX_MODULES, SAMPLE_MODELS } from "./constants";
 import { SAVED_SAMPLES } from "./savedSamples";
@@ -4753,6 +4754,117 @@ result
             addLog("ERROR", `Threshold 분석 실패: ${errorMessage}`);
             throw new Error(`Threshold 분석 실패: ${errorMessage}`);
           }
+        } else if (module.type === ModuleType.ThresholdAnalysis) {
+          const inputData = getSingleInputData(module.id) as DataPreview | ClaimDataOutput | InflatedDataOutput | FormatChangeOutput;
+          if (!inputData) {
+            throw new Error("Input data not available.");
+          }
+
+          // Get actual data
+          let actualData: DataPreview;
+          if (inputData.type === "ClaimDataOutput" || inputData.type === "InflatedDataOutput" || inputData.type === "FormatChangeOutput") {
+            actualData = (inputData as any).data;
+          } else {
+            actualData = inputData as DataPreview;
+          }
+
+          if (!actualData || !actualData.rows) {
+            throw new Error("Input data rows not available.");
+          }
+
+          const { target_column } = module.parameters;
+
+          if (!target_column) {
+            throw new Error("Target column must be configured.");
+          }
+
+          // Pyodide를 사용하여 Python으로 Threshold Analysis 수행
+          try {
+            addLog("INFO", "Threshold Analysis 분석 중...");
+
+            const pyodideModule = await import("./utils/pyodideRunner");
+            const { loadPyodide, fromPython } = pyodideModule;
+
+            // Python 코드 생성
+            const { getModuleCode } = await import("./codeSnippets");
+            const pythonCode = getModuleCode(module, currentModules, connections);
+
+            // Pyodide 로드
+            const py = await loadPyodide(30000);
+
+            // 필요한 패키지 로드
+            await Promise.race([
+              py.loadPackage(["pandas", "numpy", "scipy"]),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("패키지 설치 타임아웃 (60초 초과)")), 60000)
+              )
+            ]);
+
+            // 데이터를 Python에 전달
+            py.globals.set("js_data", actualData.rows);
+            py.globals.set("js_columns", actualData.columns);
+
+            // Python 코드 실행 (dataframe 변수 설정 포함)
+            const fullCode = `
+import pandas as pd
+import numpy as np
+import json
+from scipy import stats
+
+# JavaScript에서 전달된 데이터를 DataFrame으로 변환
+rows = js_data.to_py()
+columns = js_columns.to_py()
+
+# DataFrame 생성
+dataframe = pd.DataFrame(rows)
+
+# 모듈 코드 실행
+${pythonCode}
+
+# output 변수가 있는지 확인하고 반환
+if 'output' in locals():
+    result = output
+else:
+    result = None
+
+result
+`;
+
+            const resultPyObj = await Promise.race([
+              Promise.resolve(py.runPython(fullCode)),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Python Threshold Analysis 타임아웃 (120초 초과)")), 120000)
+              )
+            ]);
+
+            // Python 딕셔너리를 JavaScript 객체로 변환
+            const result = fromPython(resultPyObj);
+
+            // 정리
+            py.globals.delete("js_data");
+            py.globals.delete("js_columns");
+
+            // 디버깅: 결과 로그 출력
+            console.log("Python execution result:", result);
+            console.log("Result type:", result?.type);
+
+            // 결과가 ThresholdAnalysisOutput 형식인지 확인
+            if (result && result.type === "ThresholdAnalysisOutput") {
+              newOutputData = result as ThresholdAnalysisOutput;
+              addLog("SUCCESS", "Threshold Analysis 분석 완료");
+            } else {
+              // 더 자세한 오류 메시지
+              const errorMsg = result 
+                ? `Invalid output format. Expected ThresholdAnalysisOutput, got: ${JSON.stringify(result).substring(0, 200)}`
+                : "No output returned from Python execution";
+              console.error("Python execution error:", errorMsg);
+              throw new Error(errorMsg);
+            }
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `Threshold Analysis 분석 실패: ${errorMessage}`);
+            throw new Error(`Threshold Analysis 분석 실패: ${errorMessage}`);
+          }
         } else if (module.type === ModuleType.TrainModel) {
           const modelInputConnection = connections.find(
             (c) => c.to.moduleId === module.id && c.to.portName === "model_in"
@@ -8899,6 +9011,49 @@ result
               `${newModules.length} module(s) pasted from clipboard.`
             );
           }
+        } else if (e.key === "x") {
+          // Cut (copy and delete)
+          if (selectedModuleIds.length > 0) {
+            e.preventDefault();
+            pasteOffset.current = 0;
+            const selectedModules = modules.filter((m) =>
+              selectedModuleIds.includes(m.id)
+            );
+            const selectedIdsSet = new Set(selectedModuleIds);
+            const internalConnections = connections.filter(
+              (c) =>
+                selectedIdsSet.has(c.from.moduleId) &&
+                selectedIdsSet.has(c.to.moduleId)
+            );
+            setClipboard({
+              modules: JSON.parse(JSON.stringify(selectedModules)),
+              connections: JSON.parse(JSON.stringify(internalConnections)),
+            });
+            deleteModules([...selectedModuleIds]);
+            addLog("INFO", `${selectedModuleIds.length} module(s) cut.`);
+          }
+        } else if (e.key === "s") {
+          e.preventDefault();
+          handleSavePipeline();
+        } else if (e.key === "=" || e.key === "+") {
+          // Zoom in (step by step)
+          e.preventDefault();
+          const newScale = Math.min(2, scale + 0.1);
+          setScale(newScale);
+        } else if (e.key === "-" || e.key === "_") {
+          // Zoom out (step by step)
+          e.preventDefault();
+          const newScale = Math.max(0.2, scale - 0.1);
+          setScale(newScale);
+        } else if (e.key === "0") {
+          // Fit to view
+          e.preventDefault();
+          handleFitToView();
+        } else if (e.key === "1") {
+          // 100% view
+          e.preventDefault();
+          setScale(1);
+          setPan({ x: 0, y: 0 });
         }
       } else if (selectedModuleIds.length > 0) {
         if (e.key === "Delete" || e.key === "Backspace") {
@@ -8921,6 +9076,11 @@ result
     clipboard,
     deleteModules,
     addLog,
+    scale,
+    setScale,
+    setPan,
+    handleFitToView,
+    handleSavePipeline,
   ]);
 
   useEffect(() => {

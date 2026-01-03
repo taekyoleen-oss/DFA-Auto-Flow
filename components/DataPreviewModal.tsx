@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { CanvasModule, ColumnInfo, DataPreview, ModuleType } from '../types';
+import { CanvasModule, ColumnInfo, DataPreview, ModuleType, ThresholdAnalysisOutput } from '../types';
 import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -232,6 +232,153 @@ const ScatterPlot: React.FC<{ rows: Record<string, any>[], xCol: string, yCol: s
                 ))}
             </g>
         </svg>
+    );
+};
+
+// Threshold Analysis 차트 컴포넌트들
+const ThresholdHistogramPlot: React.FC<{ histogram: { bins: number[]; frequencies: number[] } }> = ({ histogram }) => {
+    const { bins, frequencies } = histogram;
+    const chartWidth = 800;
+    const chartHeight = 400;
+    const padding = { top: 20, right: 20, bottom: 60, left: 60 };
+    const innerWidth = chartWidth - padding.left - padding.right;
+    const innerHeight = chartHeight - padding.top - padding.bottom;
+    const maxFrequency = Math.max(...frequencies, 1);
+    const numBins = frequencies.length;
+    const binWidth = innerWidth / numBins;
+    const min = bins[0];
+    const max = bins[bins.length - 1];
+
+    return (
+        <div className="w-full overflow-x-auto">
+            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                {[0, 0.25, 0.5, 0.75, 1.0].map((ratio, idx) => {
+                    const y = padding.top + innerHeight - (ratio * innerHeight);
+                    const value = Math.round(ratio * maxFrequency);
+                    return (
+                        <g key={`y-label-${idx}`}>
+                            <line x1={padding.left - 5} y1={y} x2={padding.left} y2={y} stroke="#9ca3af" strokeWidth="1" />
+                            <text x={padding.left - 10} y={y + 4} fontSize="12" fill="#6b7280" textAnchor="end">{value}</text>
+                        </g>
+                    );
+                })}
+                {frequencies.map((freq, idx) => {
+                    if (idx >= bins.length - 1) return null;
+                    const barHeight = (freq / maxFrequency) * innerHeight;
+                    const binStart = bins[idx];
+                    const binEnd = bins[idx + 1];
+                    const binCenter = (binStart + binEnd) / 2;
+                    const x = padding.left + ((binCenter - min) / (max - min)) * innerWidth - (binWidth * 0.9 / 2);
+                    const y = padding.top + innerHeight - barHeight;
+                    return (
+                        <rect key={`bar-${idx}`} x={x} y={y} width={binWidth * 0.9} height={barHeight} fill="#3b82f6" opacity={0.7} />
+                    );
+                })}
+                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">값 (Value)</text>
+                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>빈도 (Frequency)</text>
+            </svg>
+        </div>
+    );
+};
+
+const ECDFPlot: React.FC<{ ecdf: { sortedValues: number[]; cumulativeProbabilities: number[] } }> = ({ ecdf }) => {
+    const { sortedValues, cumulativeProbabilities } = ecdf;
+    const chartWidth = 800;
+    const chartHeight = 400;
+    const padding = { top: 20, right: 20, bottom: 60, left: 60 };
+    const innerWidth = chartWidth - padding.left - padding.right;
+    const innerHeight = chartHeight - padding.top - padding.bottom;
+    const xMin = Math.min(...sortedValues);
+    const xMax = Math.max(...sortedValues);
+    const xScale = (x: number) => padding.left + ((x - xMin) / (xMax - xMin || 1)) * innerWidth;
+    const yScale = (y: number) => padding.top + innerHeight - (y * innerHeight);
+
+    return (
+        <div className="w-full overflow-x-auto">
+            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <polyline
+                    points={sortedValues.map((x, i) => `${xScale(x)},${yScale(cumulativeProbabilities[i])}`).join(' ')}
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth="2"
+                />
+                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">값 (Value)</text>
+                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>누적 확률 (Cumulative Probability)</text>
+            </svg>
+        </div>
+    );
+};
+
+const QQPlot: React.FC<{ qqPlot: { theoreticalQuantiles: number[]; sampleQuantiles: number[] } }> = ({ qqPlot }) => {
+    const { theoreticalQuantiles, sampleQuantiles } = qqPlot;
+    const chartWidth = 800;
+    const chartHeight = 400;
+    const padding = { top: 20, right: 20, bottom: 60, left: 60 };
+    const innerWidth = chartWidth - padding.left - padding.right;
+    const innerHeight = chartHeight - padding.top - padding.bottom;
+    const xMin = Math.min(...theoreticalQuantiles);
+    const xMax = Math.max(...theoreticalQuantiles);
+    const yMin = Math.min(...sampleQuantiles);
+    const yMax = Math.max(...sampleQuantiles);
+    const xScale = (x: number) => padding.left + ((x - xMin) / (xMax - xMin || 1)) * innerWidth;
+    const yScale = (y: number) => padding.top + innerHeight - ((y - yMin) / (yMax - yMin || 1)) * innerHeight;
+
+    // 45도 대각선 (y=x)
+    const diagonalMin = Math.min(xMin, yMin);
+    const diagonalMax = Math.max(xMax, yMax);
+
+    return (
+        <div className="w-full overflow-x-auto">
+            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <line x1={xScale(diagonalMin)} y1={yScale(diagonalMin)} x2={xScale(diagonalMax)} y2={yScale(diagonalMax)} stroke="#ef4444" strokeWidth="1" strokeDasharray="5,5" opacity={0.7} />
+                {theoreticalQuantiles.map((x, i) => (
+                    <circle key={i} cx={xScale(x)} cy={yScale(sampleQuantiles[i])} r="3" fill="#3b82f6" opacity={0.7} />
+                ))}
+                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">이론적 분위수 (Theoretical Quantiles)</text>
+                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>표본 분위수 (Sample Quantiles)</text>
+            </svg>
+        </div>
+    );
+};
+
+const MeanExcessPlot: React.FC<{ meanExcessPlot: { thresholds: number[]; meanExcesses: number[] } }> = ({ meanExcessPlot }) => {
+    const { thresholds, meanExcesses } = meanExcessPlot;
+    const chartWidth = 800;
+    const chartHeight = 400;
+    const padding = { top: 20, right: 20, bottom: 60, left: 60 };
+    const innerWidth = chartWidth - padding.left - padding.right;
+    const innerHeight = chartHeight - padding.top - padding.bottom;
+    const xMin = Math.min(...thresholds);
+    const xMax = Math.max(...thresholds);
+    const yMin = Math.min(...meanExcesses);
+    const yMax = Math.max(...meanExcesses);
+    const xScale = (x: number) => padding.left + ((x - xMin) / (xMax - xMin || 1)) * innerWidth;
+    const yScale = (y: number) => padding.top + innerHeight - ((y - yMin) / (yMax - yMin || 1)) * innerHeight;
+
+    return (
+        <div className="w-full overflow-x-auto">
+            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                <polyline
+                    points={thresholds.map((x, i) => `${xScale(x)},${yScale(meanExcesses[i])}`).join(' ')}
+                    fill="none"
+                    stroke="#3b82f6"
+                    strokeWidth="2"
+                />
+                {thresholds.map((x, i) => (
+                    <circle key={i} cx={xScale(x)} cy={yScale(meanExcesses[i])} r="3" fill="#3b82f6" />
+                ))}
+                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">Threshold</text>
+                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>Mean Excess</text>
+            </svg>
+        </div>
     );
 };
 
@@ -694,6 +841,16 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
         }
         return null;
     }, [module, activeThresholdSplitTab]);
+    
+    // Threshold Analysis 모듈의 경우
+    const thresholdAnalysisOutput = useMemo(() => {
+        if (module.type === ModuleType.ThresholdAnalysis && module.outputData?.type === 'ThresholdAnalysisOutput') {
+            return module.outputData as ThresholdAnalysisOutput;
+        }
+        return null;
+    }, [module]);
+    
+    const [activeThresholdAnalysisTab, setActiveThresholdAnalysisTab] = useState<'histogram' | 'ecdf' | 'qqplot' | 'meanexcess'>('histogram');
     
     const displayData = thresholdSplitData || data;
     const columns = Array.isArray(displayData?.columns) ? displayData.columns : [];
@@ -1971,6 +2128,51 @@ const PCAScoreVisualization: React.FC<{
                                 </button>
                             </nav>
                         </div>
+                    ) : module.type === ModuleType.ThresholdAnalysis && thresholdAnalysisOutput ? (
+                        <div className="flex-shrink-0 border-b border-gray-200">
+                            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                                <button
+                                    onClick={() => setActiveThresholdAnalysisTab('histogram')}
+                                    className={`${
+                                        activeThresholdAnalysisTab === 'histogram'
+                                            ? 'border-indigo-500 text-indigo-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                >
+                                    Histogram
+                                </button>
+                                <button
+                                    onClick={() => setActiveThresholdAnalysisTab('ecdf')}
+                                    className={`${
+                                        activeThresholdAnalysisTab === 'ecdf'
+                                            ? 'border-indigo-500 text-indigo-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                >
+                                    ECDF
+                                </button>
+                                <button
+                                    onClick={() => setActiveThresholdAnalysisTab('qqplot')}
+                                    className={`${
+                                        activeThresholdAnalysisTab === 'qqplot'
+                                            ? 'border-indigo-500 text-indigo-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                >
+                                    QQ-Plot
+                                </button>
+                                <button
+                                    onClick={() => setActiveThresholdAnalysisTab('meanexcess')}
+                                    className={`${
+                                        activeThresholdAnalysisTab === 'meanexcess'
+                                            ? 'border-indigo-500 text-indigo-600'
+                                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                    } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
+                                >
+                                    Mean Excess Plot
+                                </button>
+                            </nav>
+                        </div>
                     ) : null}
 
                     {/* Load Claim Data, Format Change, Apply Inflation, Select Data, Apply Threshold 모듈의 경우 탭 구성 */}
@@ -3208,6 +3410,86 @@ const PCAScoreVisualization: React.FC<{
                                     </div>
                                         </>
                                     )}
+                                </>
+                            ) : module.type === ModuleType.ThresholdAnalysis && thresholdAnalysisOutput ? (
+                                <>
+                                    {/* Threshold Analysis 모듈의 경우: 통계량과 차트 표시 */}
+                                    <div className="flex flex-col gap-6">
+                                        {/* 통계량 표시 */}
+                                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                            <h3 className="text-lg font-semibold text-gray-800 mb-4">기본 통계량</h3>
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                                <div>
+                                                    <p className="text-sm text-gray-600">최소값</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.min.toLocaleString()}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">최대값</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.max.toLocaleString()}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">평균</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.mean.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">중앙값</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.median.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">표준편차</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.std.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">Q25</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.q25.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">Q75</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.q75.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">Q90</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.q90.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">Q95</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.q95.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">Q99</p>
+                                                    <p className="text-lg font-semibold">{thresholdAnalysisOutput.statistics.q99.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 차트 표시 */}
+                                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                            {activeThresholdAnalysisTab === 'histogram' && thresholdAnalysisOutput.histogram && (
+                                                <div>
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Histogram</h3>
+                                                    <ThresholdHistogramPlot histogram={thresholdAnalysisOutput.histogram} />
+                                                </div>
+                                            )}
+                                            {activeThresholdAnalysisTab === 'ecdf' && thresholdAnalysisOutput.ecdf && (
+                                                <div>
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">ECDF (Empirical Cumulative Distribution Function)</h3>
+                                                    <ECDFPlot ecdf={thresholdAnalysisOutput.ecdf} />
+                                                </div>
+                                            )}
+                                            {activeThresholdAnalysisTab === 'qqplot' && thresholdAnalysisOutput.qqPlot && (
+                                                <div>
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">QQ-Plot (Quantile-Quantile Plot)</h3>
+                                                    <QQPlot qqPlot={thresholdAnalysisOutput.qqPlot} />
+                                                </div>
+                                            )}
+                                            {activeThresholdAnalysisTab === 'meanexcess' && thresholdAnalysisOutput.meanExcessPlot && (
+                                                <div>
+                                                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Mean Excess Plot</h3>
+                                                    <MeanExcessPlot meanExcessPlot={thresholdAnalysisOutput.meanExcessPlot} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </>
                             ) : (
                                 <>

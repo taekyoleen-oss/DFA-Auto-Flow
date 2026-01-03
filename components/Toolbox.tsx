@@ -26,6 +26,7 @@ const preprocessTypes = [
   ModuleType.NormalizeData,
   ModuleType.ResampleData,
   ModuleType.SettingThreshold,
+  ModuleType.ThresholdAnalysis,
 ];
 
 const analysisOpTypes = [
