@@ -1954,9 +1954,35 @@ sorted_values = data_values.tolist()
 cumulative_probabilities = np.arange(1, n + 1) / n
 cumulative_probabilities = cumulative_probabilities.tolist()
 
+# ECDF에서 CDF가 갑자기 완만해지거나 직선 형태로 변하는 지점 찾기
+# 기울기 변화를 계산 (상위 20% 구간에서 분석)
+ecdf_candidate_thresholds = []
+if n > 10:
+    tail_start_idx = int(n * 0.8)  # 상위 20% 구간
+    slopes = []
+    for i in range(tail_start_idx, n - 1):
+        if sorted_values[i + 1] != sorted_values[i]:
+            slope = (cumulative_probabilities[i + 1] - cumulative_probabilities[i]) / (sorted_values[i + 1] - sorted_values[i])
+            slopes.append((i, slope, sorted_values[i]))
+    
+    if len(slopes) > 5:
+        # 기울기 변화율 계산
+        slope_changes = []
+        for j in range(1, len(slopes)):
+            slope_change = slopes[j][1] - slopes[j-1][1]
+            slope_changes.append((slopes[j][0], slope_change, slopes[j][2]))
+        
+        # 기울기가 급격히 감소하는 지점들 찾기 (하위 25% 지점들)
+        if len(slope_changes) > 0:
+            sorted_changes = sorted(slope_changes, key=lambda x: x[1])  # 기울기 변화가 작은 순서대로
+            num_candidates = min(3, len(sorted_changes) // 4)  # 하위 25% 중 최대 3개
+            ecdf_candidate_thresholds = [float(x[2]) for x in sorted_changes[:num_candidates]]
+            ecdf_candidate_thresholds.sort()
+
 ecdf = {
     'sortedValues': sorted_values,
-    'cumulativeProbabilities': cumulative_probabilities
+    'cumulativeProbabilities': cumulative_probabilities,
+    'candidateThresholds': ecdf_candidate_thresholds if ecdf_candidate_thresholds else None
 }
 
 # 3. QQ-Plot (Quantile-Quantile Plot)
@@ -1964,15 +1990,40 @@ ecdf = {
 theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, n))
 sample_quantiles = data_values
 
+# QQ-Plot에서 직선에서 벗어나 Tail이 두꺼워지는 지점 찾기
+# 이론적 분위수와 표본 분위수의 차이(편차) 계산
+qq_candidate_thresholds = []
+if n > 10:
+    tail_start_idx = int(n * 0.8)  # 상위 20% 구간
+    deviations = []
+    for i in range(tail_start_idx, n):
+        deviation = abs(sample_quantiles[i] - theoretical_quantiles[i])
+        deviations.append((i, deviation, sample_quantiles[i]))
+    
+    if len(deviations) > 5:
+        # 편차 변화율 계산
+        deviation_changes = []
+        for j in range(1, len(deviations)):
+            change = deviations[j][1] - deviations[j-1][1]
+            deviation_changes.append((deviations[j][0], change, deviations[j][2]))
+        
+        # 편차가 급격히 증가하는 지점들 찾기 (상위 25% 지점들)
+        if len(deviation_changes) > 0:
+            sorted_changes = sorted(deviation_changes, key=lambda x: x[1], reverse=True)  # 편차 변화가 큰 순서대로
+            num_candidates = min(3, len(sorted_changes) // 4)  # 상위 25% 중 최대 3개
+            qq_candidate_thresholds = [float(x[2]) for x in sorted_changes[:num_candidates]]
+            qq_candidate_thresholds.sort()
+
 qq_plot = {
     'theoreticalQuantiles': theoretical_quantiles.tolist(),
-    'sampleQuantiles': sample_quantiles.tolist()
+    'sampleQuantiles': sample_quantiles.tolist(),
+    'candidateThresholds': qq_candidate_thresholds if qq_candidate_thresholds else None
 }
 
 # 4. Mean Excess Plot
 # 여러 threshold 값에 대해 Mean Excess 계산
 # threshold는 데이터의 percentile 기반으로 생성
-percentiles = np.linspace(0, 95, 20)  # 0%부터 95%까지 20개 지점
+percentiles = np.linspace(0, 95, 30)  # 0%부터 95%까지 30개 지점 (더 많은 지점)
 thresholds = np.percentile(data_values, percentiles).tolist()
 mean_excesses = []
 
@@ -1984,9 +2035,53 @@ for threshold in thresholds:
         mean_excess = 0.0
     mean_excesses.append(mean_excess)
 
+# Mean Excess Plot에서 직선 형태가 시작하는 지점 찾기
+# 상위 50% 구간에서 선형성을 검사
+mean_excess_candidate_thresholds = []
+if len(thresholds) > 10:
+    linear_start_idx = int(len(thresholds) * 0.5)  # 상위 50% 구간부터 검사
+    best_r2 = 0
+    best_start = linear_start_idx
+    best_end = len(thresholds)
+    
+    # 각 구간에 대해 선형성 검사
+    for start_idx in range(linear_start_idx, len(thresholds) - 5):
+        for end_idx in range(start_idx + 5, len(thresholds) + 1):
+            x_subset = np.array(thresholds[start_idx:end_idx])
+            y_subset = np.array(mean_excesses[start_idx:end_idx])
+            
+            # 선형 회귀
+            if len(x_subset) > 1:
+                try:
+                    slope, intercept = np.polyfit(x_subset, y_subset, 1)
+                    y_pred = slope * x_subset + intercept
+                    ss_res = np.sum((y_subset - y_pred) ** 2)
+                    ss_tot = np.sum((y_subset - np.mean(y_subset)) ** 2)
+                    r2 = 1 - (ss_res / (ss_tot + 1e-10))
+                    
+                    if r2 > best_r2 and r2 > 0.7:  # R² > 0.7인 구간을 선형 구간으로 간주
+                        best_r2 = r2
+                        best_start = start_idx
+                        best_end = end_idx
+                except:
+                    pass
+    
+    # 선형 구간이 발견되면 시작점을 후보로 추가
+    if best_r2 > 0.7:
+        mean_excess_candidate_thresholds.append(float(thresholds[best_start]))
+        # 추가로 몇 개의 후보 지점 추가 (선형 구간 내에서)
+        if best_end - best_start > 5:
+            step = (best_end - best_start) // 3
+            for i in range(1, 3):
+                idx = best_start + i * step
+                if idx < best_end:
+                    mean_excess_candidate_thresholds.append(float(thresholds[idx]))
+        mean_excess_candidate_thresholds.sort()
+
 mean_excess_plot = {
     'thresholds': thresholds,
-    'meanExcesses': mean_excesses
+    'meanExcesses': mean_excesses,
+    'candidateThresholds': mean_excess_candidate_thresholds if mean_excess_candidate_thresholds else None
 }
 
 # Prepare output
@@ -2012,6 +2107,245 @@ print(f"\\nHistogram bins: {len(bins)}")
 print(f"ECDF points: {len(sorted_values)}")
 print(f"QQ-Plot points: {len(theoretical_quantiles)}")
 print(f"Mean Excess Plot thresholds: {len(thresholds)}")
+print("\\n" + "=" * 60)
+print("Analysis complete")
+print("=" * 60)
+print("\\nOutput JSON:")
+print(json.dumps(output, indent=2))
+
+# output을 반환 (마지막 줄)
+output
+`,
+
+    AnalysisThreshold: `
+import pandas as pd
+import numpy as np
+import json
+from scipy import stats
+from scipy.optimize import curve_fit
+
+# Parameters from UI
+p_claim_column = {claim_column}
+
+# Assuming 'dataframe' is passed from previous step
+# Check if claim column exists
+if p_claim_column not in dataframe.columns:
+    raise ValueError(f"Column '{p_claim_column}' not found in dataframe")
+
+# Get the claim column data (numeric only)
+claim_data = pd.to_numeric(dataframe[p_claim_column], errors='coerce')
+claim_data = claim_data.dropna()
+
+if len(claim_data) == 0:
+    raise ValueError(f"No valid numeric data found in column '{p_claim_column}'")
+
+# Convert to numpy array and sort
+data_values = np.sort(claim_data.values)
+n = len(data_values)
+
+# Calculate basic statistics
+statistics = {
+    'min': float(data_values[0]),
+    'max': float(data_values[-1]),
+    'mean': float(np.mean(data_values)),
+    'median': float(np.median(data_values)),
+    'std': float(np.std(data_values)),
+    'q25': float(np.percentile(data_values, 25)),
+    'q75': float(np.percentile(data_values, 75)),
+    'q90': float(np.percentile(data_values, 90)),
+    'q95': float(np.percentile(data_values, 95)),
+    'q99': float(np.percentile(data_values, 99))
+}
+
+# ===== 첫 번째 탭: 데이터 분포 =====
+# 클레임 크기에 따라 건수를 플롯
+num_bins = 50
+bins = np.linspace(float(data_values[0]), float(data_values[-1]), num_bins + 1).tolist()
+frequencies, _ = np.histogram(data_values, bins=bins)
+frequencies = frequencies.tolist()
+
+distribution = {
+    'bins': bins,
+    'frequencies': frequencies
+}
+
+# ===== 두 번째 탭: 경험적 분포 =====
+# Histogram
+histogram = {
+    'bins': bins,
+    'frequencies': frequencies,
+    'tailChangePoint': None
+}
+
+# ECDF (Empirical Cumulative Distribution Function)
+sorted_values = data_values.tolist()
+cumulative_probabilities = np.arange(1, n + 1) / n
+cumulative_probabilities = cumulative_probabilities.tolist()
+
+# ECDF에서 꼬리 변화점 찾기 (기울기 변화가 큰 지점)
+# 상위 10% 구간에서 기울기 변화를 찾음
+ecdf_tail_start_idx = int(n * 0.9)
+ecdf_slopes = []
+for i in range(ecdf_tail_start_idx, n - 1):
+    if sorted_values[i + 1] != sorted_values[i]:
+        slope = (cumulative_probabilities[i + 1] - cumulative_probabilities[i]) / (sorted_values[i + 1] - sorted_values[i])
+        ecdf_slopes.append((i, slope))
+
+if len(ecdf_slopes) > 0:
+    # 기울기 변화가 큰 지점 찾기
+    ecdf_slope_changes = []
+    for j in range(1, len(ecdf_slopes)):
+        slope_change = abs(ecdf_slopes[j][1] - ecdf_slopes[j-1][1])
+        ecdf_slope_changes.append((ecdf_slopes[j][0], slope_change))
+    
+    if len(ecdf_slope_changes) > 0:
+        max_change_idx = max(ecdf_slope_changes, key=lambda x: x[1])[0]
+        ecdf_tail_change_point = sorted_values[max_change_idx]
+    else:
+        ecdf_tail_change_point = sorted_values[ecdf_tail_start_idx]
+else:
+    ecdf_tail_change_point = sorted_values[ecdf_tail_start_idx]
+
+ecdf = {
+    'sortedValues': sorted_values,
+    'cumulativeProbabilities': cumulative_probabilities,
+    'tailChangePoint': float(ecdf_tail_change_point)
+}
+
+# QQ-Plot (Quantile-Quantile Plot)
+# Normal distribution을 기준으로 QQ-Plot 생성
+theoretical_quantiles = stats.norm.ppf(np.linspace(0.01, 0.99, n))
+sample_quantiles = data_values
+
+# QQ-Plot에서 꼬리 변화점 찾기 (이론값과 실제값의 차이가 커지는 지점)
+qq_deviations = []
+for i in range(int(n * 0.9), n):
+    deviation = abs(sample_quantiles[i] - theoretical_quantiles[i])
+    qq_deviations.append((i, deviation))
+
+if len(qq_deviations) > 0:
+    # 편차가 급격히 증가하는 지점 찾기
+    qq_deviation_changes = []
+    for j in range(1, len(qq_deviations)):
+        change = qq_deviations[j][1] - qq_deviations[j-1][1]
+        qq_deviation_changes.append((qq_deviations[j][0], change))
+    
+    if len(qq_deviation_changes) > 0:
+        max_change_idx = max(qq_deviation_changes, key=lambda x: x[1])[0]
+        qq_tail_change_point = sample_quantiles[max_change_idx]
+    else:
+        qq_tail_change_point = sample_quantiles[int(n * 0.9)]
+else:
+    qq_tail_change_point = sample_quantiles[int(n * 0.9)]
+
+qq_plot = {
+    'theoreticalQuantiles': theoretical_quantiles.tolist(),
+    'sampleQuantiles': sample_quantiles.tolist(),
+    'tailChangePoint': float(qq_tail_change_point)
+}
+
+# Histogram에서도 꼬리 변화점 찾기 (빈도가 급격히 감소하는 지점)
+hist_tail_start_idx = int(len(frequencies) * 0.9)
+hist_freq_changes = []
+for i in range(hist_tail_start_idx, len(frequencies) - 1):
+    if frequencies[i] > 0:
+        change = frequencies[i + 1] - frequencies[i]
+        hist_freq_changes.append((i, change))
+
+if len(hist_freq_changes) > 0:
+    # 빈도 변화가 큰 지점 찾기
+    max_change_idx = max(hist_freq_changes, key=lambda x: abs(x[1]))[0]
+    hist_tail_change_point = bins[max_change_idx]
+else:
+    hist_tail_change_point = bins[hist_tail_start_idx]
+
+histogram['tailChangePoint'] = float(hist_tail_change_point)
+
+empirical_distribution = {
+    'histogram': histogram,
+    'ecdf': ecdf,
+    'qqPlot': qq_plot
+}
+
+# ===== 세 번째 탭: Mean Excess Plot =====
+# 여러 threshold 값에 대해 Mean Excess 계산
+percentiles = np.linspace(0, 95, 30)  # 0%부터 95%까지 30개 지점
+thresholds = np.percentile(data_values, percentiles).tolist()
+mean_excesses = []
+
+for threshold in thresholds:
+    excess_data = data_values[data_values > threshold] - threshold
+    if len(excess_data) > 0:
+        mean_excess = float(np.mean(excess_data))
+    else:
+        mean_excess = 0.0
+    mean_excesses.append(mean_excess)
+
+# 선형 구간 찾기 (Mean Excess가 일정 범위 이후 선형적으로 보이는 구간)
+# 상위 50% 구간에서 선형성을 검사
+linear_start_idx = int(len(thresholds) * 0.5)
+linear_range = None
+
+if linear_start_idx < len(thresholds) - 5:
+    # 각 구간에 대해 선형성 검사
+    best_r2 = 0
+    best_start = linear_start_idx
+    best_end = len(thresholds)
+    
+    for start_idx in range(linear_start_idx, len(thresholds) - 5):
+        for end_idx in range(start_idx + 5, len(thresholds) + 1):
+            x_subset = np.array(thresholds[start_idx:end_idx])
+            y_subset = np.array(mean_excesses[start_idx:end_idx])
+            
+            # 선형 회귀
+            if len(x_subset) > 1:
+                slope, intercept = np.polyfit(x_subset, y_subset, 1)
+                y_pred = slope * x_subset + intercept
+                ss_res = np.sum((y_subset - y_pred) ** 2)
+                ss_tot = np.sum((y_subset - np.mean(y_subset)) ** 2)
+                r2 = 1 - (ss_res / (ss_tot + 1e-10))
+                
+                if r2 > best_r2 and r2 > 0.8:  # R² > 0.8인 구간을 선형 구간으로 간주
+                    best_r2 = r2
+                    best_start = start_idx
+                    best_end = end_idx
+    
+    if best_r2 > 0.8:
+        linear_range = {
+            'start': float(thresholds[best_start]),
+            'end': float(thresholds[best_end - 1])
+        }
+
+mean_excess_plot = {
+    'thresholds': thresholds,
+    'meanExcesses': mean_excesses,
+    'linearRange': linear_range
+}
+
+# Prepare output
+output = {
+    'type': 'AnalysisThresholdOutput',
+    'claimColumn': p_claim_column,
+    'data': data_values.tolist()[:1000],  # 최대 1000개만 저장 (성능 고려)
+    'distribution': distribution,
+    'empiricalDistribution': empirical_distribution,
+    'meanExcessPlot': mean_excess_plot,
+    'statistics': statistics
+}
+
+print("=" * 60)
+print(f"Analysis Threshold: {p_claim_column}")
+print("=" * 60)
+print(f"\\nTotal data points: {n:,}")
+print(f"\\nStatistics:")
+for key, value in statistics.items():
+    print(f"  {key}: {value:,.2f}")
+print(f"\\nDistribution bins: {len(bins)}")
+print(f"ECDF tail change point: {ecdf_tail_change_point:,.2f}")
+print(f"QQ-Plot tail change point: {qq_tail_change_point:,.2f}")
+print(f"Histogram tail change point: {hist_tail_change_point:,.2f}")
+if linear_range:
+    print(f"Mean Excess linear range: {linear_range['start']:,.2f} - {linear_range['end']:,.2f}")
 print("\\n" + "=" * 60)
 print("Analysis complete")
 print("=" * 60)

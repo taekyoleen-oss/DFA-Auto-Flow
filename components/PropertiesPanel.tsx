@@ -2917,6 +2917,63 @@ const renderParameters = (
         </div>
       );
     }
+    case ModuleType.AnalysisThreshold: {
+      const sourceData = getConnectedDataSource(module.id);
+      // Handle different output types (DataPreview, ClaimDataOutput, etc.)
+      let inputColumns: ColumnInfo[] = [];
+      if (sourceData) {
+        if (sourceData.type === "DataPreview") {
+          inputColumns = sourceData.columns || [];
+        } else if ((sourceData as any).type === "InflatedDataOutput" || (sourceData as any).type === "FormatChangeOutput" || (sourceData as any).type === "ClaimDataOutput") {
+          inputColumns = (sourceData as any).data?.columns || [];
+        }
+      }
+      
+      // 숫자형 컬럼만 필터링
+      const numericColumns = inputColumns.filter(col => col.type === 'number');
+      const columnOptions = numericColumns.map(col => ({ value: col.name, label: col.name }));
+      
+      // 클레임 관련 컬럼 찾기 (금액, amount, claim, loss, 클레임 포함)
+      const findClaimColumn = (): string | null => {
+        const claimKeywords = ['금액', 'amount', 'claim', 'loss', '클레임'];
+        const claimColumn = inputColumns.find(col => 
+          claimKeywords.some(keyword => col.name.toLowerCase().includes(keyword.toLowerCase()))
+        );
+        if (claimColumn) return claimColumn.name;
+        // 클레임 관련 컬럼이 없으면 첫 번째 숫자 컬럼 사용
+        return numericColumns.length > 0 ? numericColumns[0].name : null;
+      };
+      
+      const { claim_column } = module.parameters;
+      
+      // claim_column이 없으면 클레임 관련 컬럼을 기본값으로 설정
+      const defaultClaimColumn = claim_column || findClaimColumn() || "";
+      if (!claim_column && defaultClaimColumn) {
+        // 기본값 설정
+        setTimeout(() => {
+          onParamChange("claim_column", defaultClaimColumn);
+        }, 0);
+      }
+      
+      return (
+        <div className="space-y-4">
+          <PropertySelect
+            label="클레임 열"
+            value={claim_column || defaultClaimColumn || ""}
+            onChange={(v) => {
+              onParamChange("claim_column", v);
+            }}
+            options={[
+              { value: "", label: "클레임 열을 선택하세요" },
+              ...columnOptions
+            ]}
+          />
+          <p className="text-xs text-gray-500">
+            분석할 클레임 열을 선택하세요. 선택한 열에 대해 데이터 분포, 경험적 분포, Mean Excess Plot이 생성됩니다.
+          </p>
+        </div>
+      );
+    }
     case ModuleType.ThresholdAnalysis: {
       const sourceData = getConnectedDataSource(module.id);
       // Handle different output types (DataPreview, ClaimDataOutput, etc.)

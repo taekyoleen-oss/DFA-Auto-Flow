@@ -53,6 +53,7 @@ import {
   CombineLossModelOutput,
   SettingThresholdOutput,
   ThresholdAnalysisOutput,
+  AnalysisThresholdOutput,
 } from "./types";
 import { DEFAULT_MODULES, TOOLBOX_MODULES, SAMPLE_MODELS } from "./constants";
 import { SAVED_SAMPLES } from "./savedSamples";
@@ -98,6 +99,7 @@ import { SimulateFreqServPreviewModal } from "./components/SimulateFreqServPrevi
 import { SplitFreqServPreviewModal } from "./components/SplitFreqServPreviewModal";
 import { FrequencyModelPreviewModal } from "./components/FrequencyModelPreviewModal";
 import { SeverityModelPreviewModal } from "./components/SeverityModelPreviewModal";
+import { AnalysisThresholdPreviewModal } from "./components/AnalysisThresholdPreviewModal";
 import { CombineLossModelPreviewModal } from "./components/CombineLossModelPreviewModal";
 import { StatsModelsResultPreviewModal } from "./components/StatsModelsResultPreviewModal";
 import { DiversionCheckerPreviewModal } from "./components/DiversionCheckerPreviewModal";
@@ -202,6 +204,8 @@ const App: React.FC = () => {
   const [viewingFrequencyModel, setViewingFrequencyModel] =
     useState<CanvasModule | null>(null);
   const [viewingSeverityModel, setViewingSeverityModel] =
+    useState<CanvasModule | null>(null);
+  const [viewingAnalysisThreshold, setViewingAnalysisThreshold] =
     useState<CanvasModule | null>(null);
 
   const [isAiGenerating, setIsAiGenerating] = useState(false);
@@ -2409,6 +2413,10 @@ ${header}
         setViewingSplitDataForModule(module);
       } else if (module.outputData.type === "ThresholdSplitOutput") {
         setViewingDataForModule(module);
+      } else if (module.outputData.type === "AnalysisThresholdOutput") {
+        setViewingAnalysisThreshold(module);
+      } else if (module.outputData.type === "ThresholdAnalysisOutput") {
+        setViewingDataForModule(module);
       } else if (module.outputData.type === "TrainedModelOutput") {
         setViewingTrainedModel(module);
       } else if (module.outputData.type === "XoLPriceOutput") {
@@ -2429,6 +2437,8 @@ ${header}
         setViewingFrequencyModel(module);
       } else if (module.outputData.type === "SeverityModelOutput") {
         setViewingSeverityModel(module);
+      } else if (module.outputData.type === "ThresholdAnalysisOutput") {
+        setViewingDataForModule(module);
       } else if (module.outputData.type === "CombineLossModelOutput") {
         setViewingDataForModule(module);
       } else if (module.outputData.type === "ClaimDataOutput" ||
@@ -2456,6 +2466,7 @@ ${header}
     setViewingSplitFreqServ(null);
     setViewingFrequencyModel(null);
     setViewingSeverityModel(null);
+    setViewingAnalysisThreshold(null);
   };
 
   // Model definition modules that should not be executed directly in Run All
@@ -4864,6 +4875,117 @@ result
             const errorMessage = error.message || String(error);
             addLog("ERROR", `Threshold Analysis 분석 실패: ${errorMessage}`);
             throw new Error(`Threshold Analysis 분석 실패: ${errorMessage}`);
+          }
+        } else if (module.type === ModuleType.AnalysisThreshold) {
+          const inputData = getSingleInputData(module.id) as DataPreview | ClaimDataOutput | InflatedDataOutput | FormatChangeOutput;
+          if (!inputData) {
+            throw new Error("Input data not available.");
+          }
+
+          // Get actual data
+          let actualData: DataPreview;
+          if (inputData.type === "ClaimDataOutput" || inputData.type === "InflatedDataOutput" || inputData.type === "FormatChangeOutput") {
+            actualData = (inputData as any).data;
+          } else {
+            actualData = inputData as DataPreview;
+          }
+
+          if (!actualData || !actualData.rows) {
+            throw new Error("Input data rows not available.");
+          }
+
+          const { claim_column } = module.parameters;
+
+          if (!claim_column) {
+            throw new Error("Claim column must be configured.");
+          }
+
+          // Pyodide를 사용하여 Python으로 Analysis Threshold 수행
+          try {
+            addLog("INFO", "Analysis Threshold 분석 중...");
+
+            const pyodideModule = await import("./utils/pyodideRunner");
+            const { loadPyodide, fromPython } = pyodideModule;
+
+            // Python 코드 생성
+            const { getModuleCode } = await import("./codeSnippets");
+            const pythonCode = getModuleCode(module, currentModules, connections);
+
+            // Pyodide 로드
+            const py = await loadPyodide(30000);
+
+            // 필요한 패키지 로드
+            await Promise.race([
+              py.loadPackage(["pandas", "numpy", "scipy"]),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("패키지 설치 타임아웃 (60초 초과)")), 60000)
+              )
+            ]);
+
+            // 데이터를 Python에 전달
+            py.globals.set("js_data", actualData.rows);
+            py.globals.set("js_columns", actualData.columns);
+
+            // Python 코드 실행 (dataframe 변수 설정 포함)
+            const fullCode = `
+import pandas as pd
+import numpy as np
+import json
+from scipy import stats
+
+# JavaScript에서 전달된 데이터를 DataFrame으로 변환
+rows = js_data.to_py()
+columns = js_columns.to_py()
+
+# DataFrame 생성
+dataframe = pd.DataFrame(rows)
+
+# 모듈 코드 실행
+${pythonCode}
+
+# output 변수가 있는지 확인하고 반환
+if 'output' in locals():
+    result = output
+else:
+    result = None
+
+result
+`;
+
+            const resultPyObj = await Promise.race([
+              Promise.resolve(py.runPython(fullCode)),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Python Analysis Threshold 타임아웃 (120초 초과)")), 120000)
+              )
+            ]);
+
+            // Python 딕셔너리를 JavaScript 객체로 변환
+            const result = fromPython(resultPyObj);
+
+            // 정리
+            py.globals.delete("js_data");
+            py.globals.delete("js_columns");
+
+            // 디버깅: 결과 로그 출력
+            console.log("Python execution result:", result);
+            console.log("Result type:", result?.type);
+
+            // 결과가 AnalysisThresholdOutput 형식인지 확인
+            if (result && result.type === "AnalysisThresholdOutput") {
+              newOutputData = result as AnalysisThresholdOutput;
+              addLog("SUCCESS", "Analysis Threshold 분석 완료");
+            } else {
+              // 더 자세한 오류 메시지
+              const errorMsg = result 
+                ? `Invalid output format. Expected AnalysisThresholdOutput, got: ${JSON.stringify(result).substring(0, 200)}`
+                : "No output returned from Python execution";
+              console.error("Python execution error:", errorMsg);
+              throw new Error(errorMsg);
+            }
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `Analysis Threshold 분석 실패: ${errorMessage}`);
+            throw new Error(`Analysis Threshold 분석 실패: ${errorMessage}`);
           }
         } else if (module.type === ModuleType.TrainModel) {
           const modelInputConnection = connections.find(
@@ -9816,16 +9938,6 @@ result
             >
                 <SparklesIcon className="w-4 h-4" />
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                  handleRotateModules();
-              }}
-                className="p-1.5 hover:bg-gray-700/50 rounded-full text-gray-400 hover:text-white transition-colors"
-                title="Rotate Modules"
-            >
-                <ArrowPathIcon className="w-4 h-4" />
-            </button>
             </div>
           </div>
         </main>
@@ -9941,13 +10053,15 @@ result
           viewingDataForModule.outputData?.type === "InflatedDataOutput" ||
           viewingDataForModule.outputData?.type === "FormatChangeOutput" ||
           viewingDataForModule.outputData?.type === "ThresholdSplitOutput" ||
+          viewingDataForModule.outputData?.type === "ThresholdAnalysisOutput" ||
           viewingDataForModule.outputData?.type === "KMeansOutput" ||
           viewingDataForModule.outputData?.type ===
             "HierarchicalClusteringOutput" ||
           viewingDataForModule.outputData?.type === "DBSCANOutput" ||
           viewingDataForModule.outputData?.type === "PCAOutput" ||
           viewingDataForModule.outputData?.type === "XolContractOutput" ||
-          viewingDataForModule.type === ModuleType.DefineXolContract) && (
+          viewingDataForModule.type === ModuleType.DefineXolContract ||
+          viewingDataForModule.type === ModuleType.ThresholdAnalysis) && (
           <ErrorBoundary>
           <DataPreviewModal
             module={viewingDataForModule}
@@ -10121,6 +10235,15 @@ result
                 return m;
               }));
             }}
+          />
+        </ErrorBoundary>
+      )}
+      {viewingAnalysisThreshold && (
+        <ErrorBoundary>
+          <AnalysisThresholdPreviewModal
+            module={viewingAnalysisThreshold}
+            projectName={projectName}
+            onClose={handleCloseModal}
           />
         </ErrorBoundary>
       )}

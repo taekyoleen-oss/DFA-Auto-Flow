@@ -366,6 +366,12 @@ export const TOOLBOX_MODULES = [
     icon: ChartCurveIcon,
     description: "Performs statistical threshold analysis using empirical distributions (Histogram, ECDF, QQ-Plot) and Mean Excess Plot to identify tail behavior changes.",
   },
+  {
+    type: ModuleType.AnalysisThreshold,
+    name: "Analysis Threshold",
+    icon: ChartCurveIcon,
+    description: "Analyzes claim data distribution with three tabs: data distribution plot, empirical distribution (Histogram, ECDF, QQ-Plot) for tail change detection, and Mean Excess Plot for identifying linear tail regions.",
+  },
 ];
 
 // fix: Replaced all instances of status: 'Pending' with status: ModuleStatus.Pending to conform to the ModuleStatus enum type.
@@ -979,6 +985,17 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       status: ModuleStatus.Pending,
       parameters: {
         target_column: null,
+      },
+      inputs: [{ name: "data_in", type: "data" }],
+      outputs: [
+        { name: "analysis_out", type: "evaluation" },
+      ],
+    },
+    {
+      type: ModuleType.AnalysisThreshold,
+      status: ModuleStatus.Pending,
+      parameters: {
+        claim_column: null, // 클레임 열 이름
       },
       inputs: [{ name: "data_in", type: "data" }],
       outputs: [

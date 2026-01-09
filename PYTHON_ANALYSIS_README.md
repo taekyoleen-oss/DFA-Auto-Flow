@@ -1,6 +1,6 @@
 # 파이썬 데이터 분석 모듈 사용 가이드
 
-이 문서는 `insure-auto-flow` 앱의 모든 데이터 분석 모듈을 파이썬으로 구현한 `data_analysis_modules.py` 파일의 사용 방법을 설명합니다.
+이 문서는 `DFA-Auto-Flow` 앱의 모든 데이터 분석 모듈을 파이썬으로 구현한 `data_analysis_modules.py` 파일의 사용 방법을 설명합니다.
 
 ## 설치
 

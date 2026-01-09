@@ -283,8 +283,16 @@ const ThresholdHistogramPlot: React.FC<{ histogram: { bins: number[]; frequencie
     );
 };
 
-const ECDFPlot: React.FC<{ ecdf: { sortedValues: number[]; cumulativeProbabilities: number[] } }> = ({ ecdf }) => {
-    const { sortedValues, cumulativeProbabilities } = ecdf;
+const ECDFPlot: React.FC<{ 
+    ecdf: { 
+        sortedValues: number[]; 
+        cumulativeProbabilities: number[];
+        candidateThresholds?: number[] | null;
+    };
+    selectedThreshold?: number | null;
+    onThresholdSelect?: (threshold: number) => void;
+}> = ({ ecdf, selectedThreshold, onThresholdSelect }) => {
+    const { sortedValues, cumulativeProbabilities, candidateThresholds } = ecdf;
     const chartWidth = 800;
     const chartHeight = 400;
     const padding = { top: 20, right: 20, bottom: 60, left: 60 };
@@ -295,26 +303,106 @@ const ECDFPlot: React.FC<{ ecdf: { sortedValues: number[]; cumulativeProbabiliti
     const xScale = (x: number) => padding.left + ((x - xMin) / (xMax - xMin || 1)) * innerWidth;
     const yScale = (y: number) => padding.top + innerHeight - (y * innerHeight);
 
+    // 기준점들을 차트에 표시
+    const renderCandidateThresholds = () => {
+        if (!candidateThresholds || candidateThresholds.length === 0) return null;
+        
+        return candidateThresholds.map((threshold, idx) => {
+            const x = xScale(threshold);
+            const isSelected = selectedThreshold === threshold;
+            const sortedIdx = sortedValues.findIndex(v => v >= threshold);
+            const y = sortedIdx >= 0 ? yScale(cumulativeProbabilities[sortedIdx]) : padding.top + innerHeight;
+            
+            return (
+                <g key={`threshold-${idx}`}>
+                    <line
+                        x1={x}
+                        y1={padding.top}
+                        x2={x}
+                        y2={padding.top + innerHeight}
+                        stroke={isSelected ? "#ef4444" : "#10b981"}
+                        strokeWidth={isSelected ? 3 : 2}
+                        strokeDasharray="5,5"
+                        opacity={0.8}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    />
+                    <circle
+                        cx={x}
+                        cy={y}
+                        r={isSelected ? 6 : 4}
+                        fill={isSelected ? "#ef4444" : "#10b981"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    />
+                    <text
+                        x={x}
+                        y={padding.top + innerHeight + 20}
+                        fontSize="11"
+                        fill={isSelected ? "#ef4444" : "#10b981"}
+                        textAnchor="middle"
+                        fontWeight={isSelected ? "bold" : "normal"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    >
+                        {threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </text>
+                </g>
+            );
+        });
+    };
+
     return (
-        <div className="w-full overflow-x-auto">
-            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
-                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
-                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
-                <polyline
-                    points={sortedValues.map((x, i) => `${xScale(x)},${yScale(cumulativeProbabilities[i])}`).join(' ')}
-                    fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth="2"
-                />
-                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">값 (Value)</text>
-                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>누적 확률 (Cumulative Probability)</text>
-            </svg>
+        <div className="w-full">
+            {candidateThresholds && candidateThresholds.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-semibold text-blue-800 mb-2">기준점 선택 (CDF가 완만해지거나 직선 형태로 변하는 지점):</p>
+                    <div className="flex flex-wrap gap-2">
+                        {candidateThresholds.map((threshold, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => onThresholdSelect?.(threshold)}
+                                className={`px-3 py-1.5 text-sm rounded-md font-semibold transition-colors ${
+                                    selectedThreshold === threshold
+                                        ? 'bg-red-600 text-white'
+                                        : 'bg-green-600 text-white hover:bg-green-700'
+                                }`}
+                            >
+                                {threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            <div className="w-full overflow-x-auto">
+                <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                    <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                    <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                    <polyline
+                        points={sortedValues.map((x, i) => `${xScale(x)},${yScale(cumulativeProbabilities[i])}`).join(' ')}
+                        fill="none"
+                        stroke="#3b82f6"
+                        strokeWidth="2"
+                    />
+                    {renderCandidateThresholds()}
+                    <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">값 (Value)</text>
+                    <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>누적 확률 (Cumulative Probability)</text>
+                </svg>
+            </div>
         </div>
     );
 };
 
-const QQPlot: React.FC<{ qqPlot: { theoreticalQuantiles: number[]; sampleQuantiles: number[] } }> = ({ qqPlot }) => {
-    const { theoreticalQuantiles, sampleQuantiles } = qqPlot;
+const QQPlot: React.FC<{ 
+    qqPlot: { 
+        theoreticalQuantiles: number[]; 
+        sampleQuantiles: number[];
+        candidateThresholds?: number[] | null;
+    };
+    selectedThreshold?: number | null;
+    onThresholdSelect?: (threshold: number) => void;
+}> = ({ qqPlot, selectedThreshold, onThresholdSelect }) => {
+    const { theoreticalQuantiles, sampleQuantiles, candidateThresholds } = qqPlot;
     const chartWidth = 800;
     const chartHeight = 400;
     const padding = { top: 20, right: 20, bottom: 60, left: 60 };
@@ -331,24 +419,111 @@ const QQPlot: React.FC<{ qqPlot: { theoreticalQuantiles: number[]; sampleQuantil
     const diagonalMin = Math.min(xMin, yMin);
     const diagonalMax = Math.max(xMax, yMax);
 
+    // 기준점들을 차트에 표시
+    const renderCandidateThresholds = () => {
+        if (!candidateThresholds || candidateThresholds.length === 0) return null;
+        
+        return candidateThresholds.map((threshold, idx) => {
+            // sampleQuantiles에서 threshold에 가장 가까운 인덱스 찾기
+            const closestIdx = sampleQuantiles.findIndex((val, i) => {
+                if (i === sampleQuantiles.length - 1) return val >= threshold;
+                return val >= threshold && (i === 0 || sampleQuantiles[i - 1] < threshold);
+            });
+            
+            if (closestIdx < 0 || closestIdx >= sampleQuantiles.length) return null;
+            
+            const x = xScale(theoreticalQuantiles[closestIdx]);
+            const y = yScale(sampleQuantiles[closestIdx]);
+            const isSelected = selectedThreshold === threshold;
+            
+            return (
+                <g key={`threshold-${idx}`}>
+                    <line
+                        x1={x}
+                        y1={padding.top}
+                        x2={x}
+                        y2={padding.top + innerHeight}
+                        stroke={isSelected ? "#ef4444" : "#10b981"}
+                        strokeWidth={isSelected ? 3 : 2}
+                        strokeDasharray="5,5"
+                        opacity={0.8}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    />
+                    <circle
+                        cx={x}
+                        cy={y}
+                        r={isSelected ? 6 : 4}
+                        fill={isSelected ? "#ef4444" : "#10b981"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    />
+                    <text
+                        x={x}
+                        y={padding.top + innerHeight + 20}
+                        fontSize="11"
+                        fill={isSelected ? "#ef4444" : "#10b981"}
+                        textAnchor="middle"
+                        fontWeight={isSelected ? "bold" : "normal"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    >
+                        {threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </text>
+                </g>
+            );
+        });
+    };
+
     return (
-        <div className="w-full overflow-x-auto">
-            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
-                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
-                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
-                <line x1={xScale(diagonalMin)} y1={yScale(diagonalMin)} x2={xScale(diagonalMax)} y2={yScale(diagonalMax)} stroke="#ef4444" strokeWidth="1" strokeDasharray="5,5" opacity={0.7} />
-                {theoreticalQuantiles.map((x, i) => (
-                    <circle key={i} cx={xScale(x)} cy={yScale(sampleQuantiles[i])} r="3" fill="#3b82f6" opacity={0.7} />
-                ))}
-                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">이론적 분위수 (Theoretical Quantiles)</text>
-                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>표본 분위수 (Sample Quantiles)</text>
-            </svg>
+        <div className="w-full">
+            {candidateThresholds && candidateThresholds.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-semibold text-blue-800 mb-2">기준점 선택 (직선에서 벗어나 Tail이 두꺼워지는 지점):</p>
+                    <div className="flex flex-wrap gap-2">
+                        {candidateThresholds.map((threshold, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => onThresholdSelect?.(threshold)}
+                                className={`px-3 py-1.5 text-sm rounded-md font-semibold transition-colors ${
+                                    selectedThreshold === threshold
+                                        ? 'bg-red-600 text-white'
+                                        : 'bg-green-600 text-white hover:bg-green-700'
+                                }`}
+                            >
+                                {threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            <div className="w-full overflow-x-auto">
+                <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                    <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                    <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                    <line x1={xScale(diagonalMin)} y1={yScale(diagonalMin)} x2={xScale(diagonalMax)} y2={yScale(diagonalMax)} stroke="#ef4444" strokeWidth="1" strokeDasharray="5,5" opacity={0.7} />
+                    {theoreticalQuantiles.map((x, i) => (
+                        <circle key={i} cx={xScale(x)} cy={yScale(sampleQuantiles[i])} r="3" fill="#3b82f6" opacity={0.7} />
+                    ))}
+                    {renderCandidateThresholds()}
+                    <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">이론적 분위수 (Theoretical Quantiles)</text>
+                    <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>표본 분위수 (Sample Quantiles)</text>
+                </svg>
+            </div>
         </div>
     );
 };
 
-const MeanExcessPlot: React.FC<{ meanExcessPlot: { thresholds: number[]; meanExcesses: number[] } }> = ({ meanExcessPlot }) => {
-    const { thresholds, meanExcesses } = meanExcessPlot;
+const MeanExcessPlot: React.FC<{ 
+    meanExcessPlot: { 
+        thresholds: number[]; 
+        meanExcesses: number[];
+        candidateThresholds?: number[] | null;
+    };
+    selectedThreshold?: number | null;
+    onThresholdSelect?: (threshold: number) => void;
+}> = ({ meanExcessPlot, selectedThreshold, onThresholdSelect }) => {
+    const { thresholds, meanExcesses, candidateThresholds } = meanExcessPlot;
     const chartWidth = 800;
     const chartHeight = 400;
     const padding = { top: 20, right: 20, bottom: 60, left: 60 };
@@ -361,23 +536,97 @@ const MeanExcessPlot: React.FC<{ meanExcessPlot: { thresholds: number[]; meanExc
     const xScale = (x: number) => padding.left + ((x - xMin) / (xMax - xMin || 1)) * innerWidth;
     const yScale = (y: number) => padding.top + innerHeight - ((y - yMin) / (yMax - yMin || 1)) * innerHeight;
 
+    // 기준점들을 차트에 표시
+    const renderCandidateThresholds = () => {
+        if (!candidateThresholds || candidateThresholds.length === 0) return null;
+        
+        return candidateThresholds.map((threshold, idx) => {
+            const thresholdIdx = thresholds.findIndex(t => Math.abs(t - threshold) < (xMax - xMin) * 0.01);
+            if (thresholdIdx < 0) return null;
+            
+            const x = xScale(thresholds[thresholdIdx]);
+            const y = yScale(meanExcesses[thresholdIdx]);
+            const isSelected = selectedThreshold === threshold;
+            
+            return (
+                <g key={`threshold-${idx}`}>
+                    <line
+                        x1={x}
+                        y1={padding.top}
+                        x2={x}
+                        y2={padding.top + innerHeight}
+                        stroke={isSelected ? "#ef4444" : "#10b981"}
+                        strokeWidth={isSelected ? 3 : 2}
+                        strokeDasharray="5,5"
+                        opacity={0.8}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    />
+                    <circle
+                        cx={x}
+                        cy={y}
+                        r={isSelected ? 6 : 4}
+                        fill={isSelected ? "#ef4444" : "#10b981"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    />
+                    <text
+                        x={x}
+                        y={padding.top + innerHeight + 20}
+                        fontSize="11"
+                        fill={isSelected ? "#ef4444" : "#10b981"}
+                        textAnchor="middle"
+                        fontWeight={isSelected ? "bold" : "normal"}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => onThresholdSelect?.(threshold)}
+                    >
+                        {threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    </text>
+                </g>
+            );
+        });
+    };
+
     return (
-        <div className="w-full overflow-x-auto">
-            <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
-                <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
-                <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
-                <polyline
-                    points={thresholds.map((x, i) => `${xScale(x)},${yScale(meanExcesses[i])}`).join(' ')}
-                    fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth="2"
-                />
-                {thresholds.map((x, i) => (
-                    <circle key={i} cx={xScale(x)} cy={yScale(meanExcesses[i])} r="3" fill="#3b82f6" />
-                ))}
-                <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">Threshold</text>
-                <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>Mean Excess</text>
-            </svg>
+        <div className="w-full">
+            {candidateThresholds && candidateThresholds.length > 0 && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm font-semibold text-blue-800 mb-2">기준점 선택 (직선 형태가 시작하는 지점):</p>
+                    <div className="flex flex-wrap gap-2">
+                        {candidateThresholds.map((threshold, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => onThresholdSelect?.(threshold)}
+                                className={`px-3 py-1.5 text-sm rounded-md font-semibold transition-colors ${
+                                    selectedThreshold === threshold
+                                        ? 'bg-red-600 text-white'
+                                        : 'bg-green-600 text-white hover:bg-green-700'
+                                }`}
+                            >
+                                {threshold.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+            <div className="w-full overflow-x-auto">
+                <svg width={chartWidth} height={chartHeight} className="border border-gray-300 rounded">
+                    <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                    <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#374151" strokeWidth="2" />
+                    <polyline
+                        points={thresholds.map((x, i) => `${xScale(x)},${yScale(meanExcesses[i])}`).join(' ')}
+                        fill="none"
+                        stroke="#3b82f6"
+                        strokeWidth="2"
+                    />
+                    {thresholds.map((x, i) => (
+                        <circle key={i} cx={xScale(x)} cy={yScale(meanExcesses[i])} r="3" fill="#3b82f6" />
+                    ))}
+                    {renderCandidateThresholds()}
+                    <text x={padding.left + innerWidth / 2} y={chartHeight - 10} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold">Threshold</text>
+                    <text x={15} y={padding.top + innerHeight / 2} fontSize="14" fill="#374151" textAnchor="middle" fontWeight="semibold" transform={`rotate(-90, 15, ${padding.top + innerHeight / 2})`}>Mean Excess</text>
+                </svg>
+            </div>
         </div>
     );
 };
@@ -851,6 +1100,9 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     }, [module]);
     
     const [activeThresholdAnalysisTab, setActiveThresholdAnalysisTab] = useState<'histogram' | 'ecdf' | 'qqplot' | 'meanexcess'>('histogram');
+    const [selectedECDFThreshold, setSelectedECDFThreshold] = useState<number | null>(null);
+    const [selectedQQPlotThreshold, setSelectedQQPlotThreshold] = useState<number | null>(null);
+    const [selectedMeanExcessThreshold, setSelectedMeanExcessThreshold] = useState<number | null>(null);
     
     const displayData = thresholdSplitData || data;
     const columns = Array.isArray(displayData?.columns) ? displayData.columns : [];
@@ -2021,7 +2273,8 @@ const PCAScoreVisualization: React.FC<{
         );
     }
 
-    if (!data) {
+    // ThresholdAnalysis 모듈의 경우 data가 없어도 thresholdAnalysisOutput이 있으면 계속 진행
+    if (!data && !thresholdAnalysisOutput) {
         console.warn('DataPreviewModal: No data available for module', module.id, module.type, module.outputData);
         return (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
@@ -3473,19 +3726,55 @@ const PCAScoreVisualization: React.FC<{
                                             {activeThresholdAnalysisTab === 'ecdf' && thresholdAnalysisOutput.ecdf && (
                                                 <div>
                                                     <h3 className="text-lg font-semibold text-gray-800 mb-4">ECDF (Empirical Cumulative Distribution Function)</h3>
-                                                    <ECDFPlot ecdf={thresholdAnalysisOutput.ecdf} />
+                                                    <ECDFPlot 
+                                                        ecdf={thresholdAnalysisOutput.ecdf} 
+                                                        selectedThreshold={selectedECDFThreshold}
+                                                        onThresholdSelect={setSelectedECDFThreshold}
+                                                    />
+                                                    {selectedECDFThreshold && (
+                                                        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                            <p className="text-sm font-semibold text-green-800">
+                                                                선택된 기준점: <span className="font-mono">{selectedECDFThreshold.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                                            </p>
+                                                            <p className="text-xs text-green-600 mt-1">이 지점에서 CDF가 완만해지거나 직선 형태로 변합니다.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                             {activeThresholdAnalysisTab === 'qqplot' && thresholdAnalysisOutput.qqPlot && (
                                                 <div>
                                                     <h3 className="text-lg font-semibold text-gray-800 mb-4">QQ-Plot (Quantile-Quantile Plot)</h3>
-                                                    <QQPlot qqPlot={thresholdAnalysisOutput.qqPlot} />
+                                                    <QQPlot 
+                                                        qqPlot={thresholdAnalysisOutput.qqPlot} 
+                                                        selectedThreshold={selectedQQPlotThreshold}
+                                                        onThresholdSelect={setSelectedQQPlotThreshold}
+                                                    />
+                                                    {selectedQQPlotThreshold && (
+                                                        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                            <p className="text-sm font-semibold text-green-800">
+                                                                선택된 기준점: <span className="font-mono">{selectedQQPlotThreshold.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                                            </p>
+                                                            <p className="text-xs text-green-600 mt-1">이 지점 이후부터 직선에서 벗어나 Tail이 두꺼워집니다.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                             {activeThresholdAnalysisTab === 'meanexcess' && thresholdAnalysisOutput.meanExcessPlot && (
                                                 <div>
                                                     <h3 className="text-lg font-semibold text-gray-800 mb-4">Mean Excess Plot</h3>
-                                                    <MeanExcessPlot meanExcessPlot={thresholdAnalysisOutput.meanExcessPlot} />
+                                                    <MeanExcessPlot 
+                                                        meanExcessPlot={thresholdAnalysisOutput.meanExcessPlot} 
+                                                        selectedThreshold={selectedMeanExcessThreshold}
+                                                        onThresholdSelect={setSelectedMeanExcessThreshold}
+                                                    />
+                                                    {selectedMeanExcessThreshold && (
+                                                        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                            <p className="text-sm font-semibold text-green-800">
+                                                                선택된 기준점: <span className="font-mono">{selectedMeanExcessThreshold.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                                            </p>
+                                                            <p className="text-xs text-green-600 mt-1">이 지점 이후 직선 형태가 시작됩니다.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

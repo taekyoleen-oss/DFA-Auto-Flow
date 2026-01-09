@@ -1,5 +1,5 @@
 {
-  "name": "insure-auto-flow",
+  "name": "dfa-auto-flow",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "server": "node server/split-data-server.js",
     "samples-server": "node server/samples-server.js",
-    "dev:full": "concurrently \"npm run server\" \"npm run samples-server\" \"npm run dev\""
+    "dev:full": "concurrently \"pnpm run server\" \"pnpm run samples-server\" \"pnpm run dev\""
   },
   "dependencies": {
     "@google/genai": "^1.21.0",
@@ -25,6 +25,7 @@
     "@types/node": "^22.14.0",
     "@types/xlsx": "^0.0.36",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.1.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

@@ -74,6 +74,7 @@ export enum ModuleType {
   CombineLossModel = "CombineLossModel",
   SettingThreshold = "SettingThreshold",
   ThresholdAnalysis = "ThresholdAnalysis",
+  AnalysisThreshold = "AnalysisThreshold",
 
   // Deprecating these
   LogisticTradition = "LogisticTradition",
@@ -697,14 +698,69 @@ export interface ThresholdAnalysisOutput {
   ecdf?: {
     sortedValues: number[];
     cumulativeProbabilities: number[];
+    candidateThresholds?: number[]; // CDF가 완만해지거나 직선 형태로 변하는 지점들
   };
   qqPlot?: {
     theoreticalQuantiles: number[];
     sampleQuantiles: number[];
+    candidateThresholds?: number[]; // 직선에서 벗어나 Tail이 두꺼워지는 지점들
   };
   meanExcessPlot?: {
     thresholds: number[];
     meanExcesses: number[];
+    candidateThresholds?: number[]; // 직선 형태가 시작하는 지점들
+  };
+  statistics: {
+    min: number;
+    max: number;
+    mean: number;
+    median: number;
+    std: number;
+    q25: number;
+    q75: number;
+    q90: number;
+    q95: number;
+    q99: number;
+  };
+}
+
+export interface AnalysisThresholdOutput {
+  type: "AnalysisThresholdOutput";
+  claimColumn: string; // 선택된 클레임 열 이름
+  data: number[]; // 원본 클레임 데이터 값들
+  // 첫 번째 탭: 데이터 분포
+  distribution?: {
+    claimSizes: number[]; // 클레임 크기별 값
+    counts: number[]; // 각 클레임 크기별 건수
+    bins?: number[]; // 히스토그램 bins
+    frequencies?: number[]; // 각 bin의 빈도
+  };
+  // 두 번째 탭: 경험적 분포
+  empiricalDistribution?: {
+    histogram?: {
+      bins: number[];
+      frequencies: number[];
+      tailChangePoint?: number; // 꼬리가 바뀌는 지점
+    };
+    ecdf?: {
+      sortedValues: number[];
+      cumulativeProbabilities: number[];
+      tailChangePoint?: number; // 꼬리가 바뀌는 지점
+    };
+    qqPlot?: {
+      theoreticalQuantiles: number[];
+      sampleQuantiles: number[];
+      tailChangePoint?: number; // 꼬리가 바뀌는 지점
+    };
+  };
+  // 세 번째 탭: Mean Excess Plot
+  meanExcessPlot?: {
+    thresholds: number[]; // u 값들
+    meanExcesses: number[]; // e(u) 값들
+    linearRange?: {
+      start: number; // 선형 구간 시작점
+      end: number; // 선형 구간 종료점
+    };
   };
   statistics: {
     min: number;
@@ -765,7 +821,8 @@ export interface CanvasModule {
     | FrequencySeverityModelOutput
     | CombineLossModelOutput
     | SettingThresholdOutput
-    | ThresholdAnalysisOutput;
+    | ThresholdAnalysisOutput
+    | AnalysisThresholdOutput;
   // Shape-specific properties
   shapeData?: {
     // For TextBox
