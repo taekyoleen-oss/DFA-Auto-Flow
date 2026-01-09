@@ -1,5 +1,63 @@
 # Change History
 
+## 2025-01-17 01:00:00
+
+### feat(modules): Add AnalysisThreshold module and improve ThresholdAnalysis View Details with candidate threshold selection
+
+**Description:**
+- AnalysisThreshold 모듈 추가
+  - 3개의 탭으로 구성: 데이터 분포, 경험적 분포, Mean Excess Plot
+  - 데이터 분포 탭: 클레임 크기에 따라 건수를 히스토그램으로 표시
+  - 경험적 분포 탭: Histogram, ECDF, QQ-Plot을 통해 "꼬리가 바뀌는 지점" 찾기
+  - Mean Excess Plot 탭: e(u) 계산하여 일정 범위 이후 선형적으로 보이는 구간을 tail로 식별
+- ThresholdAnalysis View Details 수정
+  - View Details가 열리지 않던 문제 해결
+  - DataPreviewModal 렌더링 조건에 ThresholdAnalysisOutput 타입 추가
+  - thresholdAnalysisOutput이 있을 때 data가 없어도 모달이 열리도록 수정
+- 각 탭에 기준점 선택 기능 추가
+  - ECDF 탭: CDF가 완만해지거나 직선 형태로 변하는 지점을 자동 계산하여 표시
+  - QQ-Plot 탭: 직선에서 벗어나 Tail이 두꺼워지는 지점을 자동 계산하여 표시
+  - Mean Excess Plot 탭: 직선 형태가 시작하는 지점을 자동 계산하여 표시
+  - 각 탭에서 기준점 버튼 클릭 또는 차트의 기준선 클릭으로 선택 가능
+  - 선택된 기준점은 빨간색으로 강조 표시되고 설명 메시지 표시
+- 프로젝트 이름 및 경로 변경
+  - 프로젝트 이름: insure-auto-flow → dfa-auto-flow
+  - 프로젝트 경로: C:\cursor\insure-auto-flow → C:\cursor\00 My Project\DFA-Auto-Flow
+  - 모든 파일의 하드코딩된 경로 업데이트
+- concurrently 패키지 추가
+  - dev:full 스크립트로 여러 서버를 동시에 실행 가능
+  - pnpm run dev:full로 split-data-server, samples-server, dev 서버 동시 실행
+
+**Files Affected:**
+- `types.ts` - AnalysisThresholdOutput 타입 추가, ThresholdAnalysisOutput에 candidateThresholds 필드 추가
+- `constants.ts` - AnalysisThreshold 모듈 정의 추가
+- `components/PropertiesPanel.tsx` - AnalysisThreshold 속성 패널 추가
+- `components/AnalysisThresholdPreviewModal.tsx` - 새로 생성, AnalysisThreshold 전용 View Details 모달
+- `components/DataPreviewModal.tsx` - ThresholdAnalysis View Details 수정, 각 차트 컴포넌트에 기준점 선택 기능 추가
+- `App.tsx` - AnalysisThreshold 모듈 실행 로직 추가, ThresholdAnalysisOutput 처리 추가, AnalysisThresholdPreviewModal 렌더링 추가
+- `codeSnippets.ts` - AnalysisThreshold Python 코드 추가, ThresholdAnalysis에 기준점 계산 로직 추가
+- `package.json` - 프로젝트 이름 변경, concurrently 패키지 추가, dev:full 스크립트 추가
+- `history` - 모든 경로 업데이트
+- `data_analysis_modules.py` - 프로젝트 이름 업데이트
+- `PYTHON_ANALYSIS_README.md` - 프로젝트 이름 업데이트
+
+**Reason:**
+- 사용자 요청에 따라 AnalysisThreshold 모듈 추가 및 ThresholdAnalysis View Details 개선
+- 각 탭에서 기준점을 자동으로 계산하여 사용자가 쉽게 선택할 수 있도록 개선
+- 프로젝트 이름 및 경로 변경에 따른 모든 참조 업데이트
+
+**Commit Hash:** 5903132a189e1f38e7b5730cb93589d79079a599
+
+**Recovery Command:**
+```bash
+# Backup and recover
+git stash push -u -m "백업"
+git reset --hard 5903132a189e1f38e7b5730cb93589d79079a599
+
+# Or direct recovery
+git reset --hard 5903132a189e1f38e7b5730cb93589d79079a599
+```
+
 ## 2025-01-17 00:35:00
 
 ### refactor(ui): Restore terminal as tab in Properties Panel and add protection rules
