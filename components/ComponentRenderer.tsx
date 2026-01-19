@@ -2,6 +2,7 @@
 import React, { MouseEvent, TouchEvent, useRef, useState, useEffect, useCallback } from 'react';
 import { CanvasModule, ModuleStatus, Port, ModuleType, Connection } from '../types';
 import { CheckCircleIcon, CogIcon, XCircleIcon, PlayIcon, XMarkIcon } from './icons';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface PortComponentProps {
   port: Port;
@@ -222,6 +223,7 @@ const noRunButtonTypes = [
 ];
 
 export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelected, onDoubleClick, onDragStart, onTouchDragStart, portRefs, onStartConnection, onStartSuggestion, onEndConnection, onViewDetails, scale, onRunModule, tappedSourcePort, onTapPort, cancelDragConnection, onDelete, onModuleNameChange, isSuggestion, onAcceptSuggestion, dragConnection, areUpstreamModulesReady, allModules, allConnections }) => {
+  const { theme } = useTheme();
   const isDraggingRef = useRef(false);
   const lastTapRef = useRef(0);
 
@@ -273,12 +275,21 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
   const { position, status } = module;
   const isRunnable = !noRunButtonTypes.includes(module.type) && areUpstreamModulesReady(module.id, allModules, allConnections);
   const getBackgroundColor = () => {
-    if (status === ModuleStatus.Success) {
-      return 'bg-blue-900/50';
-    } else if (status === ModuleStatus.Pending && isRunnable) {
-      return 'bg-green-900/30';
+    if (theme === "light") {
+      if (status === ModuleStatus.Success) {
+        return "bg-blue-100";
+      } else if (status === ModuleStatus.Pending && isRunnable) {
+        return "bg-green-100";
+      }
+      return "bg-white";
+    } else {
+      if (status === ModuleStatus.Success) {
+        return "bg-blue-900/50";
+      } else if (status === ModuleStatus.Pending && isRunnable) {
+        return "bg-green-900/30";
+      }
+      return "bg-gray-800";
     }
-    return 'bg-gray-800';
   };
   const getBorderColor = () => {
     if (status === ModuleStatus.Success) {
@@ -289,7 +300,8 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
     return statusStyles[status];
   };
   const suggestionClasses = isSuggestion ? 'opacity-70 border-dashed border-purple-500 animate-pulse' : '';
-  const wrapperClasses = `absolute w-48 ${getBackgroundColor()} ${getBorderColor()} border-2 rounded-lg shadow-lg flex flex-col ${isSuggestion ? 'cursor-pointer' : 'cursor-move'} ${isSelected ? 'ring-2 ring-offset-2 ring-offset-gray-900 ring-blue-500' : ''} ${suggestionClasses}`;
+  const ringOffset = theme === "light" ? "ring-offset-white" : "ring-offset-gray-900";
+  const wrapperClasses = `absolute w-48 ${getBackgroundColor()} ${getBorderColor()} border-2 rounded-lg shadow-lg flex flex-col ${isSuggestion ? 'cursor-pointer' : 'cursor-move'} ${isSelected ? `ring-2 ring-offset-2 ${ringOffset} ring-blue-500` : ''} ${suggestionClasses}`;
   
   const componentStyle: React.CSSProperties = {
     transform: `translate(${position.x}px, ${position.y}px)`,
@@ -391,7 +403,11 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
           <button
               onClick={handleDelete}
               onTouchEnd={handleDelete}
-              className="absolute -top-2 -right-2 z-20 p-0.5 bg-gray-700 rounded-full text-gray-300 hover:bg-red-600 hover:text-white transition-colors"
+              className={`absolute -top-2 -right-2 z-20 p-0.5 rounded-full transition-colors ${
+                theme === "light"
+                  ? "bg-gray-300 text-gray-700 hover:bg-red-500 hover:text-white"
+                  : "bg-gray-700 text-gray-300 hover:bg-red-600 hover:text-white"
+              }`}
               title="Delete Module"
               aria-label="Delete Module"
           >
@@ -399,12 +415,16 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
           </button>
       )}
       
-      <div className="module-header bg-gray-700 px-3 py-1">
+      <div className={`module-header px-3 py-1 ${
+        theme === "light" ? "bg-gray-200" : "bg-gray-700"
+      }`}>
           <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 truncate">
                   <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDotColors[status]}`} title={`Status: ${status}`}></span>
                   <span 
-                      className="font-bold text-lg truncate" 
+                      className={`font-bold text-lg truncate ${
+                        theme === "light" ? "text-gray-900" : "text-white"
+                      }`}
                       title={module.name}
                   >
                       {module.name}
@@ -417,7 +437,9 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
       <div className="flex-grow flex items-center justify-center px-2 py-6 relative">
           {isSuggestion ? (
               <div className="text-center">
-                  <p className="text-xs text-purple-300 font-semibold">AI Suggestion</p>
+                  <p className={`text-xs font-semibold ${
+                    theme === "light" ? "text-purple-700" : "text-purple-300"
+                  }`}>AI Suggestion</p>
                   <button
                       onClick={(e) => { e.stopPropagation(); onAcceptSuggestion(); }}
                       className="mt-2 px-2 py-1 text-xs bg-purple-600 hover:bg-purple-500 rounded text-white"
@@ -431,23 +453,37 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
                       const canRun = areUpstreamModulesReady(module.id, allModules, allConnections);
                       const getRunButtonColor = () => {
                           if (status === ModuleStatus.Success) {
-                              return 'text-green-500';
+                              return theme === "light"
+                                  ? "text-green-600"
+                                  : "text-green-500";
                           } else if (status === ModuleStatus.Pending && canRun) {
-                              return 'text-blue-500';
+                              return theme === "light"
+                                  ? "text-blue-600"
+                                  : "text-blue-500";
                           } else {
-                              return 'text-gray-600';
+                              return theme === "light"
+                                  ? "text-gray-500"
+                                  : "text-gray-600";
                           }
                       };
                       const buttonColor = getRunButtonColor();
                       const isDisabled = !canRun && status !== ModuleStatus.Success;
+                      const buttonBg =
+                        theme === "light"
+                          ? isDisabled
+                            ? "bg-gray-300 border-2 border-gray-400"
+                            : "bg-green-500 border-2 border-green-600 hover:bg-green-600 shadow-md"
+                          : isDisabled
+                          ? "bg-gray-800 border-2 border-gray-600"
+                          : "bg-green-600 border-2 border-green-500 hover:bg-green-500 shadow-md";
                       return (
                           <button
                               onClick={(e) => { e.stopPropagation(); onRunModule(module.id); }}
                               disabled={isDisabled}
-                              className={`absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full transition-colors z-10 ${
-                                  isDisabled 
-                                      ? `bg-gray-800 ${buttonColor} cursor-not-allowed opacity-50` 
-                                      : `bg-gray-700 hover:bg-green-600 ${buttonColor} hover:text-white`
+                              className={`absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all z-10 ${
+                                  isDisabled
+                                      ? `${buttonBg} ${buttonColor} cursor-not-allowed opacity-50`
+                                      : `${buttonBg} text-white hover:scale-110`
                               }`}
                               title={canRun ? "Run this module" : "Upstream modules must be executed first"}
                           >
@@ -457,7 +493,11 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
                   })()}
                   <button
                       onClick={(e) => { e.stopPropagation(); onViewDetails(module.id); }}
-                      className="text-xs text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+                      className={`text-xs disabled:cursor-not-allowed ${
+                        theme === "light"
+                          ? "text-gray-700 hover:text-gray-900 disabled:text-gray-400"
+                          : "text-gray-400 hover:text-white disabled:text-gray-600"
+                      }`}
                       disabled={module.status !== ModuleStatus.Success}
                   >
                       {module.status === ModuleStatus.Success ? 'View Details' : module.status}

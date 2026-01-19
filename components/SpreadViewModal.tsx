@@ -445,6 +445,11 @@ export const SpreadViewModal: React.FC<SpreadViewModalProps> = ({
                           const isSelected = isCellSelected(rowIndex, colIndex);
                           const cellValue = getCellValue(rowIndex, colIndex);
 
+                          // 컬럼 타입에 따라 정렬 결정
+                          const column = columns[colIndex];
+                          const isNumberColumn = column?.type === 'number';
+                          const alignClass = isNumberColumn ? 'text-right' : 'text-left';
+                          
                           return (
                             <td
                               key={colIndex}
@@ -458,7 +463,7 @@ export const SpreadViewModal: React.FC<SpreadViewModalProps> = ({
                               onClick={(e) => handleCellClick(e, rowIndex, colIndex)}
                               onContextMenu={(e) => handleContextMenu(e, rowIndex, colIndex)}
                             >
-                              <div className="w-full h-full px-1 text-sm flex items-center overflow-hidden text-ellipsis whitespace-nowrap text-black">
+                              <div className={`w-full h-full px-1 text-sm flex items-center overflow-hidden text-ellipsis whitespace-nowrap text-black ${alignClass} ${isNumberColumn ? 'justify-end' : 'justify-start'}`}>
                                 {cellValue}
                               </div>
                             </td>

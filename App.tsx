@@ -86,7 +86,10 @@ import {
   ArrowPathIcon,
   StarIcon,
   ArrowDownTrayIcon,
+  SunIcon,
+  MoonIcon,
 } from "./components/icons";
+import { useTheme } from "./contexts/ThemeContext";
 import useHistoryState from "./hooks/useHistoryState";
 import { DataPreviewModal } from "./components/DataPreviewModal";
 import { StatisticsPreviewModal } from "./components/StatisticsPreviewModal";
@@ -168,6 +171,7 @@ const isClassification = (
 // These JavaScript implementations have been removed to ensure Python-compatible results
 
 const App: React.FC = () => {
+  const { theme, toggleTheme } = useTheme();
   const [modules, setModules, undo, redo, resetModules, canUndo, canRedo] =
     useHistoryState<CanvasModule[]>([]);
   const [connections, _setConnections] = useState<Connection[]>([]);
@@ -9249,7 +9253,7 @@ result
   };
 
   return (
-    <div className="bg-gray-900 text-white h-screen w-screen flex flex-col overflow-hidden">
+    <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white h-screen w-screen flex flex-col overflow-hidden">
       {isAiGenerating && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-50">
           <div role="status">
@@ -9277,16 +9281,16 @@ result
         </div>
       )}
 
-      <header className="flex flex-col px-4 py-1.5 bg-gray-900 border-b border-gray-700 flex-shrink-0 z-20 relative overflow-visible">
+      <header className="flex flex-col px-4 py-1.5 bg-white dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700 flex-shrink-0 z-20 relative overflow-visible">
         {/* 첫 번째 줄: 제목 및 모델 이름 */}
         <div className="flex items-center w-full">
           <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-            <LogoIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-400 flex-shrink-0" />
-            <h1 className="text-base md:text-xl font-bold text-blue-300 tracking-wide flex-shrink-0">
+            <LogoIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+            <h1 className="text-base md:text-xl font-bold text-blue-600 dark:text-blue-300 tracking-wide flex-shrink-0">
               DFA Auto Flow
             </h1>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="text-gray-600 hidden md:inline">|</span>
+              <span className="text-gray-400 dark:text-gray-600 hidden md:inline">|</span>
               {isEditingProjectName ? (
                 <input
                   value={projectName}
@@ -9297,13 +9301,13 @@ result
                       setIsEditingProjectName(false);
                     }
                   }}
-                  className="bg-gray-800 text-sm md:text-lg font-semibold text-white px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
+                  className="bg-gray-100 dark:bg-gray-800 text-sm md:text-lg font-semibold text-gray-900 dark:text-white px-2 py-1 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0"
                   autoFocus
                 />
               ) : (
                 <h2
                   onClick={() => setIsEditingProjectName(true)}
-                  className="text-sm md:text-lg font-semibold text-gray-300 hover:bg-gray-700 px-2 py-1 rounded-md cursor-pointer truncate"
+                  className="text-sm md:text-lg font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 px-2 py-1 rounded-md cursor-pointer truncate"
                   title="Click to edit project name"
                 >
                   {projectName}
@@ -9315,10 +9319,24 @@ result
 
         {/* 두 번째 줄: Load, Save 등 버튼들 */}
         <div className="flex items-center justify-end gap-2 w-full overflow-x-auto scrollbar-hide mt-1">
+          {/* 테마 전환 버튼 */}
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+            title={
+              theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"
+            }
+          >
+            {theme === "dark" ? (
+              <SunIcon className="h-5 w-5 text-yellow-400" />
+            ) : (
+              <MoonIcon className="h-5 w-5 text-gray-700" />
+            )}
+          </button>
           <button
             onClick={undo}
             disabled={!canUndo}
-            className="p-1.5 text-gray-300 hover:bg-gray-700 rounded-md disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md disabled:text-gray-400 dark:disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             title="Undo (Ctrl+Z)"
           >
             <ArrowUturnLeftIcon className="h-5 w-5" />
@@ -9326,15 +9344,15 @@ result
           <button
             onClick={redo}
             disabled={!canRedo}
-            className="p-1.5 text-gray-300 hover:bg-gray-700 rounded-md disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+            className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md disabled:text-gray-400 dark:disabled:text-gray-600 disabled:cursor-not-allowed transition-colors flex-shrink-0"
             title="Redo (Ctrl+Y)"
           >
             <ArrowUturnRightIcon className="h-5 w-5" />
           </button>
-          <div className="h-5 border-l border-gray-700"></div>
+          <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
           <button
             onClick={handleSetFolder}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
             title="Set Save Folder"
           >
             <FolderOpenIcon className="h-4 w-4" />
@@ -9342,7 +9360,7 @@ result
           </button>
           <button
             onClick={handleLoadPipeline}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold transition-colors flex-shrink-0"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
             title="Load Pipeline"
           >
             <FolderOpenIcon className="h-4 w-4" />
@@ -9353,8 +9371,8 @@ result
             disabled={!isDirty}
             className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors flex-shrink-0 ${
               !isDirty
-                ? "bg-gray-600 cursor-not-allowed opacity-50"
-                : "bg-gray-700 hover:bg-gray-600"
+                ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-500"
+                : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
             }`}
             title="Save Pipeline"
           >
@@ -9372,13 +9390,13 @@ result
           <div className="flex items-center gap-1 md:gap-2">
             <button
               onClick={() => setIsLeftPanelVisible((v) => !v)}
-              className="p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+              className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
               aria-label="Toggle modules panel"
               title="Toggle Modules Panel"
             >
               <Bars3Icon className="h-5 w-5" />
             </button>
-            <div className="h-5 border-l border-gray-700"></div>
+            <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
             <div
               className="relative flex-shrink-0"
               ref={sampleMenuRef}
@@ -9411,17 +9429,17 @@ result
               </button>
               {isSampleMenuOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-xl min-w-[200px] max-h-[600px] overflow-y-auto"
+                  className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[200px] max-h-[600px] overflow-y-auto"
                   style={{ zIndex: 9999 }}
                 >
                   {/* Samples 폴더의 파일 목록 */}
                   {isLoadingSamples ? (
-                    <div className="px-4 py-2 text-sm text-gray-400">
+                    <div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">
                       Loading samples...
                     </div>
                   ) : folderSamples.length > 0 ? (
                     <>
-                      <div className="px-4 py-2 text-xs text-gray-500 uppercase font-bold border-b border-gray-700">
+                      <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500 uppercase font-bold border-b border-gray-300 dark:border-gray-700">
                         Samples Folder ({folderSamples.length})
                       </div>
                       {folderSamples.map((sample) => (
@@ -9441,17 +9459,17 @@ result
                               sample.filename
                             );
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer"
+                          className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                           type="button"
                           title={sample.filename}
                         >
                           {sample.name}
                         </button>
                       ))}
-                      <div className="border-b border-gray-700 my-1"></div>
+                      <div className="border-b border-gray-300 dark:border-gray-700 my-1"></div>
                     </>
                   ) : (
-                    <div className="px-4 py-2 text-xs text-gray-500">
+                    <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500">
                       No samples in folder
                     </div>
                   )}
@@ -9463,7 +9481,7 @@ result
                       if (savedSamples && savedSamples.length > 0) {
                         return (
                           <>
-                            <div className="px-4 py-2 text-xs text-gray-500 uppercase font-bold border-b border-gray-700">
+                            <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500 uppercase font-bold border-b border-gray-300 dark:border-gray-700">
                               Shared Samples
                             </div>
                             {savedSamples.map((sample: any) => (
@@ -9473,13 +9491,13 @@ result
                                   e.stopPropagation();
                                   handleLoadSample(sample.name, "samples");
                                 }}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer"
+                                className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                                 type="button"
                               >
                                 {sample.name}
                               </button>
                             ))}
-                            <div className="border-b border-gray-700 my-1"></div>
+                            <div className="border-b border-gray-300 dark:border-gray-700 my-1"></div>
                           </>
                         );
                       }
@@ -9493,7 +9511,7 @@ result
                   {/* 기본 Samples 목록 */}
                   {SAMPLE_MODELS && SAMPLE_MODELS.length > 0 ? (
                     <>
-                      <div className="px-4 py-2 text-xs text-gray-500 uppercase font-bold border-b border-gray-700">
+                      <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500 uppercase font-bold border-b border-gray-300 dark:border-gray-700">
                         Default Samples
                       </div>
                       {SAMPLE_MODELS.map((sample: any) => (
@@ -9503,7 +9521,7 @@ result
                           e.stopPropagation();
                             handleLoadSample(sample.name, "samples");
                         }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 last:rounded-b-md transition-colors cursor-pointer"
+                          className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 last:rounded-b-md transition-colors cursor-pointer"
                         type="button"
                       >
                         {sample.name}
@@ -9511,7 +9529,7 @@ result
                       ))}
                     </>
                   ) : (
-                    <div className="px-4 py-2 text-sm text-gray-400 last:rounded-b-md">
+                    <div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 last:rounded-b-md">
                       No samples available
                     </div>
                   )}
@@ -9532,7 +9550,7 @@ result
                 className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors cursor-pointer ${
                   isMyWorkMenuOpen
                     ? "bg-purple-600 text-white"
-                    : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                    : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200"
                 }`}
                 title="My Work"
                 type="button"
@@ -9542,7 +9560,7 @@ result
               </button>
               {isMyWorkMenuOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-md shadow-xl min-w-[200px]"
+                  className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[200px]"
                   style={{ zIndex: 9999 }}
                 >
                   {/* 파일에서 불러오기 */}
@@ -9595,7 +9613,7 @@ result
                       };
                       input.click();
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-700"
+                    className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-300 dark:border-gray-700"
                     type="button"
                   >
                     <FolderOpenIcon className="w-4 h-4 text-blue-400" />
@@ -9713,7 +9731,7 @@ result
                       );
                       setIsMyWorkMenuOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-700"
+                    className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-300 dark:border-gray-700"
                     type="button"
                   >
                     <PlusIcon className="w-4 h-4 text-blue-400" />
@@ -9750,15 +9768,15 @@ result
                       addLog("SUCCESS", "초기 화면으로 설정되었습니다.");
                       setIsMyWorkMenuOpen(false);
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-700"
+                    className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-300 dark:border-gray-700"
                     type="button"
                   >
                     <StarIcon className="w-4 h-4 text-yellow-400" />
-                    <span className="text-green-400">초기 화면으로 설정</span>
+                    <span className="text-green-600 dark:text-green-400">초기 화면으로 설정</span>
                   </button>
 
                   {/* 구분선 */}
-                  <div className="border-b border-gray-700 my-1"></div>
+                  <div className="border-b border-gray-300 dark:border-gray-700 my-1"></div>
 
                   {/* 저장된 모델 목록 */}
                   {myWorkModels && myWorkModels.length > 0 ? (
@@ -9770,14 +9788,14 @@ result
                           handleLoadSample(saved.name, "mywork");
                           setIsMyWorkMenuOpen(false);
                         }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 last:rounded-b-md transition-colors cursor-pointer"
+                        className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 last:rounded-b-md transition-colors cursor-pointer"
                         type="button"
                       >
                         {saved.name}
                       </button>
                     ))
                   ) : (
-                    <div className="px-4 py-2 text-sm text-gray-400 last:rounded-b-md">
+                    <div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 last:rounded-b-md">
                       저장된 모델이 없습니다
                     </div>
                   )}
@@ -9788,7 +9806,7 @@ result
           <div className="flex items-center gap-1 md:gap-2 ml-auto">
             <button
               onClick={() => setIsCodePanelVisible((v) => !v)}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-gray-600 hover:bg-gray-700 rounded-md font-semibold transition-colors flex-shrink-0"
+              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-md font-semibold transition-colors flex-shrink-0"
               title="View Full Pipeline Code"
             >
               <CodeBracketIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
@@ -9796,7 +9814,7 @@ result
             </button>
             <button
               onClick={() => setIsGoalModalOpen(true)}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-purple-600 hover:bg-purple-700 rounded-md font-semibold transition-colors flex-shrink-0"
+              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-purple-600 dark:bg-purple-600 hover:bg-purple-700 dark:hover:bg-purple-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
               title="Generate pipeline from a goal"
             >
               <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
@@ -9806,7 +9824,7 @@ result
             </button>
             <button
               onClick={() => setIsDataModalOpen(true)}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-indigo-600 hover:bg-indigo-700 rounded-md font-semibold transition-colors flex-shrink-0"
+              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-indigo-600 dark:bg-indigo-600 hover:bg-indigo-700 dark:hover:bg-indigo-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
               title="Generate pipeline from data"
             >
               <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
@@ -9823,7 +9841,7 @@ result
             </button>
             <button
               onClick={handleToggleRightPanel}
-              className="p-1 md:p-1.5 text-gray-300 hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+              className="p-1 md:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
               title="Toggle Properties Panel"
             >
               <CogIcon className="h-4 w-4 md:h-5 md:w-5" />
@@ -9835,7 +9853,7 @@ result
       <div className="flex-grow min-h-0 relative">
         <main
           ref={canvasContainerRef}
-          className="w-full h-full canvas-bg relative overflow-hidden"
+          className={`w-full h-full relative overflow-hidden ${theme === 'light' ? 'canvas-bg-light' : 'canvas-bg'}`}
         >
           <Canvas
             modules={modules}

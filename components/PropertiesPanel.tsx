@@ -45,6 +45,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { DEFAULT_MODULES } from "../constants";
 import * as XLSX from "xlsx";
 import { ExcelInputModal } from "./ExcelInputModal";
+import { useTheme } from "../contexts/ThemeContext";
 
 type TerminalLog = {
   id: number;
@@ -112,14 +113,14 @@ const ExplanationRenderer: React.FC<{ text: string }> = ({ text }) => {
   };
 
   return (
-    <div className="text-gray-300 space-y-2 text-sm">
+    <div className="text-gray-700 dark:text-gray-300 space-y-2 text-sm">
       {text.split("\n").map((line, index) => {
         const trimmedLine = line.trim();
         if (trimmedLine.startsWith("### ")) {
           return (
             <h4
               key={index}
-              className="text-md font-semibold mt-3 mb-1 text-gray-200"
+              className="text-md font-semibold mt-3 mb-1 text-gray-800 dark:text-gray-200"
             >
               {renderLine(trimmedLine.substring(4))}
             </h4>
@@ -129,7 +130,7 @@ const ExplanationRenderer: React.FC<{ text: string }> = ({ text }) => {
           return (
             <h3
               key={index}
-              className="text-lg font-semibold mt-4 mb-2 text-gray-100"
+              className="text-lg font-semibold mt-4 mb-2 text-gray-900 dark:text-gray-100"
             >
               {renderLine(trimmedLine.substring(3))}
             </h3>
@@ -261,9 +262,9 @@ ${optionsContext}
           : "AI로 파라미터 설명 보기"}
       </button>
       {show && (
-        <div className="mt-2 p-3 bg-gray-700 rounded-lg">
+        <div className="mt-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
           {isLoading && (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
               AI 설명을 생성하고 있습니다...
             </p>
           )}
@@ -368,8 +369,8 @@ const PropertyGroup: React.FC<{
   module: CanvasModule;
 }> = ({ title, children, module }) => (
   <div className="mb-4">
-    <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">{title}</h4>
-    <div className="bg-gray-800 p-3 rounded-lg">
+    <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">{title}</h4>
+    <div className="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg">
       {children}
       <AIModuleExplanation module={module} />
     </div>
@@ -384,7 +385,7 @@ const PropertyInput: React.FC<{
   step?: string;
 }> = ({ label, value, onChange, type = "text", step }) => (
   <div className="mb-3 last:mb-0">
-    <label className="block text-sm text-gray-400 mb-1">{label}</label>
+    <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">{label}</label>
     <input
       type={type}
       value={value}
@@ -394,7 +395,7 @@ const PropertyInput: React.FC<{
           type === "number" ? parseFloat(e.target.value) : e.target.value
         )
       }
-      className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
     />
   </div>
 );
@@ -406,11 +407,11 @@ const PropertySelect: React.FC<{
   options: (string | { label: string; value: string })[];
 }> = ({ label, value, onChange, options }) => (
   <div className="mb-3 last:mb-0">
-    <label className="block text-sm text-gray-400 mb-1">{label}</label>
+    <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">{label}</label>
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+      className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
     >
       {options.map((opt) => {
         const optionValue = typeof opt === "string" ? opt : opt.value;
@@ -430,8 +431,8 @@ const PropertyDisplay: React.FC<{ label: string; value: React.ReactNode }> = ({
   value,
 }) => (
   <div className="mb-3 last:mb-0">
-    <label className="block text-sm text-gray-400 mb-1">{label}</label>
-    <div className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm text-gray-300">
+    <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">{label}</label>
+    <div className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-700 dark:text-gray-300">
       {value}
     </div>
   </div>
@@ -685,18 +686,18 @@ const renderParameters = (
 
       return (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Source</label>
+          <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">Source</label>
           <div className="flex gap-2">
             <input
               type="text"
               value={module.parameters.source || ""}
               onChange={(e) => onParamChange("source", e.target.value)}
-              className="flex-grow bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-grow bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="No file selected"
             />
             <button
               onClick={handleBrowseClick}
-              className="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+              className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-md font-semibold text-gray-900 dark:text-white transition-colors"
             >
               Browse...
             </button>
@@ -704,7 +705,7 @@ const renderParameters = (
           {/* 파일 타입 표시 */}
           {module.parameters.fileType === "excel" &&
             module.parameters.sheetName && (
-              <div className="mt-2 text-xs text-gray-500">
+              <div className="mt-2 text-xs text-gray-600 dark:text-gray-500">
                 Excel Sheet: {module.parameters.sheetName}
               </div>
             )}
@@ -715,20 +716,20 @@ const renderParameters = (
                 onOpenExcelModal();
               }
             }}
-            className="mt-2 px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+            className="mt-2 px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-md font-semibold text-gray-900 dark:text-white transition-colors"
           >
             엑셀 데이터 직접 입력
           </button>
           <div className="mt-4">
-            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+            <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Examples
             </h4>
-            <div className="bg-gray-700 p-2 rounded-md space-y-1">
+            <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded-md space-y-1">
               {SAMPLE_DATA.map((sample) => (
                 <div
                   key={sample.name}
                   onDoubleClick={() => onSampleLoad(sample)}
-                  className="px-2 py-1.5 text-sm text-gray-300 rounded-md hover:bg-gray-600 cursor-pointer"
+                  className="px-2 py-1.5 text-sm text-gray-900 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer"
                   title="Double-click to load"
                 >
                   {sample.name}
@@ -779,32 +780,32 @@ const renderParameters = (
 
       return (
         <div>
-          <label className="block text-sm text-gray-400 mb-1">Source</label>
+          <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">Source</label>
           <div className="flex gap-2">
             <input
               type="text"
               value={module.parameters.source}
               onChange={(e) => onParamChange("source", e.target.value)}
-              className="flex-grow bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-grow bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="No file selected"
             />
             <button
               onClick={handleBrowseClick}
-              className="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-500 rounded-md font-semibold text-white transition-colors"
+              className="px-3 py-1.5 text-sm bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-md font-semibold text-gray-900 dark:text-white transition-colors"
             >
               Browse...
             </button>
           </div>
           <div className="mt-4">
-            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+            <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Examples
             </h4>
-            <div className="bg-gray-700 p-2 rounded-md space-y-1">
+            <div className="bg-gray-100 dark:bg-gray-700 p-2 rounded-md space-y-1">
               {SAMPLE_DATA.map((sample) => (
                 <div
                   key={sample.name}
                   onDoubleClick={() => onSampleLoad(sample)}
-                  className="px-2 py-1.5 text-sm text-gray-300 rounded-md hover:bg-gray-600 cursor-pointer"
+                  className="px-2 py-1.5 text-sm text-gray-900 dark:text-gray-300 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer"
                   title="Double-click to load"
                 >
                   {sample.name}
@@ -868,7 +869,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source module to configure columns.
           </p>
         );
@@ -879,23 +880,23 @@ const renderParameters = (
           <div className="flex justify-end gap-2 mb-2">
             <button
               onClick={() => handleSelectAll(true)}
-              className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+              className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
             >
               Select All
             </button>
             <button
               onClick={() => handleSelectAll(false)}
-              className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+              className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
             >
               Deselect All
             </button>
           </div>
           <div className="space-y-2 pr-2">
-            <div className="grid grid-cols-3 gap-2 items-center sticky top-0 bg-gray-800 py-1">
-              <span className="text-xs font-bold text-gray-400 col-span-2">
+            <div className="grid grid-cols-3 gap-2 items-center sticky top-0 bg-gray-100 dark:bg-gray-800 py-1">
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-400 col-span-2">
                 Column Name
               </span>
-              <span className="text-xs font-bold text-gray-400">Data Type</span>
+              <span className="text-xs font-bold text-gray-700 dark:text-gray-400">Data Type</span>
             </div>
             {inputColumns.map((col) => {
               const selection = currentSelections[col.name] || {
@@ -908,7 +909,7 @@ const renderParameters = (
                   className="grid grid-cols-3 gap-2 items-center"
                 >
                   <label
-                    className="flex items-center gap-2 text-sm truncate col-span-2"
+                    className="flex items-center gap-2 text-sm truncate col-span-2 text-gray-900 dark:text-white"
                     title={col.name}
                   >
                     <input
@@ -921,7 +922,7 @@ const renderParameters = (
                           e.target.checked
                         )
                       }
-                      className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="truncate">{col.name}</span>
                   </label>
@@ -930,7 +931,7 @@ const renderParameters = (
                     onChange={(e) =>
                       handleSelectionChange(col.name, "type", e.target.value)
                     }
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     {availableDataTypes.map((type) => (
                       <option key={type} value={type}>
@@ -961,7 +962,7 @@ const renderParameters = (
             ]}
           />
           {method === "impute" && (
-            <div className="mt-3 pt-3 border-t border-gray-700">
+            <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-700">
               <PropertySelect
                 label="Strategy"
                 value={strategy}
@@ -1009,13 +1010,13 @@ const renderParameters = (
 
       if (!sourceData)
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source to 'data_in'.
           </p>
         );
       if (!handler)
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a handler (e.g., Prep Missing) to 'handler_in'.
           </p>
         );
@@ -1054,19 +1055,19 @@ const renderParameters = (
           />
           <div className="mt-4">
             <div className="flex justify-between items-center mb-2">
-              <h5 className="text-xs text-gray-500 uppercase font-bold">
+              <h5 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold">
                 Columns to Transform
               </h5>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAll(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAll(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
@@ -1096,7 +1097,7 @@ const renderParameters = (
                 return (
                   <label
                     key={col.name}
-                    className={`flex items-center gap-2 text-sm truncate ${
+                    className={`flex items-center gap-2 text-sm truncate text-gray-900 dark:text-white ${
                       isDisabled ? "opacity-50 cursor-not-allowed" : ""
                     }`}
                     title={disabledTooltip}
@@ -1106,7 +1107,7 @@ const renderParameters = (
                       checked={!exclude_columns.includes(col.name)}
                       onChange={() => handleColumnToggle(col.name)}
                       disabled={isDisabled}
-                      className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-800"
+                      className="h-4 w-4 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-800"
                     />
                     <span className="truncate">{col.name}</span>
                   </label>
@@ -1139,14 +1140,14 @@ const renderParameters = (
 
       if (!sourceData) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source to see available columns.
           </p>
         );
       }
       if (categoricalColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             No categorical (string) columns found in input data.
           </p>
         );
@@ -1166,7 +1167,7 @@ const renderParameters = (
           />
 
           {method === "one_hot" && (
-            <div className="mt-3 pt-3 border-t border-gray-700">
+            <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-700">
               <PropertySelect
                 label="Drop"
                 value={drop}
@@ -1183,8 +1184,8 @@ const renderParameters = (
           )}
 
           {method === "ordinal" && (
-            <div className="mt-3 pt-3 border-t border-gray-700">
-              <label className="block text-sm text-gray-400 mb-1">
+            <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-700">
+              <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">
                 Ordinal Mapping (JSON)
               </label>
               <textarea
@@ -1193,9 +1194,9 @@ const renderParameters = (
                   onParamChange("ordinal_mapping", e.target.value)
                 }
                 placeholder={'{\n  "column_name": ["low", "medium", "high"]\n}'}
-                className="w-full h-24 p-2 font-mono text-xs bg-gray-700 border border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full h-24 p-2 font-mono text-xs bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-600 dark:text-gray-500 mt-1">
                 Define the order of categories for each column. Unmapped columns
                 will be ordered alphabetically.
               </p>
@@ -1203,24 +1204,24 @@ const renderParameters = (
           )}
 
           <div className="mt-4">
-            <h5 className="text-xs text-gray-500 uppercase font-bold mb-2">
+            <h5 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               COLUMNS TO ENCODE
             </h5>
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-gray-600 dark:text-gray-500 mb-2">
               If none are selected, all string columns will be encoded.
             </p>
             <div className="space-y-2 max-h-48 overflow-y-auto panel-scrollbar pr-2">
               {categoricalColumns.map((col) => (
                 <label
                   key={col.name}
-                  className="flex items-center gap-2 text-sm truncate"
+                  className="flex items-center gap-2 text-sm truncate text-gray-900 dark:text-white"
                   title={col.name}
                 >
                   <input
                     type="checkbox"
                     checked={columns.includes(col.name)}
                     onChange={() => handleColumnToggle(col.name)}
-                    className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="truncate">{col.name}</span>
                 </label>
@@ -1281,23 +1282,23 @@ const renderParameters = (
               <div className="flex justify-end gap-2 mb-2">
                 <button
                   onClick={() => handleSelectAll(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All Numeric
                 </button>
                 <button
                   onClick={() => handleSelectAll(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
               </div>
               <div className="space-y-2 pr-2">
-                <div className="grid grid-cols-5 gap-2 items-center sticky top-0 bg-gray-800 py-1">
-                  <span className="text-xs font-bold text-gray-400 col-span-3">
+                <div className="grid grid-cols-5 gap-2 items-center sticky top-0 bg-gray-100 dark:bg-gray-800 py-1">
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-400 col-span-3">
                     Column Name
                   </span>
-                  <span className="text-xs font-bold text-gray-400 col-span-2">
+                  <span className="text-xs font-bold text-gray-700 dark:text-gray-400 col-span-2">
                     Data Type
                   </span>
                 </div>
@@ -1312,7 +1313,7 @@ const renderParameters = (
                       className="grid grid-cols-5 gap-2 items-center"
                     >
                       <label
-                        className="flex items-center gap-2 text-sm truncate col-span-3"
+                        className="flex items-center gap-2 text-sm truncate col-span-3 text-gray-900 dark:text-white"
                         title={col.name}
                       >
                         <input
@@ -1321,19 +1322,19 @@ const renderParameters = (
                           onChange={(e) =>
                             handleSelectionChange(col.name, e.target.checked)
                           }
-                          className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                          className="h-4 w-4 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-800"
                           disabled={col.type !== "number"}
                         />
                         <span
                           className={`truncate ${
-                            col.type !== "number" ? "text-gray-500" : ""
+                            col.type !== "number" ? "text-gray-500 dark:text-gray-500" : ""
                           }`}
                         >
                           {col.name}
                         </span>
                       </label>
                       <div className="col-span-2">
-                        <span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded-md">
+                        <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-300 px-2 py-1 rounded-md">
                           {col.type}
                         </span>
                       </div>
@@ -1360,7 +1361,7 @@ const renderParameters = (
 
       if (!sourceData) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source module to configure columns.
           </p>
         );
@@ -1371,15 +1372,15 @@ const renderParameters = (
       return (
         <div>
           <div className="flex justify-between items-center mb-2">
-            <h5 className="text-xs text-gray-500 uppercase font-bold">
+            <h5 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold">
               Column Transformations
             </h5>
             <div title={formulaTooltip}>
-              <InformationCircleIcon className="w-5 h-5 text-gray-400 cursor-help" />
+              <InformationCircleIcon className="w-5 h-5 text-gray-600 dark:text-gray-400 cursor-help" />
             </div>
           </div>
           {numericColumns.length === 0 ? (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-600 dark:text-gray-500">
               No numeric columns found in the input data.
             </p>
           ) : (
@@ -1389,7 +1390,7 @@ const renderParameters = (
                   key={col.name}
                   className="grid grid-cols-2 gap-2 items-center"
                 >
-                  <label className="text-sm truncate" title={col.name}>
+                  <label className="text-sm truncate text-gray-900 dark:text-white" title={col.name}>
                     {col.name}
                   </label>
                   <select
@@ -1397,7 +1398,7 @@ const renderParameters = (
                     onChange={(e) =>
                       handleTransformChange(col.name, e.target.value)
                     }
-                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="None">None</option>
                     <option value="Log">Log</option>
@@ -1418,7 +1419,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source to configure resampling.
           </p>
         );
@@ -1449,7 +1450,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0 && !sourceData) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source module to configure parameters.
           </p>
         );
@@ -1586,7 +1587,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source to the 'data_in' port to configure.
           </p>
         );
@@ -1639,7 +1640,7 @@ const renderParameters = (
             <select
               value={label_column || ""}
               onChange={(e) => handleLabelChange(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">공백</option>
               {inputColumns.map((col) => (
@@ -1651,19 +1652,19 @@ const renderParameters = (
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
-              <h5 className="text-xs text-gray-500 uppercase font-bold">
+              <h5 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold">
                 Feature Columns
               </h5>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAllFeatures(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAllFeatures(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
@@ -1699,7 +1700,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source to the 'data_in' port to configure.
           </p>
         );
@@ -1752,7 +1753,7 @@ const renderParameters = (
             <select
               value={label_column || ""}
               onChange={(e) => handleLabelChange(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">공백</option>
               {inputColumns.map((col) => (
@@ -1764,19 +1765,19 @@ const renderParameters = (
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
-              <h5 className="text-xs text-gray-500 uppercase font-bold">
+              <h5 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold">
                 Feature Columns
               </h5>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAllFeatures(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAllFeatures(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
@@ -1820,7 +1821,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source to the 'data_in' port to configure.
           </p>
         );
@@ -1847,7 +1848,7 @@ const renderParameters = (
             <select
               value={label_column || ""}
               onChange={(e) => handleLabelChange(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">공백</option>
               {inputColumns.map((col) => (
@@ -1864,7 +1865,7 @@ const renderParameters = (
             <select
               value={prediction_column || ""}
               onChange={(e) => handlePredictionChange(e.target.value)}
-              className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">공백</option>
               {inputColumns.map((col) => (
@@ -1900,7 +1901,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a data source with numeric columns to configure.
           </p>
         );
@@ -1934,39 +1935,39 @@ const renderParameters = (
           ))}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <h5 className="text-xs text-gray-500 uppercase font-bold">
+              <h5 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold">
                 Feature Columns
               </h5>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAllFeatures(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAllFeatures(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
               </div>
             </div>
-            <p className="text-xs text-gray-500 mb-2">
+            <p className="text-xs text-gray-600 dark:text-gray-500 mb-2">
               If none are selected, all numeric columns will be used.
             </p>
             <div className="space-y-2 pr-2 max-h-40 overflow-y-auto panel-scrollbar">
               {inputColumns.map((col) => (
                 <label
                   key={col}
-                  className="flex items-center gap-2 text-sm truncate"
+                  className="flex items-center gap-2 text-sm truncate text-gray-900 dark:text-white"
                   title={col}
                 >
                   <input
                     type="checkbox"
                     checked={feature_columns.includes(col)}
                     onChange={(e) => handleFeatureChange(col, e.target.checked)}
-                    className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                      className="h-4 w-4 rounded bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="truncate">{col}</span>
                 </label>
@@ -2281,7 +2282,7 @@ const renderParameters = (
 
       if (inputColumns.length === 0) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             Connect a scored data module to configure evaluation.
           </p>
         );
@@ -2862,9 +2863,9 @@ const renderParameters = (
             연도별 분석을 수행하려면 연도 컬럼을 선택하세요. 선택하지 않으면 전체 데이터에 대한 분석만 수행됩니다.
           </p>
           
-          <div className="pt-2 border-t border-gray-700">
+          <div className="pt-2 border-t border-gray-300 dark:border-gray-700">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-gray-300">Thresholds</label>
+              <label className="text-sm font-medium text-gray-900 dark:text-gray-300">Thresholds</label>
               <button
                 onClick={handleAddThreshold}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
@@ -2876,9 +2877,9 @@ const renderParameters = (
               {displayThresholds.map((threshold: number, index: number) => (
                   <div
                     key={index}
-                    className="flex items-center gap-2 p-2 bg-gray-800 rounded-md"
+                    className="flex items-center gap-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-md"
                   >
-                    <span className="text-sm text-gray-400 w-20">
+                    <span className="text-sm text-gray-700 dark:text-gray-400 w-20">
                       Threshold {index + 1}:
                     </span>
                     <input
@@ -2896,7 +2897,7 @@ const renderParameters = (
                         const numericValue = parseFormattedNumber(e.target.value);
                         handleThresholdInputChange(index, formatNumber(numericValue));
                       }}
-                      className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="flex-1 px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="0"
                     />
                     {index > 0 && (
@@ -3068,35 +3069,35 @@ const renderParameters = (
         <>
           <div className="mb-4">
             <div className="flex justify-between items-center mb-2">
-              <label className="text-sm font-semibold text-gray-300">Distribution Types</label>
+              <label className="text-sm font-semibold text-gray-900 dark:text-gray-300">Distribution Types</label>
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAllDistributions(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAllDistributions(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
               </div>
             </div>
-            <div className="space-y-2 border border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
+            <div className="space-y-2 border border-gray-300 dark:border-gray-600 rounded-md p-2 max-h-40 overflow-y-auto panel-scrollbar">
               {allDistributionTypes.map((distType) => (
                 <label
                   key={distType}
-                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-700 p-1 rounded"
+                  className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded"
                 >
                   <input
                     type="checkbox"
                     checked={selectedDistributions.includes(distType)}
                     onChange={() => handleDistributionToggle(distType)}
-                    className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-blue-600 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
                   />
-                  <span className="text-gray-200">{distType}</span>
+                  <span className="text-gray-900 dark:text-gray-200">{distType}</span>
                 </label>
               ))}
             </div>
@@ -3114,13 +3115,13 @@ const renderParameters = (
                   options={amountColumns}
                 />
                 <div>
-                  <label className="block text-sm font-semibold text-gray-300 mb-2">
+                  <label className="block text-sm font-semibold text-gray-900 dark:text-gray-300 mb-2">
                     Group By Column (연도별 그룹화)
                   </label>
                   <select
                     value={module.parameters.group_by_column || "none"}
                     onChange={(e) => onParamChange("group_by_column", e.target.value === "none" ? undefined : e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="none">None (Use raw data)</option>
                     {inputColumns
@@ -3131,13 +3132,13 @@ const renderParameters = (
                         </option>
                       ))}
                   </select>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     Select a column to group by (e.g., year). Leave as "None" to use raw data without grouping.
                   </p>
                 </div>
               </>
             ) : (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-600 dark:text-gray-500">
                 Connect a data source module to configure columns.
               </p>
             )}
@@ -3192,21 +3193,21 @@ const renderParameters = (
         <>
           {availableDistributions.length > 0 ? (
             <div className="mb-4">
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-gray-900 dark:text-gray-300 mb-2">
                 Selected Distribution
               </label>
-              <div className="bg-gray-800 rounded-lg p-3 border border-gray-600">
-                <p className="text-sm text-gray-200 font-semibold">
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 border border-gray-300 dark:border-gray-600">
+                <p className="text-sm text-gray-900 dark:text-gray-200 font-semibold">
                   {selectedDistribution || "Not selected"}
                 </p>
                 {selectedDistribution && (
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                     This distribution will be used for simulation
                   </p>
                 )}
               </div>
               {availableDistributions.length > 1 && (
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
                   Available: {availableDistributions.join(", ")}
                 </p>
               )}
@@ -3222,7 +3223,7 @@ const renderParameters = (
           {/* Distribution Parameters */}
           {selectedDistribution && Object.keys(defaultParameters).length > 0 && (
             <div className="mb-4">
-              <label className="block text-sm font-semibold text-gray-300 mb-2">
+              <label className="block text-sm font-semibold text-gray-900 dark:text-gray-300 mb-2">
                 Distribution Parameters
               </label>
               <div className="space-y-2">
@@ -3232,9 +3233,9 @@ const renderParameters = (
                   const displayValue = useCustom ? paramConfig.value : defaultValue;
                   
                   return (
-                    <div key={paramName} className="bg-gray-800 rounded-lg p-3 border border-gray-600">
+                    <div key={paramName} className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 border border-gray-300 dark:border-gray-600">
                       <div className="flex items-center justify-between mb-2">
-                        <label className="text-sm text-gray-300 font-medium">{paramName}</label>
+                        <label className="text-sm text-gray-900 dark:text-gray-300 font-medium">{paramName}</label>
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
@@ -3247,9 +3248,9 @@ const renderParameters = (
                               };
                               onParamChange("custom_parameters", newCustomParams);
                             }}
-                            className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
+                            className="w-4 h-4 text-blue-600 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
                           />
-                          <span className="text-xs text-gray-400">Use Custom</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-400">Use Custom</span>
                         </label>
                       </div>
                       {useCustom ? (
@@ -3268,10 +3269,10 @@ const renderParameters = (
                             }
                           }}
                           step="any"
-                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       ) : (
-                        <div className="px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-300 text-sm">
+                        <div className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-300 text-sm">
                           Default: {typeof defaultValue === 'number' ? defaultValue.toFixed(6) : defaultValue}
                         </div>
                       )}
@@ -3417,13 +3418,13 @@ const renderParameters = (
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAllFrequencyTypes(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAllFrequencyTypes(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
@@ -3512,13 +3513,13 @@ const renderParameters = (
               <div className="flex gap-2">
                 <button
                   onClick={() => handleSelectAllSeverityTypes(true)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Select All
                 </button>
                 <button
                   onClick={() => handleSelectAllSeverityTypes(false)}
-                  className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded-md font-semibold"
+                  className="px-2 py-1 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-white"
                 >
                   Deselect All
                 </button>
@@ -3924,7 +3925,7 @@ const renderParameters = (
       const hasParams = Object.keys(module.parameters).length > 0;
       if (!hasParams) {
         return (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-600 dark:text-gray-500">
             This module has no configurable parameters.
           </p>
         );
@@ -4349,6 +4350,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   onViewDetails,
   folderHandle,
 }) => {
+  const { theme } = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [activePreviewTab, setActivePreviewTab] = useState<"Input" | "Output">(
@@ -4601,7 +4603,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         const targetColumn = module.parameters.target_column;
         if (!targetColumn)
           return (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-600 dark:text-gray-500">
               Select a target column to see value counts.
             </p>
           );
@@ -4614,7 +4616,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
         return (
           <div>
-            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+            <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Value Counts for '{targetColumn}'
             </h4>
             {Object.keys(counts).length > 0 ? (
@@ -4622,7 +4624,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <StatRow key={key} label={key} value={value} />
               ))
             ) : (
-              <p className="text-sm text-gray-500">No data to count.</p>
+              <p className="text-sm text-gray-600 dark:text-gray-500">No data to count.</p>
             )}
           </div>
         );
@@ -4636,13 +4638,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         );
         return (
           <div>
-            <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+            <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Categorical Columns Found
             </h4>
             {categoricalColumns.length > 0 ? (
               <ColumnInfoTable columns={categoricalColumns} />
             ) : (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-600 dark:text-gray-500">
                 No string columns to encode.
               </p>
             )}
@@ -4812,7 +4814,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           const targetColumn = module.parameters.target_column;
           if (!targetColumn)
             return (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-600 dark:text-gray-500">
                 Select a target column to see value counts.
               </p>
             );
@@ -4824,7 +4826,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           });
           return (
             <div>
-              <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+              <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
                 Value Counts for '{targetColumn}'
               </h4>
               {Object.keys(counts).length > 0 ? (
@@ -4832,7 +4834,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   <StatRow key={key} label={key} value={value} />
                 ))
               ) : (
-                <p className="text-sm text-gray-500">No data to count.</p>
+                <p className="text-sm text-gray-600 dark:text-gray-500">No data to count.</p>
               )}
             </div>
           );
@@ -4897,7 +4899,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               <div className="space-y-4">
                 {formulaParts.length > 0 && (
                   <div>
-                    <h4 className="text-xs text-gray-500 uppercase font-bold mb-2">
+                    <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
                       Model Equation
                     </h4>
                     <div className="bg-gray-900/50 p-3 rounded-lg font-mono text-xs text-green-700 whitespace-normal break-words">
@@ -4955,7 +4957,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
   return (
     <div
-      className="bg-gray-800 text-white h-full flex flex-col"
+      className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white h-full flex flex-col"
     >
       <input
         type="file"
@@ -4965,32 +4967,32 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         className="hidden"
       />
       <div className="flex-grow flex flex-col min-h-0">
-        <div className="p-3 border-b border-gray-700 flex-shrink-0">
+        <div className="p-3 border-b border-gray-300 dark:border-gray-700 flex-shrink-0">
           <input
             type="text"
             value={localModuleName}
             onChange={(e) => setLocalModuleName(e.target.value)}
             onBlur={handleNameInputBlur}
             onKeyDown={handleNameInputKeyDown}
-            className="w-full bg-transparent text-lg font-bold focus:outline-none focus:bg-gray-700 rounded-md px-2 py-1 -ml-2"
+            className="w-full bg-transparent text-lg font-bold focus:outline-none focus:bg-gray-100 dark:focus:bg-gray-700 rounded-md px-2 py-1 -ml-2 text-gray-900 dark:text-white"
             placeholder="Module Name"
             disabled={!module}
           />
-          <p className="text-xs text-gray-500 mt-1">
+          <p className="text-xs text-gray-600 dark:text-gray-500 mt-1">
             {module ? module.type : "No module selected"}
           </p>
         </div>
 
         {module && (
-          <div className="flex-shrink-0 border-b border-gray-700">
+          <div className="flex-shrink-0 border-b border-gray-300 dark:border-gray-700">
             <div className="flex">
               <button
                 onClick={() => setActiveTab("properties")}
                 disabled={!module}
                 className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "properties"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50"
                 } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Properties
@@ -5000,8 +5002,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 disabled={!module}
                 className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "preview"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50"
                 } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 {module?.type === ModuleType.DefineXolContract ? "Reinst Ratio" : "Preview"}
@@ -5011,8 +5013,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 disabled={!module}
                 className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "code"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50"
                 } ${!module ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 Code
@@ -5021,8 +5023,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 onClick={() => setActiveTab("terminal")}
                 className={`flex-1 flex items-center justify-center p-2 text-xs font-semibold ${
                   activeTab === "terminal"
-                    ? "bg-gray-700 text-white"
-                    : "text-gray-400 hover:bg-gray-700/50"
+                    ? "bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700/50"
                 }`}
               >
                 Terminal
@@ -5034,7 +5036,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
         <div className="flex-grow overflow-y-auto panel-scrollbar p-3">
           {!module ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-gray-500">
+              <p className="text-gray-600 dark:text-gray-500">
                 Select a module to see its properties.
               </p>
             </div>
@@ -5065,13 +5067,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     />
                   ) : (
                     <>
-                      <div className="flex mb-3 rounded-md bg-gray-700 p-1">
+                      <div className="flex mb-3 rounded-md bg-gray-200 dark:bg-gray-700 p-1">
                         <button
                           onClick={() => setActivePreviewTab("Input")}
                           className={`flex-1 text-center text-sm py-1 rounded-md transition-colors ${
                             activePreviewTab === "Input"
-                              ? "bg-gray-600 font-semibold"
-                              : "hover:bg-gray-600/50"
+                              ? "bg-white dark:bg-gray-600 font-semibold text-gray-900 dark:text-white"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600/50"
                           }`}
                         >
                           Input
@@ -5080,14 +5082,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                           onClick={() => setActivePreviewTab("Output")}
                           className={`flex-1 text-center text-sm py-1 rounded-md transition-colors ${
                             activePreviewTab === "Output"
-                              ? "bg-gray-600 font-semibold"
-                              : "hover:bg-gray-600/50"
+                              ? "bg-white dark:bg-gray-600 font-semibold text-gray-900 dark:text-white"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600/50"
                           }`}
                         >
                           Output
                         </button>
                       </div>
-                      <div className="bg-gray-900/50 p-3 rounded-lg">
+                      <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg">
                         {activePreviewTab === "Input"
                           ? renderInputPreview()
                           : renderOutputPreview()}
@@ -5098,19 +5100,19 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               )}
               {activeTab === "code" && (
                 <div>
-                  <div className="relative bg-gray-900 rounded-lg">
+                  <div className="relative bg-gray-50 dark:bg-gray-900 rounded-lg">
                     <button
                       onClick={handleCopyCode}
-                      className="absolute top-2 right-2 p-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-gray-300 transition-colors"
+                      className="absolute top-2 right-2 p-1.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md text-gray-700 dark:text-gray-300 transition-colors"
                       title="Copy to clipboard"
                     >
                       {isCopied ? (
-                        <CheckIcon className="w-4 h-4 text-green-400" />
+                        <CheckIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
                       ) : (
                         <ClipboardIcon className="w-4 h-4" />
                       )}
                     </button>
-                    <pre className="p-4 text-xs text-gray-300 overflow-x-auto">
+                    <pre className="p-4 text-xs text-gray-900 dark:text-gray-300 overflow-x-auto">
                       <code>{codeSnippet}</code>
                     </pre>
                   </div>
@@ -5120,7 +5122,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 <div className="flex flex-col h-full">
                   <div
                     ref={logContainerRef}
-                    className="flex-grow overflow-y-auto bg-gray-900 text-xs font-mono p-2 space-y-1"
+                    className="flex-grow overflow-y-auto bg-gray-100 dark:bg-gray-900 text-xs font-mono p-2 space-y-1"
                     onContextMenu={(e) => {
                       // 텍스트가 선택되어 있으면 컨텍스트 메뉴에서 복사 가능하도록
                       const selection = window.getSelection();
@@ -5135,26 +5137,26 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     {logs.map((log) => (
                       <div
                         key={log.id}
-                        className="flex group hover:bg-gray-800/50 rounded px-1 py-0.5"
+                        className="flex group hover:bg-gray-200/50 dark:hover:bg-gray-800/50 rounded px-1 py-0.5"
                       >
-                        <span className="text-gray-500 mr-2 flex-shrink-0 select-none">
+                        <span className="text-gray-600 dark:text-gray-500 mr-2 flex-shrink-0 select-none">
                           {log.timestamp}
                         </span>
                         <span
                           className={`mr-2 font-bold flex-shrink-0 select-none ${
                             log.level === "INFO"
-                              ? "text-blue-400"
+                              ? "text-blue-600 dark:text-blue-400"
                               : log.level === "WARN"
-                              ? "text-yellow-400"
+                              ? "text-yellow-600 dark:text-yellow-400"
                               : log.level === "ERROR"
-                              ? "text-red-400"
-                              : "text-green-400"
+                              ? "text-red-600 dark:text-red-400"
+                              : "text-green-600 dark:text-green-400"
                           }`}
                         >
                           {log.level}:
                         </span>
                         <span
-                          className="flex-1 whitespace-pre-wrap break-words cursor-text select-text"
+                          className="flex-1 whitespace-pre-wrap break-words cursor-text select-text text-gray-900 dark:text-gray-200"
                           onDoubleClick={(e) => {
                             e.preventDefault();
                             const text = log.message;
@@ -5188,15 +5190,15 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                           title="전체 로그 복사"
                         >
                           {isCopied ? (
-                            <CheckIcon className="w-4 h-4 text-green-400" />
+                            <CheckIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
                           ) : (
-                            <ClipboardIcon className="w-4 h-4 text-gray-400 hover:text-gray-300" />
+                            <ClipboardIcon className="w-4 h-4 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300" />
                           )}
                         </button>
                       </div>
                     ))}
                     {logs.length === 0 && (
-                      <div className="text-gray-500 text-center py-4">
+                      <div className="text-gray-600 dark:text-gray-500 text-center py-4">
                         로그가 없습니다
                       </div>
                     )}

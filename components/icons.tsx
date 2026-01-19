@@ -43,6 +43,8 @@ import {
   ChartPieIcon,
   FingerPrintIcon,
   ArrowDownTrayIcon,
+  SunIcon,
+  MoonIcon,
 } from "@heroicons/react/24/outline";
 
 // Solid icons (if needed)
@@ -218,6 +220,8 @@ export {
   FingerPrintIcon,
   CheckCircleIcon,
   ArrowDownTrayIcon,
+  SunIcon,
+  MoonIcon,
   // Aliased icons
   BarChartIcon,
   PriceTagIcon,
