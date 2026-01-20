@@ -1600,7 +1600,10 @@ ${header}
             { name: "frequency_in", type: "distribution" },
             { name: "severity_in", type: "distribution" },
           ],
-          outputs: [{ name: "model_out", type: "evaluation" }],
+          outputs: [
+            { name: "output_1", type: "evaluation" }, // 연도별 집계(DFA 사용)
+            { name: "output_2", type: "data" }, // 사고별 집계(XoL 사용)
+          ],
         },
         {
           id: `CombineLossModel-${Date.now() + 9}`,
@@ -1754,7 +1757,7 @@ ${header}
           id: `conn-${Date.now()}-12`,
           from: {
             moduleId: dfaModules[10].id,
-            portName: "model_out",
+            portName: "output_1",
           },
           to: {
             moduleId: dfaModules[11].id,
@@ -3915,7 +3918,72 @@ ${header}
 
           // SimulateFreqServOutput의 output_1 (DFA 형식)을 처리
           if (!freqServInput || freqServInput.type !== "SimulateAggDistOutput") {
-            throw new Error("Frequency-Severity simulation input not available. Please connect Simulate Freq-Sev Table module's 'output_1' port to the 'freq_serv_in' port.");
+            // 연결 상태 확인을 위한 디버깅 정보 수집
+            const freqServConnection = connections.find(
+              (c) => c.to.moduleId === module.id && c.to.portName === "freq_serv_in"
+            );
+            
+            if (!freqServConnection) {
+              throw new Error(
+                "Frequency-Severity simulation input not connected. " +
+                "Please connect 'Simulate Freq-Sev Table' module's 'output_1' port (evaluation type) to the 'freq_serv_in' port of 'Combine Loss Model' module."
+              );
+            }
+            
+            const sourceModule = currentModules.find(
+              (m) => m.id === freqServConnection.from.moduleId
+            );
+            
+            if (!sourceModule) {
+              throw new Error(
+                "Source module not found. Please check the connection from 'Simulate Freq-Sev Table' to 'Combine Loss Model'."
+              );
+            }
+            
+            if (sourceModule.type !== ModuleType.SimulateFreqServ) {
+              throw new Error(
+                `Invalid source module type: ${sourceModule.type}. ` +
+                "Please connect 'Simulate Freq-Sev Table' module's 'output_1' port to the 'freq_serv_in' port."
+              );
+            }
+            
+            if (freqServConnection.from.portName !== "output_1") {
+              // model_out은 이전 버전의 포트 이름이므로 특별히 처리
+              if (freqServConnection.from.portName === "model_out") {
+                throw new Error(
+                  "Invalid port connection. The 'model_out' port is from an older version. " +
+                  "Please disconnect and reconnect using 'Simulate Freq-Sev Table' module's 'output_1' port (evaluation type) to the 'freq_serv_in' port of 'Combine Loss Model' module."
+                );
+              } else if (freqServConnection.from.portName === "output_2") {
+                throw new Error(
+                  "Invalid port connection. Connected port: 'output_2' (data type). " +
+                  "Please connect 'Simulate Freq-Sev Table' module's 'output_1' port (evaluation type, not 'output_2') to the 'freq_serv_in' port."
+                );
+              } else {
+                throw new Error(
+                  `Invalid port connection. Connected port: '${freqServConnection.from.portName}'. ` +
+                  "Please connect 'Simulate Freq-Sev Table' module's 'output_1' port (evaluation type) to the 'freq_serv_in' port."
+                );
+              }
+            }
+            
+            if (!sourceModule.outputData || (sourceModule.outputData as any).type !== "SimulateFreqServOutput") {
+              throw new Error(
+                "Simulate Freq-Sev Table module has not been executed yet or has no output data. " +
+                "Please run 'Simulate Freq-Sev Table' module first."
+              );
+            }
+            
+            const freqServOutput = sourceModule.outputData as any;
+            if (!freqServOutput.dfaOutput) {
+              throw new Error(
+                "Simulate Freq-Sev Table module's DFA output is not available. " +
+                "Please ensure the module has been executed successfully and has DFA format output."
+              );
+            }
+            
+            // dfaOutput이 있으면 직접 사용
+            freqServInput = freqServOutput.dfaOutput;
           }
 
           // 각 모듈의 시뮬레이션 결과를 히스토그램에서 재구성
