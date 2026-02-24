@@ -116,9 +116,15 @@ import { AIPipelineFromDataModal } from "./components/AIPipelineFromDataModal";
 import { AIPlanDisplayModal } from "./components/AIPlanDisplayModal";
 import { PipelineCodePanel } from "./components/PipelineCodePanel";
 import { ErrorModal } from "./components/ErrorModal";
+import SamplesModal from "./components/SamplesModal";
 import { GoogleGenAI, Type } from "@google/genai";
 import { savePipeline, loadPipeline } from "./utils/fileOperations";
 import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
+import {
+  isSupabaseConfigured,
+  fetchAutoflowSamplesList,
+  fetchAutoflowSampleById,
+} from "./utils/supabase-samples";
 
 type TerminalLog = {
   id: number;
@@ -219,7 +225,17 @@ const App: React.FC = () => {
   const [isSampleMenuOpen, setIsSampleMenuOpen] = useState(false);
   const sampleMenuRef = useRef<HTMLDivElement>(null);
   const [folderSamples, setFolderSamples] = useState<
-    Array<{ filename: string; name: string; data: any }>
+    Array<{
+      id?: number | string;
+      modelId?: string;
+      filename: string;
+      name: string;
+      data: any;
+      inputData?: string;
+      description?: string;
+      category?: string;
+      developerEmail?: string;
+    }>
   >([]);
   const [isLoadingSamples, setIsLoadingSamples] = useState(false);
   const [isMyWorkMenuOpen, setIsMyWorkMenuOpen] = useState(false);
@@ -1337,7 +1353,8 @@ ${header}
     async (
       sampleName: string,
       source: "samples" | "mywork" | "folder" = "samples",
-      filename?: string
+      filename?: string,
+      sampleId?: string
     ) => {
       console.log(
         "handleLoadSample called with:",
@@ -1345,13 +1362,21 @@ ${header}
         "from:",
         source,
         "filename:",
-        filename
+        filename,
+        "sampleId:",
+        sampleId
       );
       try {
         let sampleModel: any = null;
 
-        if (source === "folder" && filename) {
-          // Samples 폴더에서 파일 로드 (공통 유틸리티 사용)
+        if (source === "folder" && sampleId && isSupabaseConfigured()) {
+          const supabaseSample = await fetchAutoflowSampleById(sampleId);
+          if (supabaseSample) sampleModel = supabaseSample.file_content;
+          if (!sampleModel) {
+            addLog("ERROR", "샘플을 불러올 수 없습니다. Supabase 설정을 확인하세요.");
+            return;
+          }
+        } else if (source === "folder" && filename) {
           try {
             sampleModel = await loadSampleFromFolder(
               filename,
@@ -1478,21 +1503,46 @@ ${header}
     [resetModules, addLog, handleFitToView]
   );
 
-  // Samples 폴더의 파일 목록 가져오기
+  // Samples 목록: Supabase(우선, app_section=DFA) → 서버/samples-list.json 폴백
   const loadFolderSamplesLocal = useCallback(async () => {
     setIsLoadingSamples(true);
     try {
-      const samples = await loadFolderSamples("http://localhost:3002/api/samples/list");
-      
-      if (Array.isArray(samples) && samples.length > 0) {
-        console.log(
-          `Loaded ${samples.length} samples from server:`,
-          samples.map((s: any) => s.name || s.filename)
-        );
-        setFolderSamples(samples);
-      } else {
-        console.log("No samples found or empty array");
-        setFolderSamples([]);
+      if (isSupabaseConfigured()) {
+        const list = await fetchAutoflowSamplesList();
+        if (list.length > 0) {
+          console.log(`Loaded ${list.length} samples from Supabase (DFA)`);
+          setFolderSamples(
+            list.map((s) => ({
+              id: s.id,
+              modelId: s.model_id,
+              filename: s.model_name,
+              name: s.model_name,
+              inputData: s.input_data_name ?? undefined,
+              description: s.description ?? undefined,
+              category: s.category ?? "기타",
+              developerEmail: s.developer_email ?? undefined,
+              data: null,
+            }))
+          );
+          return;
+        }
+      }
+
+      try {
+        const samples = await loadFolderSamples("http://localhost:3002/api/samples/list");
+        if (Array.isArray(samples) && samples.length > 0) {
+          console.log(`Loaded ${samples.length} samples from server`);
+          setFolderSamples(samples);
+        } else throw new Error("No samples");
+      } catch {
+        const response = await fetch("/samples-list.json");
+        if (response.ok) {
+          const samples = await response.json();
+          if (Array.isArray(samples) && samples.length > 0) {
+            console.log(`Loaded ${samples.length} samples from samples-list.json`);
+            setFolderSamples(samples);
+          } else setFolderSamples([]);
+        } else setFolderSamples([]);
       }
     } catch (error: any) {
       console.error("Error loading folder samples:", error);
@@ -9585,114 +9635,7 @@ result
                 <SparklesIcon className="h-4 w-4" />
                 <span>Samples</span>
               </button>
-              {isSampleMenuOpen && (
-                <div
-                  className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[200px] max-h-[600px] overflow-y-auto"
-                  style={{ zIndex: 9999 }}
-                >
-                  {/* Samples 폴더의 파일 목록 */}
-                  {isLoadingSamples ? (
-                    <div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">
-                      Loading samples...
-                    </div>
-                  ) : folderSamples.length > 0 ? (
-                    <>
-                      <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500 uppercase font-bold border-b border-gray-300 dark:border-gray-700">
-                        Samples Folder ({folderSamples.length})
-                      </div>
-                      {folderSamples.map((sample) => (
-                        <button
-                          key={sample.filename}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            console.log(
-                              "Loading sample:",
-                              sample.name,
-                              "from file:",
-                              sample.filename
-                            );
-                            handleLoadSample(
-                              sample.name,
-                              "folder",
-                              sample.filename
-                            );
-                          }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                          type="button"
-                          title={sample.filename}
-                        >
-                          {sample.name}
-                        </button>
-                      ))}
-                      <div className="border-b border-gray-300 dark:border-gray-700 my-1"></div>
-                    </>
-                  ) : (
-                    <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500">
-                      No samples in folder
-                    </div>
-                  )}
-
-                  {/* 공유 Samples 목록 */}
-                  {(() => {
-                    try {
-                      const savedSamples = getSavedSamples();
-                      if (savedSamples && savedSamples.length > 0) {
-                        return (
-                          <>
-                            <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500 uppercase font-bold border-b border-gray-300 dark:border-gray-700">
-                              Shared Samples
-                            </div>
-                            {savedSamples.map((sample: any) => (
-                              <button
-                                key={sample.name}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleLoadSample(sample.name, "samples");
-                                }}
-                                className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
-                                type="button"
-                              >
-                                {sample.name}
-                              </button>
-                            ))}
-                            <div className="border-b border-gray-300 dark:border-gray-700 my-1"></div>
-                          </>
-                        );
-                      }
-                      return null;
-                    } catch (error) {
-                      console.error("Error rendering saved samples:", error);
-                      return null;
-                    }
-                  })()}
-
-                  {/* 기본 Samples 목록 */}
-                  {SAMPLE_MODELS && SAMPLE_MODELS.length > 0 ? (
-                    <>
-                      <div className="px-4 py-2 text-xs text-gray-600 dark:text-gray-500 uppercase font-bold border-b border-gray-300 dark:border-gray-700">
-                        Default Samples
-                      </div>
-                      {SAMPLE_MODELS.map((sample: any) => (
-                      <button
-                        key={sample.name}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                            handleLoadSample(sample.name, "samples");
-                        }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 last:rounded-b-md transition-colors cursor-pointer"
-                        type="button"
-                      >
-                        {sample.name}
-                      </button>
-                      ))}
-                    </>
-                  ) : (
-                    <div className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 last:rounded-b-md">
-                      No samples available
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Samples는 카드 형태 모달로 표시 (SamplesModal) */}
             </div>
             {/* My Work 버튼 */}
             <div
@@ -10489,6 +10432,16 @@ result
       <ErrorModal
         error={errorModal}
         onClose={() => setErrorModal(null)}
+      />
+      <SamplesModal
+        isOpen={isSampleMenuOpen}
+        onClose={() => setIsSampleMenuOpen(false)}
+        samples={folderSamples}
+        onLoadSample={(sampleName, filename, sampleId) =>
+          handleLoadSample(sampleName, "folder", filename, sampleId)
+        }
+        onRefresh={loadFolderSamplesLocal}
+        isLoading={isLoadingSamples}
       />
       {viewingSplitFreqServ && (
         <ErrorBoundary>

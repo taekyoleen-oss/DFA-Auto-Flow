@@ -9,11 +9,14 @@
     "preview": "vite preview",
     "server": "node server/split-data-server.js",
     "samples-server": "node server/samples-server.js",
-    "dev:full": "concurrently \"pnpm run server\" \"pnpm run samples-server\" \"pnpm run dev\""
+    "dev:full": "concurrently \"pnpm run server\" \"pnpm run samples-server\" \"pnpm run dev\"",
+    "seed:dfa-model": "node scripts/seed-dfa-model-mla-to-supabase.mjs",
+    "seed:xol": "node scripts/seed-xol-mla-to-supabase.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.21.0",
     "@heroicons/react": "^2.2.0",
+    "@supabase/supabase-js": "^2.97.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
     "ml-pca": "^4.1.1",
@@ -25,6 +28,7 @@
     "@types/node": "^22.14.0",
     "@types/xlsx": "^0.0.36",
     "@vitejs/plugin-react": "^5.0.0",
+    "baseline-browser-mapping": "^2.10.0",
     "concurrently": "^9.1.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

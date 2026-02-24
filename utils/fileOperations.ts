@@ -21,27 +21,30 @@ export interface PipelineState {
 }
 
 /**
- * Save pipeline state to a file
+ * Save pipeline state to a file — 항상 로컬 다운로드로 저장 (브라우저 다운로드 폴더)
  */
 export async function savePipeline(
   state: PipelineState,
   options: SavePipelineOptions
 ): Promise<void> {
   try {
-    const jsonContent = JSON.stringify(state, null, 2);
-    const blob = new Blob([jsonContent], { type: "application/json" });
+    const fileName =
+      (state.projectName && state.projectName.trim()
+        ? state.projectName.trim()
+        : "pipeline") + options.extension;
+    const blob = new Blob([JSON.stringify(state, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${state.projectName || "pipeline"}${options.extension}`;
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
     if (options.onSuccess) {
-      options.onSuccess(link.download);
+      options.onSuccess(fileName);
     }
   } catch (error: any) {
     if (options.onError) {

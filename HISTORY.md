@@ -1,5 +1,37 @@
 # Change History
 
+## 2026-02-24 (현재 작업)
+
+### feat(samples): Samples 데이터 Supabase 이관 (대분류 DFA)
+
+**Description:**
+- Life Matrix Flow와 동일한 방식으로 Samples를 Supabase로 이관
+- 대분류(app_section): **DFA**
+- Supabase 우선 로드, 없으면 서버 API → samples-list.json 폴백
+- 단건 로드: sampleId(string) 시 Supabase에서 file_content 조회
+
+**Files Affected:**
+- `lib/supabase.ts` - Supabase 클라이언트 (신규)
+- `utils/supabase-samples.ts` - Supabase Samples API, app_section=DFA (신규)
+- `supabase/README.md` - 시드 안내 (신규)
+- `scripts/seed-dfa-samples-to-supabase.mjs` - public/samples-list.json → Supabase 시드 (신규)
+- `App.tsx` - loadFolderSamplesLocal: Supabase 우선, handleLoadSample: sampleId(string) 시 Supabase 단건 조회, 폴더 샘플 클릭 시 id 전달
+- `package.json` - @supabase/supabase-js 추가
+
+**Reason:**
+- 사용자 요청: Samples를 Supabase로 이관, Life Matrix Flow와 동일한 방법 적용, 대분류 DFA
+
+**Commit Hash:** (커밋 후 기록)
+
+**Recovery Command:**
+```bash
+git stash push -u -m "백업"
+git reset --hard <커밋해시>
+# Or direct: git reset --hard <커밋해시>
+```
+
+---
+
 ## 2025-01-17 01:00:00
 
 ### feat(modules): Add AnalysisThreshold module and improve ThresholdAnalysis View Details with candidate threshold selection
