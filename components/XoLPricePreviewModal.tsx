@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, XoLPriceOutput } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
 import { getGeminiClient } from "../utils/aiClient";
@@ -74,6 +75,7 @@ You are a reinsurance expert writing a brief pricing summary for a client. Use K
                     </button>
                 </header>
                 <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
                     <div className="flex justify-end mb-4">
                         <button
                             onClick={handleInterpret}

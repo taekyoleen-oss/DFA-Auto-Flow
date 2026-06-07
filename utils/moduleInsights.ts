@@ -252,6 +252,66 @@ export function getModuleInsight(module: CanvasModule | null | undefined): Modul
             '검증 데이터 기준 성능 지표입니다. 분류는 정확도/정밀도/재현율·혼동행렬, 회귀는 오차 지표를 함께 보세요.',
           nextSteps: '성능이 부족하면 피처·하이퍼파라미터·임계값을 조정해 재학습하세요.',
         };
+      case 'SplitDataOutput': {
+        const tr = od.trainData?.totalRowCount ?? od.trainData?.rows?.length;
+        const te = od.testData?.totalRowCount ?? od.testData?.rows?.length;
+        return {
+          title: '학습/검증 데이터 분리',
+          metrics: [
+            { label: 'Train', value: tr != null ? `${num(tr)} 행` : '-' },
+            { label: 'Test', value: te != null ? `${num(te)} 행` : '-' },
+          ],
+          interpretation:
+            '모델 학습용(train)과 검증용(test)으로 데이터를 나눕니다. 검증셋으로 평가해야 과적합 여부를 알 수 있으며, 분리 비율·층화(stratify)·시드가 재현성에 영향을 줍니다.',
+          nextSteps: 'Train 데이터로 TrainModel 학습 후, Test 데이터로 EvaluateModel 검증을 진행하세요.',
+        };
+      }
+      case 'StatsModelsResultOutput':
+        return {
+          title: '통계 모델 적합 결과 (statsmodels)',
+          metrics: [],
+          interpretation:
+            '회귀계수·표준오차·p값·적합도(R²/유사도)를 담은 결과입니다. p값이 작은 변수는 통계적으로 유의하며, 계수 부호·크기로 영향 방향과 강도를 해석합니다.',
+          nextSteps: '유의하지 않은 변수 제거·변환을 검토하고, PredictModel로 예측에 활용하세요.',
+        };
+      case 'EvaluateStatOutput':
+        return {
+          title: '통계 평가',
+          metrics: [],
+          interpretation:
+            '적합 모델의 통계적 성능·진단 지표입니다. 잔차·적합도·정보기준(AIC/BIC)을 함께 보면 모델 타당성을 판단할 수 있습니다.',
+          nextSteps: '지표가 미흡하면 변수·분포 가정을 재검토하세요.',
+        };
+      case 'DiversionCheckerOutput':
+        return {
+          title: '데이터 정합성 점검 (Diversion)',
+          metrics: [],
+          interpretation:
+            '데이터 흐름의 이상·전환(diversion)을 점검한 결과입니다. 예상과 다른 분기·누락·왜곡을 조기에 발견해 후속 분석의 신뢰성을 확보합니다.',
+          nextSteps: '경고 항목을 해소한 뒤 파이프라인을 이어가세요.',
+        };
+      case 'XoLPriceOutput':
+      case 'FinalXolPriceOutput':
+      case 'XolPricingOutput': {
+        const premium = od.premium ?? od.finalPrice ?? od.price ?? od.expectedCededLoss;
+        return {
+          title: t === 'FinalXolPriceOutput' ? '최종 XoL 보험료' : 'XoL 레이어 프라이싱',
+          metrics: premium != null ? [{ label: '보험료/손실', value: `${num(premium)} 원` }] : [],
+          interpretation:
+            '시뮬레이션 손실분포를 바탕으로 산정한 Excess of Loss 레이어 가격입니다. 기대 출재손실에 비용·이익마진·복원조항을 반영해 최종 보험료가 결정됩니다.',
+          nextSteps:
+            '레이어 구조(자기부담·한도·복원)나 마진 가정을 조정해 가격 민감도를 확인하세요.',
+        };
+      }
+      case 'AnalysisThresholdOutput':
+      case 'ThresholdAnalysisOutput':
+        return {
+          title: '임계값 분석',
+          metrics: dataMetrics(od),
+          interpretation:
+            '여러 임계값 후보에 대한 분리·손실 영향을 분석합니다. 임계값에 따라 대형손실 정의와 꼬리 리스크 측정이 달라집니다.',
+          nextSteps: '적절한 임계값을 골라 SplitByThreshold/SettingThreshold에 반영하세요.',
+        };
       default:
         return { ...GENERIC, metrics: dataMetrics(od) };
     }

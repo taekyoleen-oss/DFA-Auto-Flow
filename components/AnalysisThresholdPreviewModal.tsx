@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, AnalysisThresholdOutput } from '../types';
 import { XCircleIcon } from './icons';
 import { useModalCopy } from '../hooks/useModalCopy';
@@ -752,6 +753,7 @@ export const AnalysisThresholdPreviewModal: React.FC<AnalysisThresholdPreviewMod
           className="flex-grow p-6 overflow-auto"
           onContextMenu={handleContextMenu}
         >
+          <ModuleInsightPanel module={module} />
           <div className="mb-4">
             <p className="text-sm text-gray-600">
               <span className="font-semibold">클레임 열:</span> {claimColumn}

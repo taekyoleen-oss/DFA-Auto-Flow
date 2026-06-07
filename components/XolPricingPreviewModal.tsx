@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useCallback, useState } from "react";
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { XCircleIcon } from "./icons";
 import { CanvasModule } from "../types";
 import { XolPricingOutput } from "../types";
@@ -194,6 +195,7 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
         </div>
         
         <main ref={contentRef} className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
           {activeTab === 'Summary' ? (
             <div className="space-y-6">
               {/* Summary Table */}

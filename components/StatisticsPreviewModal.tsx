@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, StatisticsOutput } from '../types';
 import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { getGeminiClient } from "../utils/aiClient";
@@ -283,6 +284,7 @@ ${correlationText}
                     </div>
                 </header>
                 <main ref={contentRef} className="flex-grow p-4 overflow-auto flex flex-col gap-6">
+          <ModuleInsightPanel module={module} />
                     <div className="flex justify-end font-sans">
                         <button
                             onClick={handleInterpret}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, StatsModelsResultOutput } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
 import { getGeminiClient } from "../utils/aiClient";
@@ -90,6 +91,7 @@ ${coefficientsText}
                     </button>
                 </header>
                 <main className="flex-grow p-4 overflow-auto text-sm">
+          <ModuleInsightPanel module={module} />
                     <div className="flex justify-end mb-4 font-sans">
                         <button
                             onClick={handleInterpret}

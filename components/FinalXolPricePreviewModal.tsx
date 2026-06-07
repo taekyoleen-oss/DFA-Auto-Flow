@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, FinalXolPriceOutput } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
 import { getGeminiClient } from "../utils/aiClient";
@@ -71,6 +72,7 @@ You are a senior actuary creating a concise premium breakdown report. Use Korean
                     </button>
                 </header>
                 <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
                      <div className="flex justify-end mb-4">
                         <button
                             onClick={handleInterpret}

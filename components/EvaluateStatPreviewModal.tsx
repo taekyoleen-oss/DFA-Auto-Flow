@@ -1,4 +1,5 @@
 import React from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, EvaluateStatOutput } from '../types';
 import { XCircleIcon } from './icons';
 
@@ -34,6 +35,7 @@ export const EvaluateStatPreviewModal: React.FC<EvaluateStatPreviewModalProps> =
         </div>
 
         <div className="overflow-y-auto p-6 flex-1">
+          <ModuleInsightPanel module={module} />
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-white mb-4">Model Type: {modelType}</h3>
           </div>

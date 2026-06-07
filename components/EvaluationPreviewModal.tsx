@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, EvaluationOutput, ConfusionMatrix } from '../types';
 import { XCircleIcon } from './icons';
 
@@ -198,6 +199,7 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
                     </button>
                 </header>
                 <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
                     {/* Performance Metrics - 선택된 threshold의 통계량 표시 */}
                     {modelType === 'classification' && selectedRow && (
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">

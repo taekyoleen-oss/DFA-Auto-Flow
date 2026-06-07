@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SplitDataOutput, DataPreview } from '../types';
 import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { getGeminiClient } from "../utils/aiClient";
@@ -399,6 +400,7 @@ You are an ML educator. Please explain the following concepts in Korean, each in
                     </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-6">
+          <ModuleInsightPanel module={module} />
                      <div className="flex justify-end font-sans">
                         <button
                             onClick={handleInterpret}
