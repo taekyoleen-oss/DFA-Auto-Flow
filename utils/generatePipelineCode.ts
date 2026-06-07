@@ -178,6 +178,8 @@ const MODULE_OUTPUT_VAR: Record<string, string> = {
   FormatChange: 'formatted_dataframe',
   FitAggregateModel: 'params',    // 분포 적합 파라미터
   FitFrequencyModel: 'result',    // 빈도 적합 결과(dict)
+  FitSeverityModel: 'severity_params', // 최적 심도 분포 파라미터(SimulateFreqServ 입력 규약)
+  CombineLossModel: 'result',     // 통합 손실 통계/VaR/TVaR
   // 주의: Simulate*(7,11,12)는 변수가 아닌 모듈 상태 파라미터(parameters/frequency_params)에
   //       의존하므로 변수 배선만으로는 재현 불가. FitSeverityModel/CombineLossModel은 템플릿 부재.
 };
@@ -200,6 +202,8 @@ const MODULE_PORT_OUTPUT_VAR: Record<string, Record<string, string>> = {
 /** 입력 포트명 → 템플릿이 읽는 표준 변수명. (data_in 계열은 모두 dataframe) */
 const INPUT_PORT_VAR: Record<string, string> = {
   data_in: 'dataframe',
+  agg_dist_in: 'agg_dist',     // CombineLossModel ← SimulateAggDist
+  freq_serv_in: 'freq_serv',   // CombineLossModel ← SimulateFreqServ
 };
 
 /**

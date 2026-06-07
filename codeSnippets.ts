@@ -1645,6 +1645,145 @@ result = {{
 result
 `,
 
+    FitSeverityModel: `
+import pandas as pd
+import numpy as np
+from scipy import stats
+from scipy.stats import kstest
+import warnings
+warnings.filterwarnings('ignore')
+
+# Parameters from UI
+p_amount_column = {amount_column}
+p_severity_types = {selected_severity_types}
+
+# 입력: 'dataframe'(이전 모듈 출력)에서 금액 데이터 추출
+df = pd.DataFrame(dataframe)
+amounts = pd.to_numeric(df[p_amount_column], errors='coerce').dropna().values
+amounts = amounts[amounts > 0]  # 심도는 양수만
+
+if len(amounts) == 0:
+    raise ValueError(f"유효한 양수 금액이 없습니다: '{p_amount_column}'")
+
+print(f"=== 심도(Severity) 모델 적합 ===")
+print(f"Amount Column: {p_amount_column} | 관측치: {len(amounts)} | 평균: {np.mean(amounts):,.0f}")
+print()
+
+all_results = []
+for dist_type in p_severity_types:
+    try:
+        if dist_type == "Normal":
+            pr = stats.norm.fit(amounts)
+            dist = stats.norm(loc=pr[0], scale=pr[1])
+            params = {"type": "Normal", "mean": float(pr[0]), "std": float(pr[1])}
+        elif dist_type == "Lognormal":
+            pr = stats.lognorm.fit(amounts, floc=0)
+            dist = stats.lognorm(s=pr[0], scale=pr[2], loc=pr[1])
+            params = {"type": "Lognormal", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+        elif dist_type == "Exponential":
+            pr = stats.expon.fit(amounts, floc=0)
+            dist = stats.expon(scale=pr[1], loc=pr[0])
+            params = {"type": "Exponential", "loc": float(pr[0]), "scale": float(pr[1])}
+        elif dist_type == "Pareto":
+            pr = stats.pareto.fit(amounts, floc=0)
+            dist = stats.pareto(b=pr[0], scale=pr[2], loc=pr[1])
+            params = {"type": "Pareto", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+        elif dist_type == "Gamma":
+            pr = stats.gamma.fit(amounts, floc=0)
+            dist = stats.gamma(a=pr[0], scale=pr[2], loc=pr[1])
+            params = {"type": "Gamma", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+        elif dist_type == "Weibull":
+            pr = stats.weibull_min.fit(amounts, floc=0)
+            dist = stats.weibull_min(c=pr[0], scale=pr[2], loc=pr[1])
+            params = {"type": "Weibull", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+        elif dist_type == "GeneralizedPareto":
+            pr = stats.genpareto.fit(amounts, floc=0)
+            dist = stats.genpareto(c=pr[0], scale=pr[2], loc=pr[1])
+            params = {"type": "GeneralizedPareto", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+        elif dist_type == "Burr":
+            pr = stats.burr12.fit(amounts, floc=0)
+            dist = stats.burr12(c=pr[0], d=pr[1], scale=pr[3], loc=pr[2])
+            params = {"type": "Burr", "c": float(pr[0]), "d": float(pr[1]), "loc": float(pr[2]), "scale": float(pr[3])}
+        else:
+            all_results.append({"distribution_type": dist_type, "error": f"지원하지 않는 분포: {dist_type}"})
+            continue
+
+        log_likelihood = float(np.sum(dist.logpdf(amounts)))
+        n_params = len([k for k in params if k != "type"])
+        n_obs = len(amounts)
+        aic = 2 * n_params - 2 * log_likelihood
+        bic = n_params * np.log(n_obs) - 2 * log_likelihood
+        ks_stat, ks_pvalue = kstest(amounts, dist.cdf)
+
+        print(f"--- {dist_type} ---  AIC={aic:.2f}  BIC={bic:.2f}  KS={ks_stat:.4f}(p={ks_pvalue:.3f})")
+        all_results.append({
+            "distribution_type": dist_type,
+            "parameters": params,
+            "fit_statistics": {
+                "aic": float(aic), "bic": float(bic),
+                "log_likelihood": log_likelihood,
+                "ks_statistic": float(ks_stat), "ks_p_value": float(ks_pvalue),
+            },
+        })
+    except Exception as e:
+        all_results.append({"distribution_type": dist_type, "error": str(e)})
+
+# AIC 최소 분포를 최적 심도 모델로 선택 → severity_params (SimulateFreqServ 입력 규약)
+successful = [r for r in all_results if "error" not in r]
+if not successful:
+    raise ValueError("적합에 성공한 심도 분포가 없습니다.")
+best = min(successful, key=lambda x: x["fit_statistics"]["aic"])
+severity_params = best["parameters"]
+print()
+print(f"최적 심도 분포(최소 AIC): {best['distribution_type']}")
+print(f"  파라미터: {severity_params}")
+
+result = {"results": all_results, "best": best, "severity_params": severity_params}
+`,
+
+    CombineLossModel: `
+import numpy as np
+from scipy import stats
+
+# 입력: 두 시뮬레이션 결과 배열
+#  - agg_dist : SimulateAggDist의 시뮬레이션 손실 (simulation_out)
+#  - freq_serv: SimulateFreqServ의 집계 손실 (output_1)
+agg_dist = np.asarray(agg_dist, dtype=float)
+freq_serv = np.asarray(freq_serv, dtype=float)
+
+# 길이가 다르면 더 짧은 쪽에 맞춰 원소별 합산
+min_len = min(len(agg_dist), len(freq_serv))
+if min_len == 0:
+    raise ValueError("시뮬레이션 결과가 비어 있습니다. 상류 Simulate 모듈을 먼저 실행하세요.")
+combined = agg_dist[:min_len] + freq_serv[:min_len]
+
+# 합산 손실 통계량
+mean = float(np.mean(combined))
+std_dev = float(np.std(combined))
+skewness = float(stats.skew(combined)) if std_dev > 0 else 0.0
+kurtosis = float(stats.kurtosis(combined)) if std_dev > 0 else 0.0
+
+# VaR / TVaR (신뢰수준별)
+levels = [90, 95, 99, 99.5, 99.9]
+var_dict, tvar_dict = {}, {}
+for lv in levels:
+    v = float(np.percentile(combined, lv))
+    tail = combined[combined >= v]
+    var_dict[str(lv)] = v
+    tvar_dict[str(lv)] = float(np.mean(tail)) if len(tail) > 0 else v
+
+combined_statistics = {
+    "mean": mean, "std_dev": std_dev,
+    "min": float(np.min(combined)), "max": float(np.max(combined)),
+    "skewness": skewness, "kurtosis": kurtosis,
+}
+result = {"combined_statistics": combined_statistics, "var": var_dict, "tvar": tvar_dict}
+
+print("=== 통합 손실 분포 (Aggregate + Freq-Sev) ===")
+print(f"시뮬레이션 수: {min_len:,} | 평균 손실: {mean:,.0f} | 표준편차: {std_dev:,.0f}")
+print(f"VaR 99.5%: {var_dict['99.5']:,.0f} | TVaR 99.5%: {tvar_dict['99.5']:,.0f}")
+`,
+
     FitFrequencySeverityModel: `
 import pandas as pd
 import numpy as np
