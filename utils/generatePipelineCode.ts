@@ -177,7 +177,8 @@ const MODULE_OUTPUT_VAR: Record<string, string> = {
   ApplyInflation: 'dataframe',    // dataframe에 인플레이션 컬럼 추가
   FormatChange: 'formatted_dataframe',
   FitAggregateModel: 'params',    // 분포 적합 파라미터
-  FitFrequencyModel: 'result',    // 빈도 적합 결과(dict)
+  SimulateAggDist: 'simulated_amounts', // 집계분포 시뮬레이션 결과(CombineLoss.agg_dist_in)
+  FitFrequencyModel: 'frequency_params', // 최적 빈도 분포 파라미터(SimulateFreqServ 입력 규약)
   FitSeverityModel: 'severity_params', // 최적 심도 분포 파라미터(SimulateFreqServ 입력 규약)
   CombineLossModel: 'result',     // 통합 손실 통계/VaR/TVaR
   // 주의: Simulate*(7,11,12)는 변수가 아닌 모듈 상태 파라미터(parameters/frequency_params)에
@@ -204,6 +205,17 @@ const INPUT_PORT_VAR: Record<string, string> = {
   data_in: 'dataframe',
   agg_dist_in: 'agg_dist',     // CombineLossModel ← SimulateAggDist
   freq_serv_in: 'freq_serv',   // CombineLossModel ← SimulateFreqServ
+  frequency_in: 'frequency_params', // SimulateFreqServ ← FitFrequencyModel
+  severity_in: 'severity_params',   // SimulateFreqServ ← FitSeverityModel
+};
+
+/**
+ * 모듈 타입별 입력 포트 변수 오버라이드.
+ * 같은 포트명이라도 모듈 타입에 따라 의미가 다를 때 사용한다.
+ * (예: model_in → ML은 trained_model, DFA SimulateAggDist는 적합 파라미터 params)
+ */
+const MODULE_INPUT_PORT_VAR: Record<string, Record<string, string>> = {
+  SimulateAggDist: { model_in: 'params' },
 };
 
 /**
@@ -307,8 +319,11 @@ export function generateFullPipelineCode(
       const toPort = conn.to.portName;
       const fromLabel = fromModule.name;
 
-      // DFA 데이터 입력 포트(data_in)는 모두 dataframe으로 받는다
-      if (INPUT_PORT_VAR[toPort]) {
+      // 모듈 타입별 입력 포트 오버라이드 우선(model_in 충돌 등)
+      const moduleOverride = MODULE_INPUT_PORT_VAR[module.type]?.[toPort];
+      if (moduleOverride) {
+        inputPrefixLines.push(`${moduleOverride} = ${prevVarName}  # ← [${fromLabel}] 출력`);
+      } else if (INPUT_PORT_VAR[toPort]) {
         inputPrefixLines.push(`${INPUT_PORT_VAR[toPort]} = ${prevVarName}  # ← [${fromLabel}] 출력`);
       } else if (toPort === 'data_in') {
         inputPrefixLines.push(`dataframe = ${prevVarName}  # ← [${fromLabel}] 출력`);

@@ -1415,34 +1415,30 @@ result = {"results": all_results, "best": best, "params": params}
 import numpy as np
 from scipy import stats
 
-# 분포 객체 생성
-if {distribution_type} == "Lognormal":
-    dist = stats.lognorm(
-        s={parameters}["shape"],
-        scale={parameters}["scale"],
-        loc={parameters}["loc"]
-    )
-elif {distribution_type} == "Exponential":
-    dist = stats.expon(
-        scale={parameters}["scale"],
-        loc={parameters}["loc"]
-    )
-elif {distribution_type} == "Pareto":
-    dist = stats.pareto(
-        b={parameters}["shape"],
-        scale={parameters}["scale"],
-        loc={parameters}["loc"]
-    )
-elif {distribution_type} == "Gamma":
-    dist = stats.gamma(
-        a={parameters}["shape"],
-        scale={parameters}["scale"],
-        loc={parameters}["loc"]
-    )
+# 입력: 'params' = FitAggregateModel의 최적 분포 파라미터 dict
+#  {"type": "Lognormal"|..., "shape"/"scale"/"loc": ...}
+_sim_count = {simulation_count}
+_seed = {random_state}
+p_n_sim = int(_sim_count) if _sim_count else 10000
+p_seed = int(_seed) if _seed is not None else 42
 
-# 시뮬레이션
-np.random.seed(42)
-simulated_amounts = dist.rvs(size={n_simulations})
+dist_type = params["type"]
+if dist_type == "Lognormal":
+    dist = stats.lognorm(s=params["shape"], scale=params["scale"], loc=params.get("loc", 0.0))
+elif dist_type == "Exponential":
+    dist = stats.expon(scale=params["scale"], loc=params.get("loc", 0.0))
+elif dist_type == "Pareto":
+    dist = stats.pareto(b=params["shape"], scale=params["scale"], loc=params.get("loc", 0.0))
+elif dist_type == "Gamma":
+    dist = stats.gamma(a=params["shape"], scale=params["scale"], loc=params.get("loc", 0.0))
+else:
+    raise ValueError(f"지원하지 않는 집계분포: {dist_type}")
+
+# 몬테카를로 시뮬레이션 (시드 고정 → 재현성)
+np.random.seed(p_seed)
+simulated_amounts = dist.rvs(size=p_n_sim)
+print(f"=== 집계분포 시뮬레이션 ({dist_type}, n={p_n_sim}) ===")
+print(f"평균: {np.mean(simulated_amounts):,.0f} | 99.5%: {np.percentile(simulated_amounts, 99.5):,.0f}")
 `,
     SimulateFreqServ: `
 import numpy as np
