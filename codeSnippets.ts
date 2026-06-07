@@ -24,6 +24,30 @@ const toPythonLiteral = (value: any): string => {
   return JSON.stringify(value);
 };
 
+/**
+ * 알려진 UI 파라미터 이름 목록(constants.ts의 DEFAULT_MODULES 파라미터 키 기준).
+ * 저장된 모델에 일부 파라미터가 없으면 템플릿의 `{param}`이 미치환 상태로 남아
+ * 파이썬에서 NameError/SyntaxError가 난다. 이 목록에 든 미치환 placeholder만
+ * 안전 기본값(None)으로 치환한다. f-string 루프 변수({dist_type},{key} 등)는
+ * 이 목록에 없으므로 영향받지 않는다(템플릿은 f-string에 p_ 접두 변수를 쓴다).
+ * 단일 문자 이름(C,c)은 충돌 위험으로 제외한다.
+ */
+const UI_PARAM_NAMES = new Set([
+  'affinity', 'aggDeductible', 'algorithm', 'alpha', 'alpha_candidates', 'amount_column',
+  'c_candidates', 'ceded_loss_column', 'claim_column', 'columns', 'count_column', 'criterion',
+  'custom_count', 'cv_folds', 'date_column', 'deductible', 'defaultReinstatementRate', 'disp',
+  'distribution_type', 'drop', 'expenseRate', 'expenseRatio', 'feature_columns', 'fit_intercept',
+  'frequency_type', 'gamma', 'handle_unknown', 'inflation_rate', 'init', 'kernel', 'l1_ratio',
+  'l1_ratio_candidates', 'label_column', 'limit', 'linkage', 'max_depth', 'max_iter', 'method',
+  'metric', 'min_samples_leaf', 'min_samples_split', 'model_purpose', 'model_type', 'n_clusters',
+  'n_estimators', 'n_init', 'n_neighbors', 'ordinal_mapping', 'output_format', 'penalty',
+  'prediction_column', 'random_state', 'reinstatements', 'scoring_metric', 'selected_distributions',
+  'selected_frequency_types', 'selected_severity_types', 'severity_type', 'shuffle', 'simulation_count',
+  'solver', 'strategy', 'stratify', 'stratify_column', 'target_column', 'target_year', 'threshold',
+  'thresholds', 'train_size', 'tuning_enabled', 'tuning_strategy', 'volatility_loading', 'weights',
+  'year_column', 'yearRates', 'start_year', 'end_year', 'claims_per_year', 'n_simulations', 'parameters',
+]);
+
 const replacePlaceholders = (template: string, params: Record<string, any>): string => {
   let code = template;
   for (const key in params) {
@@ -46,6 +70,11 @@ const replacePlaceholders = (template: string, params: Record<string, any>): str
     }
     code = code.replace(placeholder, value);
   }
+  // 안전망: 저장 모델에 빠진 파라미터로 미치환된 `{uiParam}`을 None으로 치환한다.
+  // 알려진 UI 파라미터명만 대상으로 하여 f-string 보간({dist_type} 등)은 보존한다.
+  code = code.replace(/\{([a-zA-Z_][a-zA-Z0-9_]*)\}/g, (match, name) =>
+    UI_PARAM_NAMES.has(name) ? 'None' : match
+  );
   return code;
 };
 
@@ -1317,22 +1346,69 @@ print(severity_df.head())
 import pandas as pd
 import numpy as np
 from scipy import stats
+from scipy.stats import kstest
 
-# 선택된 열에서 데이터 가져오기
-amounts = dataframe[{amount_column}].values
+# Parameters from UI
+p_amount_column = {amount_column}
+p_selected = {selected_distributions}
 
-# 양수 값만 사용
+# 입력: 'dataframe'에서 금액 추출 (지정 컬럼이 없으면 마지막 수치형 컬럼으로 폴백)
+df = pd.DataFrame(dataframe)
+if p_amount_column and p_amount_column in df.columns:
+    col = p_amount_column
+else:
+    num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if not num_cols:
+        raise ValueError("수치형 컬럼이 없어 집계분포를 적합할 수 없습니다.")
+    col = num_cols[-1]
+amounts = pd.to_numeric(df[col], errors='coerce').dropna().values
 amounts = amounts[amounts > 0]
+if len(amounts) == 0:
+    raise ValueError(f"유효한 양수 금액이 없습니다: '{col}'")
 
-# 분포 적합
-if {distribution_type} == "Lognormal":
-    params = stats.lognorm.fit(amounts, floc=0)
-elif {distribution_type} == "Exponential":
-    params = stats.expon.fit(amounts, floc=0)
-elif {distribution_type} == "Pareto":
-    params = stats.pareto.fit(amounts, floc=0)
-elif {distribution_type} == "Gamma":
-    params = stats.gamma.fit(amounts, floc=0)
+print(f"=== 집계분포(Aggregate) 적합 === (컬럼: {col}, n={len(amounts)})")
+
+def _fit_one(dist_type, x):
+    if dist_type == "Lognormal":
+        pr = stats.lognorm.fit(x, floc=0); d = stats.lognorm(s=pr[0], scale=pr[2], loc=pr[1])
+        pd_ = {"type": "Lognormal", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+    elif dist_type == "Exponential":
+        pr = stats.expon.fit(x, floc=0); d = stats.expon(scale=pr[1], loc=pr[0])
+        pd_ = {"type": "Exponential", "loc": float(pr[0]), "scale": float(pr[1])}
+    elif dist_type == "Pareto":
+        pr = stats.pareto.fit(x, floc=0); d = stats.pareto(b=pr[0], scale=pr[2], loc=pr[1])
+        pd_ = {"type": "Pareto", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+    elif dist_type == "Gamma":
+        pr = stats.gamma.fit(x, floc=0); d = stats.gamma(a=pr[0], scale=pr[2], loc=pr[1])
+        pd_ = {"type": "Gamma", "shape": float(pr[0]), "loc": float(pr[1]), "scale": float(pr[2])}
+    else:
+        return None
+    ll = float(np.sum(d.logpdf(x)))
+    k = len([key for key in pd_ if key != "type"])
+    aic = 2 * k - 2 * ll
+    bic = k * np.log(len(x)) - 2 * ll
+    ks_stat, ks_p = kstest(x, d.cdf)
+    return {"distribution_type": dist_type, "parameters": pd_,
+            "fit_statistics": {"aic": float(aic), "bic": float(bic), "log_likelihood": ll,
+                               "ks_statistic": float(ks_stat), "ks_p_value": float(ks_p)}}
+
+dist_list = p_selected if isinstance(p_selected, (list, tuple)) else [p_selected]
+all_results = []
+for dist_type in dist_list:
+    r = _fit_one(dist_type, amounts)
+    if r is None:
+        all_results.append({"distribution_type": dist_type, "error": "지원하지 않는 분포"}); continue
+    s = r["fit_statistics"]
+    print(f"--- {dist_type} ---  AIC={s['aic']:.2f}  BIC={s['bic']:.2f}  KS={s['ks_statistic']:.4f}")
+    all_results.append(r)
+
+successful = [r for r in all_results if "error" not in r]
+if not successful:
+    raise ValueError("적합에 성공한 집계분포가 없습니다.")
+best = min(successful, key=lambda r: r["fit_statistics"]["aic"])
+params = best["parameters"]            # 최적 분포 파라미터(SimulateAggDist 입력 규약)
+print(f"최적 집계분포(최소 AIC): {best['distribution_type']} | {params}")
+result = {"results": all_results, "best": best, "params": params}
 `,
 
     SimulateAggDist: `
