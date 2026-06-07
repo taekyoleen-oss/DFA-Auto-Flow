@@ -1,6 +1,16 @@
 import { CanvasModule, Connection } from '../types';
 import { getModuleCode } from '../codeSnippets';
 
+/**
+ * 모듈 id를 파이썬 식별자로 안전하게 변환한다. 전체 id를 사용해 고유성을 보장한다.
+ * (id.slice(0,8)은 "module-<timestamp>-N" 형태에서 공통 접두사만 잘라 모든 모듈이
+ *  같은 변수명으로 충돌하던 버그가 있었다.)
+ */
+function sanitizeId(id: string): string {
+  const s = id.replace(/[^a-zA-Z0-9_]/g, '_');
+  return /^[0-9]/.test(s) ? `m_${s}` : s;
+}
+
 function encodeBase64(str: string): string {
   const bytes = new TextEncoder().encode(str);
   // Process in 64 KiB chunks to avoid call-stack overflow on large data
@@ -63,7 +73,7 @@ function buildEmbeddedData(module: CanvasModule): EmbeddedData | null {
   });
 
   const b64 = encodeBase64(JSON.stringify(colData));
-  const safeId = module.id.slice(0, 8).replace(/-/g, '_');
+  const safeId = sanitizeId(module.id);
   const funcName = `_embedded_${safeId}`;
 
   const note = isTruncated
@@ -198,6 +208,9 @@ const MODULE_PORT_OUTPUT_VAR: Record<string, Record<string, string>> = {
     frequency_out: 'yearly_frequency_df',
     severity_out: 'severity_df',
   },
+  SimulateFreqServ: {
+    output_1: 'aggregate_losses',  // CombineLoss.freq_serv_in 입력
+  },
 };
 
 /** 입력 포트명 → 템플릿이 읽는 표준 변수명. (data_in 계열은 모두 dataframe) */
@@ -287,7 +300,7 @@ export function generateFullPipelineCode(
     }
 
     // ── 출력 변수명 결정 ────────────────────────────────────────────────────
-    const safeId = module.id.slice(0, 8).replace(/-/g, '_');
+    const safeId = sanitizeId(module.id);
     let outputVarName = '';
     if (module.outputs.length > 0) {
       const outputType = module.outputs[0].type;

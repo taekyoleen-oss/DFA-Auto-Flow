@@ -1444,6 +1444,11 @@ print(f"평균: {np.mean(simulated_amounts):,.0f} | 99.5%: {np.percentile(simula
 import numpy as np
 from scipy import stats
 
+# 입력: frequency_params(FitFrequencyModel), severity_params(FitSeverityModel)
+# 시뮬레이션 횟수는 모듈 파라미터에서 (시드는 아래 몬테카를로 직전에 고정)
+_sim_count = {simulation_count}
+n_simulations = int(_sim_count) if _sim_count else 10000
+
 # 빈도 분포 객체 생성
 freq_type = frequency_params["type"]
 
@@ -1601,11 +1606,11 @@ for dist_type in p_frequency_types:
             lambda_param = np.mean(counts)
             if lambda_param <= 0:
                 print(f"  Error: Mean count must be positive for Poisson distribution")
-                all_results.append({{"distribution_type": "Poisson", "error": "Mean count must be positive"}})
+                all_results.append({"distribution_type": "Poisson", "error": "Mean count must be positive"})
                 continue
             
             dist = stats.poisson(lambda_param)
-            params = {{"lambda": float(lambda_param)}}
+            params = {"lambda": float(lambda_param)}
             
             # 통계량 계산
             log_likelihood = np.sum(dist.logpmf(counts))
@@ -1619,18 +1624,18 @@ for dist_type in p_frequency_types:
             print(f"  AIC: {aic:.6f}")
             print(f"  BIC: {bic:.6f}")
             
-            all_results.append({{
+            all_results.append({
                 "distribution_type": "Poisson",
                 "parameters": params,
-                "fit_statistics": {{
+                "fit_statistics": {
                     "aic": float(aic),
                     "bic": float(bic),
                     "log_likelihood": float(log_likelihood),
                     "mean": float(np.mean(counts)),
                     "variance": float(np.var(counts)),
                     "dispersion": float(np.var(counts) / np.mean(counts)) if np.mean(counts) > 0 else 0
-                }}
-            }})
+                }
+            })
             
         elif dist_type == "NegativeBinomial":
             # 음이항 분포: Method of Moments
@@ -1640,7 +1645,7 @@ for dist_type in p_frequency_types:
             if var_count <= mean_count:
                 print(f"  Error: Variance must be greater than mean for Negative Binomial (overdispersion required)")
                 print(f"  Mean: {mean_count:.2f}, Variance: {var_count:.2f}")
-                all_results.append({{"distribution_type": "NegativeBinomial", "error": "Variance must be greater than mean (overdispersion required)"}})
+                all_results.append({"distribution_type": "NegativeBinomial", "error": "Variance must be greater than mean (overdispersion required)"})
                 continue
             
             # Method of moments estimators
@@ -1649,11 +1654,11 @@ for dist_type in p_frequency_types:
             
             if r_est <= 0 or p_est <= 0 or p_est >= 1:
                 print(f"  Error: Invalid parameters (r={r_est:.2f}, p={p_est:.2f})")
-                all_results.append({{"distribution_type": "NegativeBinomial", "error": f"Invalid parameters: r={r_est:.2f}, p={p_est:.2f}"}})
+                all_results.append({"distribution_type": "NegativeBinomial", "error": f"Invalid parameters: r={r_est:.2f}, p={p_est:.2f}"})
                 continue
             
             dist = stats.nbinom(r_est, p_est)
-            params = {{"n": float(r_est), "p": float(p_est)}}
+            params = {"n": float(r_est), "p": float(p_est)}
             
             # 통계량 계산
             log_likelihood = np.sum(dist.logpmf(counts))
@@ -1668,25 +1673,25 @@ for dist_type in p_frequency_types:
             print(f"  AIC: {aic:.6f}")
             print(f"  BIC: {bic:.6f}")
             
-            all_results.append({{
+            all_results.append({
                 "distribution_type": "NegativeBinomial",
                 "parameters": params,
-                "fit_statistics": {{
+                "fit_statistics": {
                     "aic": float(aic),
                     "bic": float(bic),
                     "log_likelihood": float(log_likelihood),
                     "mean": float(np.mean(counts)),
                     "variance": float(np.var(counts)),
                     "dispersion": float(np.var(counts) / np.mean(counts)) if np.mean(counts) > 0 else 0
-                }}
-            }})
+                }
+            })
         else:
             print(f"  Error: Unknown distribution type '{dist_type}'")
-            all_results.append({{"distribution_type": dist_type, "error": f"Unknown distribution type"}})
+            all_results.append({"distribution_type": dist_type, "error": f"Unknown distribution type"})
             
     except Exception as e:
-        print(f"  Error fitting {dist_type}: {{str(e)}}")
-        all_results.append({{"distribution_type": dist_type, "error": str(e)}})
+        print(f"  Error fitting {dist_type}: {str(e)}")
+        all_results.append({"distribution_type": dist_type, "error": str(e)})
     
     print()
 
@@ -1706,15 +1711,21 @@ if successful_results:
     print(f"  AIC: {best_result['fit_statistics']['aic']:.2f}")
     print(f"  Parameters: {best_result['parameters']}")
 else:
+    best_result = None
     print("No distributions were successfully fitted")
 
-# 결과 반환
-result = {{
-    "results": all_results,
-    "yearly_counts": df[[p_count_column]].to_dict('records')
-}}
+if best_result is None:
+    raise ValueError("적합에 성공한 빈도 분포가 없습니다.")
 
-result
+# 최적 빈도 분포 파라미터(SimulateFreqServ 입력 규약): {"type": ..., "lambda"/"n"/"p": ...}
+frequency_params = {"type": best_result["distribution_type"], **best_result["parameters"]}
+
+# 결과 반환
+result = {
+    "results": all_results,
+    "frequency_params": frequency_params,
+    "yearly_counts": df[[p_count_column]].to_dict('records')
+}
 `,
 
     FitSeverityModel: `
