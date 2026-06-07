@@ -1,9 +1,11 @@
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
+export default defineConfig(() => {
+    // 보안: API 키를 빌드 산출물(번들)에 주입하지 않는다.
+    // AI 키는 런타임에 사용자 브라우저의 localStorage에서 읽는다(utils/aiClient.ts).
+    // dev 폴백이 필요하면 VITE_GEMINI_API_KEY 등 VITE_ 접두 변수를 import.meta.env로 사용한다.
     return {
       envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
       server: {
@@ -23,10 +25,6 @@ export default defineConfig(({ mode }) => {
         }
       },
       plugins: [react()],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),

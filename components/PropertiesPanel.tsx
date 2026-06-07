@@ -41,7 +41,8 @@ import {
 } from "./icons";
 import { getModuleCode } from "../codeSnippets";
 import { SAMPLE_DATA } from "../sampleData";
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
+import { getGeminiClient } from "../utils/aiClient";
 import { DEFAULT_MODULES } from "../constants";
 import * as XLSX from "xlsx";
 import { ExcelInputModal } from "./ExcelInputModal";
@@ -170,7 +171,7 @@ const AIModuleExplanation: React.FC<{ module: CanvasModule }> = ({
     setIsLoading(true);
     setShow(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      const ai = getGeminiClient();
 
       const defaultModuleData = DEFAULT_MODULES.find(
         (m) => m.type === module.type
@@ -286,7 +287,7 @@ const AIParameterRecommender: React.FC<{
   const handleRecommend = async () => {
     setIsLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      const ai = getGeminiClient();
 
       const prompt = `
 You are an expert data scientist AI assistant. Your task is to recommend the optimal feature columns and a single label/target column for a machine learning model based on a project goal and a list of available data columns.

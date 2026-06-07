@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CanvasModule, StatisticsOutput } from '../types';
 import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
-import { GoogleGenAI } from "@google/genai";
+import { getGeminiClient } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
 import { useModalCopy } from '../hooks/useModalCopy';
@@ -206,7 +206,7 @@ export const StatisticsPreviewModal: React.FC<StatisticsPreviewModalProps> = ({ 
         setIsInterpreting(true);
         setAiInterpretation(null);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+            const ai = getGeminiClient();
 
             const statsText = Object.entries(stats).map(([col, data]) => 
                 `- ${col}: Mean=${data.mean?.toFixed(2)}, StdDev=${data.std?.toFixed(2)}, Min=${data.min?.toFixed(2)}, Max=${data.max?.toFixed(2)}`

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CanvasModule, SplitDataOutput, DataPreview } from '../types';
 import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
-import { GoogleGenAI } from "@google/genai";
+import { getGeminiClient } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
 
@@ -343,7 +343,7 @@ export const SplitDataPreviewModal: React.FC<{ module: CanvasModule; onClose: ()
         setIsInterpreting(true);
         setAiInterpretation(null);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+            const ai = getGeminiClient();
             const prompt = `
 You are an ML educator. Please explain the following concepts in Korean, each in a single, simple sentence. Use Markdown for formatting.
 

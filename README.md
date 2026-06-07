@@ -16,7 +16,10 @@ View your app in AI Studio: https://ai.studio/apps/drive/1Bxt23-OfQovUeGfFHeNdu0
    ```bash
    pnpm install
    ```
-2. **(선택)** `.env` 또는 `.env.local`에 `GEMINI_API_KEY` 설정. Supabase 사용 시 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` 또는 `NEXT_PUBLIC_*` 설정.
+2. **AI 기능 사용 시:** 앱 우측 상단 **🔑(AI API 키 설정)** 버튼을 눌러 본인의 API 키를 입력합니다. 키는 **이 브라우저(localStorage)에만 저장**되며 서버로 전송되지 않습니다. Google Gemini · OpenAI · Anthropic Claude 중 선택할 수 있습니다.
+   - 키는 더 이상 빌드 산출물(번들)에 포함되지 않습니다(보안).
+   - **(개발용 선택)** 매번 입력이 번거로우면 `.env.local`에 `VITE_GEMINI_API_KEY`(또는 `VITE_OPENAI_API_KEY`, `VITE_ANTHROPIC_API_KEY`)를 두면 dev 폴백으로 사용됩니다.
+   - Supabase 사용 시 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` 또는 `NEXT_PUBLIC_*` 설정.
 3. **개발 서버 실행**
    ```bash
    pnpm run dev

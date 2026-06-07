@@ -10,6 +10,24 @@ let isLoading = false;
 let loadPromise: Promise<any> | null = null;
 let loadStartTime: number = 0;
 
+// Pyodide 로딩 진행률 콜백
+type PyodideStatusCallback = (status: string, progress: number) => void;
+let statusCallback: PyodideStatusCallback | null = null;
+
+export function setPyodideStatusCallback(cb: PyodideStatusCallback | null): void {
+  statusCallback = cb;
+}
+
+export function getPyodideLoadingStatus(): { isLoading: boolean; isPyodideReady: boolean } {
+  return { isLoading, isPyodideReady: !!pyodide };
+}
+
+function notifyStatus(status: string, progress: number): void {
+  if (statusCallback) {
+    statusCallback(status, progress);
+  }
+}
+
 /**
  * 타임아웃을 가진 Promise 래퍼
  */
@@ -43,6 +61,7 @@ export async function loadPyodide(timeoutMs: number = 30000): Promise<any> {
   loadStartTime = Date.now();
   loadPromise = (async () => {
     try {
+      notifyStatus("Python 환경(Pyodide) 초기화 중...", 10);
       // @ts-ignore - Pyodide는 전역에서 로드됩니다
       const pyodideModule = await withTimeout(
         loadPyodideModule(),
@@ -51,18 +70,21 @@ export async function loadPyodide(timeoutMs: number = 30000): Promise<any> {
       );
       pyodide = pyodideModule;
 
+      notifyStatus("패키지 설치 중... (pandas, scikit-learn, numpy, scipy)", 55);
       // 필요한 패키지 설치 (타임아웃: 90초)
-      // imblearn은 scikit-learn에 포함되어 있지만 별도 설치가 필요할 수 있음
       await withTimeout(
         pyodide.loadPackage(["pandas", "scikit-learn", "numpy", "scipy"]),
         90000,
         "패키지 설치 타임아웃 (90초 초과)"
       );
 
+      notifyStatus("Python 환경 준비 완료!", 100);
       isLoading = false;
       loadStartTime = 0;
+      setTimeout(() => notifyStatus("", 0), 1500);
       return pyodide;
     } catch (error) {
+      notifyStatus("", 0);
       isLoading = false;
       loadPromise = null;
       loadStartTime = 0;
@@ -144,6 +166,39 @@ export function fromPython(pythonObj: any): any {
 }
 
 /**
+ * Python 코드를 실행하고 stdout과 오류를 캡처하여 반환합니다
+ * 타임아웃: 90초
+ */
+export async function runPythonWithOutput(
+  code: string,
+  timeoutMs: number = 90000
+): Promise<{ stdout: string; error: string | null }> {
+  const py = await loadPyodide();
+  const indented = code.split('\n').map((l) => '    ' + l).join('\n');
+  const wrappedCode = `
+import io as _io, sys as _sys, traceback as _tb
+_buf = _io.StringIO()
+_old = _sys.stdout
+_sys.stdout = _buf
+_err = None
+try:
+${indented}
+except Exception as _e:
+    _err = _tb.format_exc()
+finally:
+    _sys.stdout = _old
+(_buf.getvalue(), _err)
+`;
+  const result = await withTimeout(
+    py.runPythonAsync(wrappedCode),
+    timeoutMs,
+    '실행 타임아웃 (90초 초과)'
+  );
+  const jsResult = result && typeof result.toJs === 'function' ? result.toJs() : result;
+  return { stdout: jsResult?.[0] || '', error: jsResult?.[1] || null };
+}
+
+/**
  * SplitData를 Python으로 실행합니다
  * 타임아웃: 60초
  */
@@ -178,19 +233,14 @@ export async function splitDataPython(
       throw new Error(`Pyodide 로드 실패: ${loadErrorMessage}`);
     }
 
-    // 데이터를 Python에 전달
+    // 데이터를 Python에 전달 (globals.set 사용으로 코드 인젝션 방지)
     py.globals.set("js_data", data);
+    py.globals.set("js_train_size", trainSize);
+    py.globals.set("js_random_state", randomState);
+    py.globals.set("js_shuffle", shuffle);
+    py.globals.set("js_stratify", stratify);
+    py.globals.set("js_stratify_column", stratifyColumn ?? null);
 
-    // stratify_column을 Python 코드에 전달하기 위한 처리
-    // None이면 문자열 'None'으로, 아니면 문자열로 감싸서 전달
-    const stratifyColStr = stratifyColumn ? `'${stratifyColumn}'` : "None";
-
-    // JavaScript boolean을 Python boolean으로 변환
-    const shufflePython = shuffle ? "True" : "False";
-    const stratifyPython = stratify ? "True" : "False";
-
-    // Python 코드 실행 (에러 처리 포함)
-    // 결과를 전역 변수에 저장한 후 가져오는 방식 사용
     const code = `
 import json
 import traceback
@@ -201,16 +251,16 @@ import pandas as pd
 try:
     # sklearn의 train_test_split을 사용하여 데이터를 분할합니다.
     dataframe = pd.DataFrame(js_data.to_py())
-    
+
     # DataFrame 인덱스를 명시적으로 0부터 시작하도록 리셋
     dataframe.index = range(len(dataframe))
-    
-    # Parameters from UI
-    p_train_size = ${trainSize}
-    p_random_state = ${randomState}
-    p_shuffle = ${shufflePython}
-    p_stratify = ${stratifyPython}
-    p_stratify_column = ${stratifyColStr}
+
+    # Parameters from UI (passed via globals to prevent code injection)
+    p_train_size = float(js_train_size)
+    p_random_state = int(js_random_state)
+    p_shuffle = bool(js_shuffle)
+    p_stratify = bool(js_stratify)
+    p_stratify_column = str(js_stratify_column) if js_stratify_column is not None else None
     
     # Stratify 배열 준비
     stratify_array = None
@@ -286,9 +336,8 @@ except Exception as e:
     }
 
     // 정리
-    py.globals.delete("js_data");
-    py.globals.delete("js_result");
-    // js_tuning_options는 Linear Regression에서만 사용되므로 존재할 때만 삭제
+    const splitGlobals = ["js_data", "js_result", "js_train_size", "js_random_state", "js_shuffle", "js_stratify", "js_stratify_column"];
+    splitGlobals.forEach(k => { try { py.globals.delete(k); } catch {} });
     if (py.globals.has("js_tuning_options")) {
       py.globals.delete("js_tuning_options");
     }
@@ -302,9 +351,8 @@ except Exception as e:
     try {
       const py = pyodide;
       if (py) {
-        py.globals.delete("js_data");
-        py.globals.delete("js_result");
-        // js_tuning_options는 Linear Regression에서만 사용되므로 존재할 때만 삭제
+        const splitGlobals = ["js_data", "js_result", "js_train_size", "js_random_state", "js_shuffle", "js_stratify", "js_stratify_column"];
+        splitGlobals.forEach(k => { try { py.globals.delete(k); } catch {} });
         if (py.globals.has("js_tuning_options")) {
           py.globals.delete("js_tuning_options");
         }

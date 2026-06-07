@@ -1,17 +1,48 @@
 import { CanvasModule, Connection } from './types';
 
+const escapePythonString = (s: string): string =>
+  s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, '\\n');
+
+/**
+ * JS 값을 "파이썬 리터럴"로 직렬화한다.
+ * JSON.stringify는 true/false/null을 그대로 내보내 Python에서 NameError를 일으키므로
+ * (Python은 True/False/None), 객체/배열 파라미터를 안전하게 파이썬 리터럴로 변환한다.
+ * 문자열 내부 내용은 건드리지 않으므로 "false"가 포함된 컬럼명도 안전하다.
+ */
+const toPythonLiteral = (value: any): string => {
+  if (value === null || value === undefined) return 'None';
+  if (typeof value === 'boolean') return value ? 'True' : 'False';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return `'${escapePythonString(value)}'`;
+  if (Array.isArray(value)) return `[${value.map(toPythonLiteral).join(', ')}]`;
+  if (typeof value === 'object') {
+    const entries = Object.entries(value).map(
+      ([k, v]) => `${toPythonLiteral(k)}: ${toPythonLiteral(v)}`
+    );
+    return `{${entries.join(', ')}}`;
+  }
+  return JSON.stringify(value);
+};
+
 const replacePlaceholders = (template: string, params: Record<string, any>): string => {
   let code = template;
   for (const key in params) {
-    const placeholder = new RegExp(`{${key}}`, 'g');
+    // Escape regex special characters in the key so they match literally
+    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const placeholder = new RegExp(`\\{${escapedKey}\\}`, 'g');
     let value = params[key];
-    // Stringify only if it's not already a string that looks like code
-    if (value === null) {
+    if (value === null || value === undefined) {
         value = 'None';
+    } else if (typeof value === 'boolean') {
+        value = value ? 'True' : 'False';
+    } else if (typeof value === 'object') {
+        // 객체/배열: 파이썬 리터럴로 변환 (true/false/null → True/False/None)
+        value = toPythonLiteral(value);
     } else if (typeof value !== 'string' || !isNaN(Number(value))) {
         value = JSON.stringify(value);
     } else {
-        value = `'${value}'`; // Wrap strings in quotes for Python
+        // Escape backslashes, single quotes, and newlines before embedding in Python string
+        value = `'${escapePythonString(value)}'`;
     }
     code = code.replace(placeholder, value);
   }
@@ -98,7 +129,7 @@ column_selections = {columnSelections}
 selected_columns = [col for col, sel in column_selections.items() if sel.get('selected', True)]
 
 # Execution
-# selected_data = select_data(dataframe, selected_columns)
+selected_data = select_data(dataframe, selected_columns)
 `,
     HandleMissingValues: `
 import pandas as pd
@@ -1288,19 +1319,19 @@ import numpy as np
 from scipy import stats
 
 # 선택된 열에서 데이터 가져오기
-amounts = dataframe['{amount_column}'].values
+amounts = dataframe[{amount_column}].values
 
 # 양수 값만 사용
 amounts = amounts[amounts > 0]
 
 # 분포 적합
-if "{distribution_type}" == "Lognormal":
+if {distribution_type} == "Lognormal":
     params = stats.lognorm.fit(amounts, floc=0)
-elif "{distribution_type}" == "Exponential":
+elif {distribution_type} == "Exponential":
     params = stats.expon.fit(amounts, floc=0)
-elif "{distribution_type}" == "Pareto":
+elif {distribution_type} == "Pareto":
     params = stats.pareto.fit(amounts, floc=0)
-elif "{distribution_type}" == "Gamma":
+elif {distribution_type} == "Gamma":
     params = stats.gamma.fit(amounts, floc=0)
 `,
 
@@ -1309,24 +1340,24 @@ import numpy as np
 from scipy import stats
 
 # 분포 객체 생성
-if "{distribution_type}" == "Lognormal":
+if {distribution_type} == "Lognormal":
     dist = stats.lognorm(
         s={parameters}["shape"],
         scale={parameters}["scale"],
         loc={parameters}["loc"]
     )
-elif "{distribution_type}" == "Exponential":
+elif {distribution_type} == "Exponential":
     dist = stats.expon(
         scale={parameters}["scale"],
         loc={parameters}["loc"]
     )
-elif "{distribution_type}" == "Pareto":
+elif {distribution_type} == "Pareto":
     dist = stats.pareto(
         b={parameters}["shape"],
         scale={parameters}["scale"],
         loc={parameters}["loc"]
     )
-elif "{distribution_type}" == "Gamma":
+elif {distribution_type} == "Gamma":
     dist = stats.gamma(
         a={parameters}["shape"],
         scale={parameters}["scale"],

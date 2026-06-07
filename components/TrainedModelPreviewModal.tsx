@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { CanvasModule, TrainedModelOutput, ModuleType } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
-import { GoogleGenAI } from "@google/genai";
+import { getGeminiClient } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface TrainedModelPreviewModalProps {
@@ -312,7 +312,7 @@ export const TrainedModelPreviewModal: React.FC<TrainedModelPreviewModalProps> =
         setIsInterpreting(true);
         setAiInterpretation(null);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+            const ai = getGeminiClient();
 
             const metricsText = Object.entries(metrics).map(([key, value]) => `- ${key}: ${typeof value === 'number' ? value.toFixed(4) : value}`).join('\n');
             const topFeatures = Object.entries(coefficients)

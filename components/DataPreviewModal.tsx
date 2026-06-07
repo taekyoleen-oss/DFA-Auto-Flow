@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { CanvasModule, ColumnInfo, DataPreview, ModuleType, ThresholdAnalysisOutput } from '../types';
 import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
-import { GoogleGenAI } from "@google/genai";
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
 // import { calculatePCAForScoreVisualization } from '../utils/pyodideRunner'; // Python 버전 (이상치 처리)
@@ -29,8 +28,12 @@ const HistogramPlot: React.FC<{ rows: Record<string, any>[]; column: string; }> 
     }
 
     const { bins } = useMemo(() => {
-        const min = Math.min(...numericData);
-        const max = Math.max(...numericData);
+        // Use reduce instead of spread to avoid call-stack overflow on large arrays
+        let min = Infinity, max = -Infinity;
+        for (const v of numericData) {
+            if (v < min) min = v;
+            if (v > max) max = v;
+        }
         const numBins = 10;
         const binSize = (max - min) / numBins;
         const bins = Array(numBins).fill(0);
@@ -1110,6 +1113,11 @@ export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, proj
     
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
     const [selectedColumn, setSelectedColumn] = useState<string | null>(columns[0]?.name || null);
+    // C-1: 대용량 테이블 페이지네이션
+    const TABLE_PAGE_SIZE = 200;
+    const [tablePage, setTablePage] = useState(0);
+    // C-1: 정렬/모듈 변경 시 페이지 리셋
+    React.useEffect(() => { setTablePage(0); }, [sortConfig, module.id]);
     const [activeXolTab, setActiveXolTab] = useState<'limit' | 'aggreinst'>('limit'); // XoL Calculator 탭
     const [activeLoadClaimDataTab, setActiveLoadClaimDataTab] = useState<'detail' | 'graphs'>('detail'); // Load Claim Data 탭
     const [graphColumn, setGraphColumn] = useState<string | null>(null); // Graphs 탭에서 선택된 열
@@ -3791,13 +3799,14 @@ const PCAScoreVisualization: React.FC<{
                             <div className="flex-grow flex gap-4 overflow-hidden">
                                 {/* Score Model의 경우 테이블만 표시 */}
                                 {module.type === ModuleType.ScoreModel ? (
-                                    <div className="w-full overflow-auto border border-gray-200 rounded-lg">
+                                    <div className="w-full flex flex-col overflow-hidden border border-gray-200 rounded-lg">
+                                        <div className="overflow-auto flex-1">
                                         <table className="min-w-full text-sm text-left">
                                             <thead className="bg-gray-50 sticky top-0">
                                                 <tr>
                                                     {displayColumns.map(col => (
-                                                        <th 
-                                                            key={col.name} 
+                                                        <th
+                                                            key={col.name}
                                                             className="py-2 px-3 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
                                                             onClick={() => requestSort(col.name)}
                                                         >
@@ -3810,11 +3819,11 @@ const PCAScoreVisualization: React.FC<{
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {sortedRows.map((row, rowIndex) => (
+                                                {sortedRows.slice(tablePage * TABLE_PAGE_SIZE, (tablePage + 1) * TABLE_PAGE_SIZE).map((row, rowIndex) => (
                                                     <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
                                                         {displayColumns.map(col => (
-                                                            <td 
-                                                                key={col.name} 
+                                                            <td
+                                                                key={col.name}
                                                                 className="py-1.5 px-3 font-mono truncate hover:bg-gray-50"
                                                                 title={String(row[col.name])}
                                                             >
@@ -3825,16 +3834,27 @@ const PCAScoreVisualization: React.FC<{
                                                 ))}
                                             </tbody>
                                         </table>
+                                        </div>
+                                        {sortedRows.length > TABLE_PAGE_SIZE && (
+                                            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-600 flex-shrink-0">
+                                                <span>{tablePage * TABLE_PAGE_SIZE + 1}–{Math.min((tablePage + 1) * TABLE_PAGE_SIZE, sortedRows.length)} / {sortedRows.length.toLocaleString()}행</span>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => setTablePage(p => Math.max(0, p - 1))} disabled={tablePage === 0} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-100">◀</button>
+                                                    <button onClick={() => setTablePage(p => p + 1)} disabled={(tablePage + 1) * TABLE_PAGE_SIZE >= sortedRows.length} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-100">▶</button>
+                                                </div>
+                                            </div>
+                                        )}
                                 </div>
                             ) : (
                                 <>
-                                <div className={`overflow-auto border border-gray-200 rounded-lg ${selectedColumnData ? 'w-1/2' : 'w-full'}`}>
+                                <div className={`flex flex-col border border-gray-200 rounded-lg overflow-hidden ${selectedColumnData ? 'w-1/2' : 'w-full'}`}>
+                                <div className="overflow-auto flex-1">
                                     <table className="min-w-full text-sm text-left">
                                         <thead className="bg-gray-50 sticky top-0">
                                             <tr>
                                                 {displayColumns.map(col => (
-                                                    <th 
-                                                        key={col.name} 
+                                                    <th
+                                                        key={col.name}
                                                         className="py-2 px-3 font-semibold text-gray-600 cursor-pointer hover:bg-gray-100"
                                                         onClick={() => requestSort(col.name)}
                                                     >
@@ -3847,11 +3867,11 @@ const PCAScoreVisualization: React.FC<{
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {sortedRows.map((row, rowIndex) => (
+                                            {sortedRows.slice(tablePage * TABLE_PAGE_SIZE, (tablePage + 1) * TABLE_PAGE_SIZE).map((row, rowIndex) => (
                                                 <tr key={rowIndex} className="border-b border-gray-200 last:border-b-0">
                                                     {displayColumns.map(col => (
-                                                        <td 
-                                                            key={col.name} 
+                                                        <td
+                                                            key={col.name}
                                                             className={`py-1.5 px-3 font-mono truncate ${selectedColumn === col.name ? 'bg-blue-100' : 'hover:bg-gray-50 cursor-pointer'}`}
                                                             onClick={() => setSelectedColumn(col.name)}
                                                             title={String(row[col.name])}
@@ -3863,6 +3883,16 @@ const PCAScoreVisualization: React.FC<{
                                             ))}
                                         </tbody>
                                     </table>
+                                </div>
+                                {sortedRows.length > TABLE_PAGE_SIZE && (
+                                    <div className="flex items-center justify-between px-3 py-2 border-t border-gray-200 bg-gray-50 text-xs text-gray-600 flex-shrink-0">
+                                        <span>{tablePage * TABLE_PAGE_SIZE + 1}–{Math.min((tablePage + 1) * TABLE_PAGE_SIZE, sortedRows.length)} / {sortedRows.length.toLocaleString()}행</span>
+                                        <div className="flex gap-1">
+                                            <button onClick={() => setTablePage(p => Math.max(0, p - 1))} disabled={tablePage === 0} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-100">◀</button>
+                                            <button onClick={() => setTablePage(p => p + 1)} disabled={(tablePage + 1) * TABLE_PAGE_SIZE >= sortedRows.length} className="px-2 py-1 rounded border border-gray-300 disabled:opacity-40 hover:bg-gray-100">▶</button>
+                                        </div>
+                                    </div>
+                                )}
                                         </div>
                                 {selectedColumnData && (
                                     <div className="w-1/2 flex flex-col gap-4">

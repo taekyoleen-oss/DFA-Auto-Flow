@@ -116,10 +116,13 @@ import { AIPipelineFromDataModal } from "./components/AIPipelineFromDataModal";
 import { AIPlanDisplayModal } from "./components/AIPlanDisplayModal";
 import { PipelineCodePanel } from "./components/PipelineCodePanel";
 import { ErrorModal } from "./components/ErrorModal";
+import { AiSettingsModal } from "./components/AiSettingsModal";
 import SamplesModal from "./components/SamplesModal";
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
+import { getGeminiClient } from "./utils/aiClient";
 import { savePipeline, loadPipeline } from "./utils/fileOperations";
 import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
+import { setPyodideStatusCallback } from "./utils/pyodideRunner";
 import {
   isSupabaseConfigured,
   fetchAutoflowSamplesList,
@@ -138,6 +141,40 @@ type PropertiesTab = "properties" | "preview" | "code" | "terminal";
 // --- Helper Functions ---
 // Note: All mathematical/statistical calculations are now performed using Pyodide (Python)
 // JavaScript is only used for UI rendering and data structure transformations that don't modify Python results
+
+// A-5: Python 실행 오류 유형 분류 → 한국어 안내 메시지 반환
+function classifyPythonError(error: any): { category: string; userMessage: string } {
+  const msg = (error.message || String(error)).toLowerCase();
+  const errType = (error.error_type || "").toLowerCase();
+  const tb = (error.traceback || error.error_traceback || error.stack || "").toLowerCase();
+  const all = `${msg} ${errType} ${tb}`;
+
+  if (all.includes("modulenotfounderror") || all.includes("importerror") || all.includes("no module named"))
+    return { category: "📦 패키지 미설치", userMessage: "필요한 Python 패키지가 설치되지 않았습니다. Pyodide 환경에서 해당 패키지를 지원하지 않을 수 있습니다." };
+
+  if (all.includes("keyerror") || all.includes("not found in") || all.includes("dataframe is empty") || (all.includes("column") && all.includes("not found")))
+    return { category: "📋 데이터 컬럼 오류", userMessage: "입력 데이터의 컬럼명이나 형식이 맞지 않습니다. LoadData 모듈의 데이터와 컬럼 설정을 확인해주세요." };
+
+  if (all.includes("valueerror") || all.includes("no feature") || all.includes("label column") || all.includes("invalid value") || all.includes("must have same number"))
+    return { category: "⚙️ 파라미터 오류", userMessage: "모듈 설정값이 올바르지 않습니다. 속성 패널에서 파라미터를 확인하고 수정해주세요." };
+
+  if (all.includes("typeerror") || all.includes("cannot convert") || all.includes("expected number") || all.includes("int() argument"))
+    return { category: "🔢 데이터 타입 오류", userMessage: "데이터 타입이 맞지 않습니다. 숫자형 컬럼에 문자열이 포함되어 있거나 타입 변환이 필요합니다." };
+
+  if (all.includes("timeout") || all.includes("타임아웃"))
+    return { category: "⏱️ 타임아웃 오류", userMessage: "실행 시간이 초과되었습니다. 데이터 크기를 줄이거나 파라미터를 조정해주세요." };
+
+  if (all.includes("upstream") || all.includes("did not run successfully") || all.includes("no data available"))
+    return { category: "🔗 상위 모듈 미실행", userMessage: "연결된 이전 모듈이 성공적으로 실행되지 않았습니다. 상위 모듈부터 순서대로 실행해주세요." };
+
+  if (all.includes("memoryerror") || all.includes("out of memory"))
+    return { category: "💾 메모리 오류", userMessage: "데이터가 너무 크거나 메모리가 부족합니다. 데이터 크기를 줄이거나 샘플링을 적용해주세요." };
+
+  if (all.includes("zerodivisionerror") || all.includes("division by zero"))
+    return { category: "➗ 연산 오류", userMessage: "0으로 나누기 오류가 발생했습니다. 입력 데이터에 0 값이 있는지 확인해주세요." };
+
+  return { category: "❌ 실행 오류", userMessage: "모듈 실행 중 오류가 발생했습니다. 하단 터미널 로그에서 상세 내용을 확인하세요." };
+}
 
 // Sigmoid function for logistic regression predictions
 const sigmoid = (x: number): number => {
@@ -242,9 +279,19 @@ const App: React.FC = () => {
   const myWorkMenuRef = useRef<HTMLDivElement>(null);
   const [myWorkModels, setMyWorkModels] = useState<any[]>([]);
 
+  // Pyodide 로딩 진행 상태
+  const [pyodideStatus, setPyodideStatus] = useState<{ message: string; progress: number } | null>(null);
+
   const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(false);
   const [isRightPanelVisible, setIsRightPanelVisible] = useState(false);
   const [isCodePanelVisible, setIsCodePanelVisible] = useState(false);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  // AI 키 미설정 시 호출부가 dispatch하는 이벤트로 설정 모달을 자동 오픈
+  useEffect(() => {
+    const open = () => setIsAiSettingsOpen(true);
+    window.addEventListener("dfa:open-ai-settings", open);
+    return () => window.removeEventListener("dfa:open-ai-settings", open);
+  }, []);
   const [errorModal, setErrorModal] = useState<{
     moduleName: string;
     message: string;
@@ -343,6 +390,20 @@ const App: React.FC = () => {
     };
   }, [activeTabId, modules, connections, scale, pan, selectedModuleIds]);
 
+  // Pyodide 로딩 상태 콜백 등록
+  useEffect(() => {
+    setPyodideStatusCallback((message, progress) => {
+      if (message) {
+        setPyodideStatus({ message, progress });
+      } else {
+        setPyodideStatus(null);
+      }
+    });
+    return () => {
+      setPyodideStatusCallback(null);
+    };
+  }, []);
+
   useEffect(() => {
     if (prevActiveTabIdRef.current === activeTabId) return;
     const data = tabContentsRef.current[activeTabId];
@@ -425,6 +486,7 @@ const App: React.FC = () => {
     ]);
     if (level === "ERROR" || level === "WARN") {
       setIsRightPanelVisible(true);
+      setIsCodePanelVisible(false); // 에러/경고 시 속성 패널 열면 코드 패널 닫기
     }
   }, []);
 
@@ -440,7 +502,7 @@ const App: React.FC = () => {
         `AI is suggesting a module to connect to '${fromModule.name}'...`
       );
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        const ai = getGeminiClient();
         const fromPort = fromModule.outputs.find(
           (p) => p.name === fromPortName
         );
@@ -574,7 +636,10 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
   );
 
   const handleToggleRightPanel = () => {
-    setIsRightPanelVisible((prev) => !prev);
+    setIsRightPanelVisible((prev) => {
+      if (!prev) setIsCodePanelVisible(false); // 속성 패널 열면 코드 패널 닫기
+      return !prev;
+    });
   };
 
   const handleModuleDoubleClick = useCallback((id: string) => {
@@ -585,6 +650,7 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
       return [id];
     });
     setIsRightPanelVisible(true);
+    setIsCodePanelVisible(false); // 모듈 더블클릭 시 코드 패널 닫기
     setActivePropertiesTab("properties");
   }, []);
 
@@ -1056,7 +1122,7 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
     setIsAiGenerating(true);
     addLog("INFO", "AI pipeline generation started...");
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+      const ai = getGeminiClient();
 
       const moduleDescriptions: Record<string, string> = {
         LoadData: "Loads a dataset from a user-provided CSV file.",
@@ -9129,12 +9195,17 @@ result
         newStatus = ModuleStatus.Error;
         logLevel = "ERROR";
         logMessage = `Module [${moduleName}] failed: ${error.message}`;
-        
-        // 에러 모달 표시
+
+        // A-5: 오류 유형 분류 후 한국어 안내 표시
+        const { category, userMessage } = classifyPythonError(error);
+        const technicalDetail = error.message
+          ? `${error.message}${error.traceback || error.error_traceback ? `\n\n${error.traceback || error.error_traceback}` : ""}`
+          : String(error);
+
         setErrorModal({
           moduleName: moduleName,
-          message: error.message || String(error),
-          details: error.stack || error.traceback || error.error_traceback || undefined
+          message: `${category}\n\n${userMessage}`,
+          details: technicalDetail,
         });
       }
 
@@ -9216,6 +9287,84 @@ result
 
   const handleRunAll = () => {
     // Run All runs only the currently active tab's modules/connections (state is always active tab).
+
+    // A-1: 순환 참조(Circular Dependency) 검사
+    const detectCycles = (): string[][] => {
+      const graph = new Map<string, string[]>();
+      modules.forEach((m) => graph.set(m.id, []));
+      connections.forEach((c) => {
+        const downstream = graph.get(c.from.moduleId);
+        if (downstream) downstream.push(c.to.moduleId);
+      });
+
+      const cycles: string[][] = [];
+      const visited = new Set<string>();
+      const inStack = new Set<string>();
+      const stack: string[] = [];
+
+      const dfs = (id: string) => {
+        if (inStack.has(id)) {
+          const cycleStart = stack.indexOf(id);
+          const cycleModuleNames = stack.slice(cycleStart).map((mid) => {
+            const m = modules.find((mod) => mod.id === mid);
+            return m ? m.name : mid;
+          });
+          cycles.push(cycleModuleNames);
+          return;
+        }
+        if (visited.has(id)) return;
+        inStack.add(id);
+        stack.push(id);
+        for (const child of graph.get(id) || []) {
+          dfs(child);
+        }
+        stack.pop();
+        inStack.delete(id);
+        visited.add(id);
+      };
+
+      modules.forEach((m) => dfs(m.id));
+      return cycles;
+    };
+
+    const cycles = detectCycles();
+    if (cycles.length > 0) {
+      const cycleDescriptions = cycles
+        .map((c) => c.join(" → "))
+        .join("\n");
+      addLog(
+        "ERROR",
+        `⚠️ 순환 참조(Circular Dependency) 감지됨! 실행을 중단합니다.\n순환 경로:\n${cycleDescriptions}`
+      );
+      setErrorModal({
+        moduleName: "파이프라인 검증",
+        message: `순환 참조(Circular Dependency)가 감지되어 실행할 수 없습니다.`,
+        details: `다음 순환 경로를 제거한 후 다시 실행해주세요:\n\n${cycleDescriptions}`,
+      });
+      return;
+    }
+
+    // A-2: 필수 입력 포트 연결 검증
+    const unconnectedInputs: string[] = [];
+    modules.forEach((m) => {
+      if (m.inputs.length === 0) return; // 입력 포트 없는 모듈은 건너뜀
+      m.inputs.forEach((port) => {
+        const isConnected = connections.some(
+          (c) => c.to.moduleId === m.id && c.to.portName === port.name
+        );
+        if (!isConnected) {
+          unconnectedInputs.push(`• ${m.name}: '${port.name}' 입력 포트 미연결`);
+        }
+      });
+    });
+
+    if (unconnectedInputs.length > 0) {
+      addLog(
+        "WARN",
+        `⚠️ 미연결 입력 포트가 있습니다. 실행 중 오류가 발생할 수 있습니다:\n${unconnectedInputs.join("\n")}`
+      );
+    }
+
     const rootNodes = modules.filter(
       (m) => !connections.some((c) => c.to.moduleId === m.id)
     );
@@ -9237,7 +9386,7 @@ result
     } else if (modules.length > 0) {
       addLog(
         "WARN",
-        "Circular dependency or no root nodes found. Starting from all modules."
+        "No root nodes found. Starting from all modules."
       );
       setModules((prev) =>
         prev.map((m) => ({
@@ -9462,6 +9611,26 @@ result
 
   return (
     <div className="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white h-screen w-screen flex flex-col overflow-hidden">
+      {/* Pyodide 로딩 진행 표시 배너 */}
+      {pyodideStatus && (
+        <div className="fixed bottom-4 right-4 z-50 w-80 bg-gray-900 dark:bg-gray-800 text-white rounded-xl shadow-2xl px-4 py-3 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <svg className="animate-spin h-4 w-4 text-blue-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-xs font-medium text-gray-100 truncate">{pyodideStatus.message}</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-1.5">
+            <div
+              className="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
+              style={{ width: `${pyodideStatus.progress}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-400">{pyodideStatus.progress}% 완료</p>
+        </div>
+      )}
+
       {isAiGenerating && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center z-50">
           <div role="status">
@@ -9540,6 +9709,16 @@ result
             ) : (
               <MoonIcon className="h-5 w-5 text-gray-700" />
             )}
+          </button>
+          {/* AI API 키 설정 */}
+          <button
+            onClick={() => setIsAiSettingsOpen(true)}
+            className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+            title="AI API 키 설정"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+            </svg>
           </button>
           <button
             onClick={undo}
@@ -9906,7 +10085,10 @@ result
           </div>
           <div className="flex items-center gap-1 md:gap-2 ml-auto">
             <button
-              onClick={() => setIsCodePanelVisible((v) => !v)}
+              onClick={() => setIsCodePanelVisible((v) => {
+                if (!v) setIsRightPanelVisible(false); // 코드 패널 열면 속성 패널 닫기
+                return !v;
+              })}
               className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-md font-semibold transition-colors flex-shrink-0"
               title="View Full Pipeline Code"
             >
@@ -10182,12 +10364,17 @@ result
 
         {/* -- Unified Side Panels -- */}
         {/* Code Panel - Rightmost */}
-        <PipelineCodePanel
-          modules={modules}
-          connections={connections}
-          isVisible={isCodePanelVisible}
-          onToggle={() => setIsCodePanelVisible((v) => !v)}
-        />
+        <ErrorBoundary>
+          <PipelineCodePanel
+            modules={modules}
+            connections={connections}
+            isVisible={isCodePanelVisible}
+            onToggle={() => setIsCodePanelVisible((v) => {
+              if (!v) setIsRightPanelVisible(false);
+              return !v;
+            })}
+          />
+        </ErrorBoundary>
 
         <div
           className={`absolute top-0 right-0 h-full z-10 transition-transform duration-300 ease-in-out ${
@@ -10432,6 +10619,10 @@ result
       <ErrorModal
         error={errorModal}
         onClose={() => setErrorModal(null)}
+      />
+      <AiSettingsModal
+        isOpen={isAiSettingsOpen}
+        onClose={() => setIsAiSettingsOpen(false)}
       />
       <SamplesModal
         isOpen={isSampleMenuOpen}

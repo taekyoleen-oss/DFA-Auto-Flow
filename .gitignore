@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 
+# 환경변수 / 비밀키 (커밋 금지)
+.env
+.env.*
+!.env.example
+
+# 하네스 검증용 임시 산출물
+_workspace/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

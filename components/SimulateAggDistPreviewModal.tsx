@@ -39,6 +39,40 @@ export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalPr
   const { results, statistics, simulationCount } = output;
   const [showSpreadView, setShowSpreadView] = useState(false);
 
+  // C-3: VaR(Value at Risk) 및 TVaR(Tail VaR) 계산
+  // VaR: 전체 시뮬레이션 기반 statistics.percentile95/99 사용 (정확)
+  // TVaR: rawSimulations(최대 100개 샘플) 기반 근사값
+  const riskMetrics = useMemo(() => {
+    if (!statistics) return null;
+    const var95 = statistics.percentile95;
+    const var99 = statistics.percentile99;
+
+    const raw = output.rawSimulations;
+    if (!raw || raw.length === 0) return { var95, var99, tvar95: null, tvar99: null, sampleCount: 0 };
+
+    const sorted = [...raw].sort((a, b) => a - b);
+    const n = sorted.length;
+
+    // Binary search to find first index where sorted[i] > threshold — O(log n)
+    const getTailMean = (threshold: number): number => {
+      let lo = 0, hi = n;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (sorted[mid] <= threshold) lo = mid + 1;
+        else hi = mid;
+      }
+      if (lo >= n) return threshold;
+      let sum = 0;
+      for (let i = lo; i < n; i++) sum += sorted[i];
+      return sum / (n - lo);
+    };
+
+    const tvar95 = getTailMean(var95);
+    const tvar99 = getTailMean(var99);
+
+    return { var95, var99, tvar95, tvar99, sampleCount: n };
+  }, [statistics, output.rawSimulations]);
+
   // Spread View용 데이터 변환
   const spreadViewData = useMemo(() => {
     if (!results || results.length === 0) return [];
@@ -205,6 +239,45 @@ export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalPr
             {/* 오른쪽: Statistics */}
             <div className="w-96 flex-shrink-0">
               <div className="h-full rounded-lg p-3 overflow-auto">
+                {/* C-3: VaR/TVaR 주요 리스크 지표 */}
+                {riskMetrics && (
+                  <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <h3 className="text-sm font-bold text-blue-800 mb-2">📊 주요 리스크 지표</h3>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                      <div className="flex flex-col">
+                        <span className="text-xs text-blue-500 font-medium">VaR (95%)</span>
+                        <span className="font-mono text-sm text-blue-900 font-bold">
+                          {riskMetrics.var95.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-blue-500 font-medium">TVaR (95%) *</span>
+                        <span className="font-mono text-sm text-blue-900 font-bold">
+                          {riskMetrics.tvar95 != null
+                            ? riskMetrics.tvar95.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
+                            : '—'}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-red-500 font-medium">VaR (99%)</span>
+                        <span className="font-mono text-sm text-red-700 font-bold">
+                          {riskMetrics.var99.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-xs text-red-500 font-medium">TVaR (99%) *</span>
+                        <span className="font-mono text-sm text-red-700 font-bold">
+                          {riskMetrics.tvar99 != null
+                            ? riskMetrics.tvar99.toLocaleString('ko-KR', { maximumFractionDigits: 2 })
+                            : '—'}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-400 mt-2">
+                      VaR: 전체 시뮬레이션 기반 | TVaR*: {riskMetrics.sampleCount}개 샘플 근사값 (Expected Shortfall)
+                    </p>
+                  </div>
+                )}
                 <h3 className="text-sm font-semibold text-gray-800 mb-3">통계량</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   <div className="flex items-center justify-between">
