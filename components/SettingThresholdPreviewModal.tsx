@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useRef } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SettingThresholdOutput } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { SpreadViewModal } from './SpreadViewModal';
@@ -331,6 +332,7 @@ export const SettingThresholdPreviewModal: React.FC<SettingThresholdPreviewModal
           </header>
 
           <main className="flex-1 overflow-y-auto p-6">
+          <ModuleInsightPanel module={module} />
             {/* Tabs */}
             <div className="flex gap-2 mb-4 border-b border-gray-200">
               <button

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, FrequencyModelOutput, FrequencyModelFitResult } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
@@ -1351,6 +1352,7 @@ export const FrequencyModelPreviewModal: React.FC<FrequencyModelPreviewModalProp
           </div>
         </header>
         <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
           {/* Tabs */}
           <div className="border-b border-gray-200 mb-6">
             <div className="flex gap-4">

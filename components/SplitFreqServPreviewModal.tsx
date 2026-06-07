@@ -1,4 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SplitFreqServOutput } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
@@ -110,6 +111,7 @@ export const SplitFreqServPreviewModal: React.FC<SplitFreqServPreviewModalProps>
           </div>
         </header>
         <main className="flex-grow p-6 overflow-auto flex flex-col" ref={viewDetailsRef}>
+          <ModuleInsightPanel module={module} />
           {/* Tabs */}
           <div className="flex gap-2 mb-4 border-b border-gray-200 flex-shrink-0">
             <button

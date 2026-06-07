@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, AggregateModelOutput, AggregateModelFitResult } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
@@ -227,6 +228,7 @@ export const AggregateModelPreviewModal: React.FC<AggregateModelPreviewModalProp
           </div>
         </header>
         <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
           <div className="space-y-6">
             {/* Data Statistics */}
             {statistics && (

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SeverityModelOutput, SeverityModelFitResult } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
@@ -1328,6 +1329,7 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
           </div>
         </header>
         <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
           {/* Tabs */}
           <div className="flex border-b border-gray-200 mb-4">
             <button

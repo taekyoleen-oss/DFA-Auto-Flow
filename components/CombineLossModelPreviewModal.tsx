@@ -4,6 +4,7 @@ import { CombineLossModelOutput } from "../types";
 import { XMarkIcon, ArrowDownTrayIcon } from "./icons";
 import { useCopyOnCtrlC } from "../hooks/useCopyOnCtrlC";
 import { SpreadViewModal } from "./SpreadViewModal";
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 
 interface CombineLossModelPreviewModalProps {
   module: CanvasModule;
@@ -99,6 +100,7 @@ export const CombineLossModelPreviewModal: React.FC<
           ref={contentRef}
           className="flex-1 overflow-y-auto p-6 space-y-6"
         >
+          <ModuleInsightPanel module={module} />
           {/* Combined Statistics */}
           <div>
             <h3 className="text-lg font-semibold text-white mb-4">

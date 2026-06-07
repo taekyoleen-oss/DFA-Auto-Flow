@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SimulateAggDistOutput } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { SpreadViewModal } from './SpreadViewModal';
@@ -209,6 +210,7 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
           </div>
         </header>
         <main className="flex-grow p-6 overflow-auto">
+          <ModuleInsightPanel module={module} />
           <div className="space-y-6">
             {/* Simulation Info */}
             <div className="bg-gray-50 rounded-lg p-4">

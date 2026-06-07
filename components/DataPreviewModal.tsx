@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { ModuleInsightPanel } from './ModuleInsightPanel';
 import { CanvasModule, ColumnInfo, DataPreview, ModuleType, ThresholdAnalysisOutput } from '../types';
 import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -2006,6 +2007,7 @@ const PCAScoreVisualization: React.FC<{
                         </div>
                     </header>
                     <main className="flex-grow p-6 overflow-auto">
+                    <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections} />
                         {/* XoL Contract 파라미터 */}
                         <div className="mb-6">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4">XoL Contract Parameters</h3>
@@ -2335,6 +2337,7 @@ const PCAScoreVisualization: React.FC<{
                     </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
+                    <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections} />
                     {/* XoL Calculator 모듈의 경우 탭 구성 */}
                     {module.type === ModuleType.XolCalculator ? (
                     <div className="flex-shrink-0 border-b border-gray-200">
