@@ -99,22 +99,39 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
         }
     };
 
-    // AI: 코드 설명 또는 실행 에러 해결안 생성 (활성 프로바이더 사용)
+    // 현재 컨텍스트에 따른 AI 모드: 에러 해결 / 결과 해석 / 코드 설명
+    const aiMode: 'error' | 'interpret' | 'explain' = outputError
+        ? 'error'
+        : (output && output !== '(출력 없음)') ? 'interpret' : 'explain';
+    const aiLabel = aiMode === 'error' ? '🤖 에러해결' : aiMode === 'interpret' ? '🤖 결과해석' : '🤖 설명';
+
+    // AI: 컨텍스트 인지형 — 에러 해결 / 결과 해석(계리 관점) / 코드 설명 (활성 프로바이더)
     const handleAiExplain = async () => {
         setAiBusy(true);
         setAiError(null);
         setAiResult('');
-        const hasError = !!outputError;
         const system =
             '당신은 보험·계리(XoL 재보험 프라이싱, DFA) 도메인의 파이썬 데이터 분석 전문가입니다. ' +
             '한국어로 간결하고 정확하게 답합니다. 코드는 pandas/numpy/scikit-learn/statsmodels 기반입니다.';
-        const prompt = hasError
-            ? `다음 파이썬 파이프라인 코드를 실행하니 에러가 발생했습니다.\n` +
-              `에러를 한국어로 설명하고, 원인과 수정 방법을 제시한 뒤, 수정된 코드 조각을 보여주세요.\n\n` +
-              `### 에러\n${outputError}\n\n### 코드\n\`\`\`python\n${fullPipelineCode}\n\`\`\``
-            : `다음 파이썬 파이프라인 코드가 무엇을 하는지 단계별로 한국어로 설명하고, ` +
-              `계리 관점에서 주의할 점이나 개선 아이디어를 1~3개 제시하세요.\n\n` +
-              `\`\`\`python\n${fullPipelineCode}\n\`\`\``;
+        let prompt: string;
+        if (aiMode === 'error') {
+            prompt =
+                `다음 파이썬 파이프라인 코드를 실행하니 에러가 발생했습니다.\n` +
+                `에러를 한국어로 설명하고, 원인과 수정 방법을 제시한 뒤, 수정된 코드 조각을 보여주세요.\n\n` +
+                `### 에러\n${outputError}\n\n### 코드\n\`\`\`python\n${fullPipelineCode}\n\`\`\``;
+        } else if (aiMode === 'interpret') {
+            prompt =
+                `다음은 보험·계리 파이프라인의 실제 실행 결과입니다. 계리 관점에서 한국어로 해석해 주세요:\n` +
+                `1) 핵심 수치(분포 적합 결과, VaR/TVaR, 시뮬레이션 통계 등)가 의미하는 바\n` +
+                `2) 리스크/프라이싱 관점의 시사점\n` +
+                `3) 결과의 타당성 점검 포인트나 주의사항 1~3개\n\n` +
+                `### 실행 결과\n\`\`\`\n${output.slice(0, 6000)}\n\`\`\``;
+        } else {
+            prompt =
+                `다음 파이썬 파이프라인 코드가 무엇을 하는지 단계별로 한국어로 설명하고, ` +
+                `계리 관점에서 주의할 점이나 개선 아이디어를 1~3개 제시하세요.\n\n` +
+                `\`\`\`python\n${fullPipelineCode}\n\`\`\``;
+        }
         try {
             const text = await generateAiText({ prompt, system, temperature: 0.3 });
             setAiResult(text || '(응답 없음)');
@@ -191,9 +208,9 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
                         onClick={handleAiExplain}
                         disabled={aiBusy || modules.length === 0}
                         className="flex items-center gap-1.5 px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white text-xs font-medium rounded-md transition-colors"
-                        title={outputError ? 'AI로 에러 해결안 받기' : 'AI로 코드 설명 받기'}
+                        title={aiMode === 'error' ? 'AI로 에러 해결안 받기' : aiMode === 'interpret' ? 'AI로 실행 결과 해석받기' : 'AI로 코드 설명 받기'}
                     >
-                        {aiBusy ? '...' : outputError ? '🤖 에러해결' : '🤖 설명'}
+                        {aiBusy ? '...' : aiLabel}
                     </button>
                 </div>
             </div>
@@ -262,7 +279,7 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
             {(aiBusy || aiResult || aiError) && (
                 <div className="flex-shrink-0 border-t border-purple-300 dark:border-purple-700">
                     <div className="flex items-center justify-between px-3 py-1.5 bg-purple-100 dark:bg-purple-900/40">
-                        <span className="text-xs font-medium text-purple-700 dark:text-purple-300">🤖 AI 설명 / 에러 해결</span>
+                        <span className="text-xs font-medium text-purple-700 dark:text-purple-300">🤖 AI 설명 / 결과 해석 / 에러 해결</span>
                         <button
                             onClick={() => { setAiResult(''); setAiError(null); }}
                             className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
