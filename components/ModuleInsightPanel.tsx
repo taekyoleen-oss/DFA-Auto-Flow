@@ -98,26 +98,28 @@ export const ModuleInsightPanel: React.FC<ModuleInsightPanelProps> = ({
         </div>
       </div>
 
-      {/* 핵심 지표 칩 */}
-      {insight.metrics.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {insight.metrics.map((m, i) => (
-            <div
-              key={i}
-              className="rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2.5 py-1"
-            >
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">{m.label}</span>
-              <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{m.value}</div>
-            </div>
-          ))}
+      {/* 지표(좌) + 해석·다음단계(우) 가로 배치로 세로 공간 축소 */}
+      <div className="flex gap-3 items-start">
+        {insight.metrics.length > 0 && (
+          <div className="flex flex-col gap-1 flex-shrink-0">
+            {insight.metrics.map((m, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-2 rounded-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-0.5 min-w-[120px]"
+              >
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">{m.label}</span>
+                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">{m.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{insight.interpretation}</p>
+          <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+            <span className="font-semibold">다음 단계 →</span> {insight.nextSteps}
+          </p>
         </div>
-      )}
-
-      {/* 계리 해석 + 다음 단계 */}
-      <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">{insight.interpretation}</p>
-      <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-        <span className="font-semibold">다음 단계 →</span> {insight.nextSteps}
-      </p>
+      </div>
 
       {/* 생성 파이썬 코드 (접이식) */}
       {showCode && (
