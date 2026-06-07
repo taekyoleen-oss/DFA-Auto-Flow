@@ -30,3 +30,7 @@ _workspace/
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright/검증 아티팩트
+.playwright-mcp/
+dfa-*.png
