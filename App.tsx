@@ -118,8 +118,7 @@ import { PipelineCodePanel } from "./components/PipelineCodePanel";
 import { ErrorModal } from "./components/ErrorModal";
 import { AiSettingsModal } from "./components/AiSettingsModal";
 import SamplesModal from "./components/SamplesModal";
-import { Type } from "@google/genai";
-import { getGeminiClient } from "./utils/aiClient";
+import { generateAiText } from "./utils/aiClient";
 import { savePipeline, loadPipeline } from "./utils/fileOperations";
 import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
 import { setPyodideStatusCallback } from "./utils/pyodideRunner";
@@ -502,7 +501,6 @@ const App: React.FC = () => {
         `AI is suggesting a module to connect to '${fromModule.name}'...`
       );
       try {
-        const ai = getGeminiClient();
         const fromPort = fromModule.outputs.find(
           (p) => p.name === fromPortName
         );
@@ -516,12 +514,10 @@ const App: React.FC = () => {
 Available module types: [${availableModuleTypes}].
 Respond with ONLY the module type string, for example: 'ScoreModel'`;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: prompt,
-        });
-
-        const suggestedType = response.text.trim() as ModuleType;
+        // 멀티 프로바이더(활성 제공자) 사용
+        const suggestedType = (
+          await generateAiText({ prompt, temperature: 0 })
+        ).trim() as ModuleType;
         const defaultModule = DEFAULT_MODULES.find(
           (m) => m.type === suggestedType
         );
@@ -1122,8 +1118,6 @@ Respond with ONLY the module type string, for example: 'ScoreModel'`;
     setIsAiGenerating(true);
     addLog("INFO", "AI pipeline generation started...");
     try {
-      const ai = getGeminiClient();
-
       const moduleDescriptions: Record<string, string> = {
         LoadData: "Loads a dataset from a user-provided CSV file.",
         Statistics:
@@ -1219,52 +1213,20 @@ The JSON object must contain 'plan', 'modules', and 'connections'.
 - \`connections\`: An array of connection objects.
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-pro",
-        contents: fullPrompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              plan: { type: Type.STRING },
-              modules: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    type: { type: Type.STRING },
-                    name: { type: Type.STRING },
-                  },
-                  required: ["type", "name"],
-                },
-              },
-              connections: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    fromModuleIndex: { type: Type.INTEGER },
-                    fromPort: { type: Type.STRING },
-                    toModuleIndex: { type: Type.INTEGER },
-                    toPort: { type: Type.STRING },
-                  },
-                  required: [
-                    "fromModuleIndex",
-                    "fromPort",
-                    "toModuleIndex",
-                    "toPort",
-                  ],
-                },
-              },
-            },
-            required: ["plan", "modules", "connections"],
-          },
-        },
+      // 멀티 프로바이더(Gemini/OpenAI/Claude) JSON 생성 — 스키마는 프롬프트에 기술됨
+      const responseText = await generateAiText({
+        prompt: fullPrompt,
+        json: true,
+        temperature: 0.4,
       });
 
-      const responseText = response.text.trim();
-      const pipeline = JSON.parse(responseText);
+      // 일부 제공자는 ```json 코드펜스로 감싸므로 제거 후 파싱
+      const cleaned = responseText
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      const pipeline = JSON.parse(cleaned);
 
       if (!pipeline.modules || !pipeline.connections || !pipeline.plan) {
         throw new Error(
