@@ -101,6 +101,13 @@ export function generateLoadDataInjectionCode(module: CanvasModule): string {
   const source = String(module.parameters?.source || 'data.csv');
   const embedded = buildEmbeddedData(module);
   if (!embedded) {
+    // (Phase 4) URL 소스 부가 분기: URL이면 read_csv(<url>)로 폴백, 그 외(파일)는 기존 동작 유지.
+    if (module.parameters?.sourceType === 'url') {
+      return [
+        `# URL에서 직접 로드 (외부 Python에서도 동일 URL로 재현)`,
+        `dataframe = pd.read_csv(${JSON.stringify(source)})`,
+      ].join('\n');
+    }
     return [
       `# ⚠️  Pyodide 실행: 로컬 파일 접근 불가 (브라우저 환경 제한)`,
       `# 해결 방법: 캔버스에서 LoadData 모듈을 먼저 실행(▶)한 후 다시 시도하세요.`,
@@ -285,11 +292,20 @@ export function generateFullPipelineCode(
         moduleCode = `dataframe = ${embedded.funcName}()${noteLine}`;
       } else {
         const source = String(module.parameters?.source || 'data.csv');
-        moduleCode = [
-          `# ⚠️  LoadData 미실행 — 데이터가 임베드되지 않았습니다.`,
-          `# 앱에서: LoadData 모듈을 먼저 실행(▶)하면 데이터가 자동 임베드되어 어디서나 재현됩니다.`,
-          `dataframe = pd.read_csv('${source}')  # 외부 실행 시 원본 파일 경로로 수정`,
-        ].join('\n');
+        // (Phase 4) URL 소스 부가 분기: 소스가 URL일 때만 read_csv(<url>)를 직접 방출한다.
+        // 파일/로컬 소스는 기존과 byte-identical 코드를 그대로 생성한다.
+        if (module.parameters?.sourceType === 'url') {
+          moduleCode = [
+            `# URL에서 직접 로드 (외부 Python에서도 동일 URL로 재현)`,
+            `dataframe = pd.read_csv(${JSON.stringify(source)})`,
+          ].join('\n');
+        } else {
+          moduleCode = [
+            `# ⚠️  LoadData 미실행 — 데이터가 임베드되지 않았습니다.`,
+            `# 앱에서: LoadData 모듈을 먼저 실행(▶)하면 데이터가 자동 임베드되어 어디서나 재현됩니다.`,
+            `dataframe = pd.read_csv('${source}')  # 외부 실행 시 원본 파일 경로로 수정`,
+          ].join('\n');
+        }
       }
     } else {
       try {

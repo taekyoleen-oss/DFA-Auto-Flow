@@ -17,6 +17,11 @@ export default defineConfig(() => {
             changeOrigin: true,
             secure: false,
           },
+          '/api/proxy-csv': {
+            target: 'http://localhost:3001',
+            changeOrigin: true,
+            secure: false,
+          },
           '/api/samples': {
             target: 'http://localhost:3002',
             changeOrigin: true,

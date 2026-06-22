@@ -13,6 +13,54 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+/**
+ * CORS 프록시 — 공개 URL의 CSV를 서버가 대신 가져와 그대로 전달한다.
+ * 브라우저(Pyodide/앱)는 CORS 때문에 외부 URL을 직접 fetch하지 못하므로,
+ * 인앱 URL 로더가 이 엔드포인트를 경유해 CSV 텍스트를 받는다.
+ *
+ * 주의: 이 프록시는 "데이터 입력 계층"에서만 쓰이며, Pyodide 실행 경로는 변경하지 않는다.
+ * 가져온 CSV는 업로드 파일과 동일하게 module.parameters.fileContent로 저장된다.
+ */
+app.get('/api/proxy-csv', async (req, res) => {
+    const targetUrl = req.query.url;
+
+    if (!targetUrl || typeof targetUrl !== 'string') {
+        return res.status(400).json({ error: 'Missing required query parameter: url' });
+    }
+
+    // 기본 SSRF 방어: http/https만 허용
+    let parsed;
+    try {
+        parsed = new URL(targetUrl);
+    } catch {
+        return res.status(400).json({ error: 'Invalid URL' });
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return res.status(400).json({ error: 'Only http/https URLs are allowed' });
+    }
+
+    try {
+        // Node 18+/22 글로벌 fetch 사용
+        const upstream = await fetch(targetUrl, {
+            redirect: 'follow',
+            headers: { 'Accept': 'text/csv, text/plain, */*' },
+        });
+
+        if (!upstream.ok) {
+            return res.status(502).json({
+                error: `Upstream responded with ${upstream.status} ${upstream.statusText}`,
+            });
+        }
+
+        const text = await upstream.text();
+        res.set('Content-Type', 'text/plain; charset=utf-8');
+        res.status(200).send(text);
+    } catch (error) {
+        console.error('proxy-csv error:', error);
+        res.status(502).json({ error: `Failed to fetch URL: ${error.message}` });
+    }
+});
+
 app.post('/api/split-data', async (req, res) => {
     try {
         const { data, train_size, random_state, shuffle, stratify, stratify_column } = req.body;
@@ -144,4 +192,5 @@ except Exception as e:
 app.listen(PORT, () => {
     console.log(`SplitData 서버가 포트 ${PORT}에서 실행 중입니다.`);
     console.log(`http://localhost:${PORT}/api/split-data`);
+    console.log(`http://localhost:${PORT}/api/proxy-csv?url=...`);
 });

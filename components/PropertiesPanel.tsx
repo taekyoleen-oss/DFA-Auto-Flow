@@ -43,6 +43,7 @@ import { getModuleCode } from "../codeSnippets";
 import { SAMPLE_DATA } from "../sampleData";
 import { Type } from "@google/genai";
 import { getGeminiClient } from "../utils/aiClient";
+import { computeDataOverview } from "../utils/dataOverview";
 import { DEFAULT_MODULES } from "../constants";
 import * as XLSX from "xlsx";
 import { ExcelInputModal } from "./ExcelInputModal";
@@ -571,6 +572,98 @@ const getConnectedDataSourceHelper = (
   return undefined;
 };
 
+/**
+ * URL 데이터 로더 (Phase 4 — 데이터 입력 계층 전용, 부가 기능).
+ *
+ * 공개 URL의 CSV를 CORS 프록시(/api/proxy-csv)를 경유해 JS로 가져온 뒤,
+ * 업로드 파일과 "완전히 동일한" 저장 형태로 module.parameters에 넣는다:
+ *   { source: <url>, fileContent: <csv 텍스트>, fileType: 'url', sourceType: 'url' }
+ * 이후 실행 경로(App.tsx의 CSV 파서)와 미리보기는 업로드와 동일하게 동작한다.
+ * Pyodide/Python 실행 경로는 일절 변경하지 않는다.
+ */
+const UrlSourceLoader: React.FC<{
+  moduleId: string;
+  isClaimData: boolean;
+  updateModuleParameters: (id: string, newParams: Record<string, any>) => void;
+}> = ({ moduleId, isClaimData, updateModuleParameters }) => {
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleLoadUrl = async () => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      setError("URL을 입력하세요.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch(
+        `/api/proxy-csv?url=${encodeURIComponent(trimmed)}`
+      );
+      if (!resp.ok) {
+        let detail = `${resp.status} ${resp.statusText}`;
+        try {
+          const j = await resp.json();
+          if (j?.error) detail = j.error;
+        } catch {
+          /* 본문이 JSON이 아니면 무시 */
+        }
+        throw new Error(detail);
+      }
+      const csvText = await resp.text();
+      if (!csvText || csvText.trim() === "") {
+        throw new Error("가져온 데이터가 비어 있습니다.");
+      }
+      // 업로드와 동일한 저장 형태 (fileContent = CSV 텍스트)
+      updateModuleParameters(moduleId, {
+        source: trimmed,
+        fileContent: csvText,
+        fileType: isClaimData ? "url" : undefined,
+        sourceType: "url",
+      });
+    } catch (e: any) {
+      setError(e?.message || "URL에서 데이터를 가져오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+      <label className="block text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-1">
+        URL에서 불러오기
+      </label>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleLoadUrl();
+          }}
+          className="flex-grow bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="https://example.com/claims.csv"
+        />
+        <button
+          onClick={handleLoadUrl}
+          disabled={loading}
+          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-60 rounded-md font-semibold text-white transition-colors whitespace-nowrap"
+        >
+          {loading ? "불러오는 중..." : "URL 불러오기"}
+        </button>
+      </div>
+      {error && (
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>
+      )}
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-500">
+        공개 CSV 링크를 CORS 프록시로 가져옵니다. 업로드 파일과 동일하게 처리됩니다.
+      </p>
+    </div>
+  );
+};
+
 const renderParameters = (
   module: CanvasModule,
   onParamChange: (key: string, value: any) => void,
@@ -721,6 +814,11 @@ const renderParameters = (
           >
             엑셀 데이터 직접 입력
           </button>
+          <UrlSourceLoader
+            moduleId={module.id}
+            isClaimData={true}
+            updateModuleParameters={updateModuleParameters}
+          />
           <div className="mt-4">
             <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Examples
@@ -797,6 +895,11 @@ const renderParameters = (
               Browse...
             </button>
           </div>
+          <UrlSourceLoader
+            moduleId={module.id}
+            isClaimData={false}
+            updateModuleParameters={updateModuleParameters}
+          />
           <div className="mt-4">
             <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Examples
@@ -4014,6 +4117,84 @@ const ColumnInfoTable: React.FC<{
   </div>
 );
 
+// 데이터 개요/요약 (Phase 3, 작업 1) — 읽기 전용·additive.
+// 미리보기 객체(columns+rows)에서 순수 TS로 집계. Pyodide 호출 없음.
+// 데이터가 없으면 아무것도 렌더링하지 않음.
+const DataOverviewSummary: React.FC<{
+  columns?: ColumnInfo[] | null;
+  rows?: Record<string, any>[] | null;
+  totalRowCount?: number | null;
+}> = ({ columns, rows, totalRowCount }) => {
+  const overview = useMemo(
+    () => computeDataOverview({ columns, rows, totalRowCount }),
+    [columns, rows, totalRowCount]
+  );
+
+  if (!overview) return null;
+
+  return (
+    <details
+      className="mb-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/50"
+      open
+    >
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2 flex-wrap">
+        <span>데이터 개요</span>
+        <span className="font-normal text-gray-500 dark:text-gray-400">
+          행 {overview.rowCount.toLocaleString("ko-KR")}
+          {overview.isSample && (
+            <span className="text-gray-400 dark:text-gray-500">
+              {" "}
+              (미리보기 {overview.sampleRowCount.toLocaleString("ko-KR")}행)
+            </span>
+          )}
+          {" · "}열 {overview.columnCount.toLocaleString("ko-KR")}
+        </span>
+        {overview.columnsWithMissing > 0 ? (
+          <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-medium">
+            결측 {overview.columnsWithMissing}개
+          </span>
+        ) : (
+          <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 text-[10px] font-medium">
+            결측 없음
+          </span>
+        )}
+      </summary>
+      <div className="px-3 pb-2 pt-1 max-h-56 overflow-y-auto panel-scrollbar">
+        {overview.columns.map((col) => (
+          <div
+            key={col.name}
+            className={`flex justify-between items-center gap-2 py-1 px-1.5 rounded text-xs ${
+              col.hasMissing ? "bg-amber-50 dark:bg-amber-900/20" : ""
+            }`}
+          >
+            <span className="font-mono truncate text-gray-700 dark:text-gray-200" title={col.name}>
+              {col.name || "(이름 없음)"}
+            </span>
+            <span className="flex items-center gap-2 flex-shrink-0">
+              <span
+                className={`px-1 py-0.5 rounded text-[10px] font-medium ${
+                  col.inferredType === "numeric"
+                    ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                    : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
+                }`}
+              >
+                {col.inferredTypeLabel}
+              </span>
+              {col.hasMissing ? (
+                <span className="font-mono text-amber-700 dark:text-amber-300 font-semibold">
+                  {col.missingCount.toLocaleString("ko-KR")}
+                </span>
+              ) : (
+                <span className="font-mono text-gray-400 dark:text-gray-500">0</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+};
+
 const DataStatsSummary: React.FC<{ data: DataPreview; title?: string }> = ({
   data,
   title,
@@ -4599,6 +4780,17 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       );
     }
 
+    // 데이터 개요/요약 (읽기 전용·additive) — 입력 데이터가 columns 를 가질 때 위에 표시
+    const inputOverview =
+      Array.isArray(inputData.columns) && inputData.columns.length > 0 ? (
+        <DataOverviewSummary
+          columns={inputData.columns}
+          rows={inputData.rows}
+          totalRowCount={inputData.totalRowCount}
+        />
+      ) : null;
+
+    const inputBody = (() => {
     switch (module.type) {
       case ModuleType.ResampleData: {
         const targetColumn = module.parameters.target_column;
@@ -4672,6 +4864,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       default:
         return <ColumnInfoTable columns={inputData.columns} />;
     }
+    })();
+
+    return (
+      <>
+        {inputOverview}
+        {inputBody}
+      </>
+    );
   };
 
   const renderOutputPreview = () => {

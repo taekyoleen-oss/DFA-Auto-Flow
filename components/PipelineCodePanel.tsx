@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { CodeBracketIcon, ClipboardIcon, CheckIcon } from './icons';
 import { CanvasModule, Connection } from '../types';
 import { generateFullPipelineCode } from '../utils/generatePipelineCode';
+import { buildScoringExport, ScoringExportResult } from '../utils/scoringExport';
 import { generateAiText, MissingApiKeyError } from '../utils/aiClient';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -57,6 +58,9 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
     const [aiBusy, setAiBusy] = useState(false);
     const [aiResult, setAiResult] = useState('');
     const [aiError, setAiError] = useState<string | null>(null);
+    // 스코어링/배포 코드 내보내기 (additive — 기존 코드 생성과 독립)
+    const [scoring, setScoring] = useState<ScoringExportResult | null>(null);
+    const [scoringCopied, setScoringCopied] = useState(false);
 
     // 표시용 코드 (pd.read_csv 포함 - 외부 실행 가능한 형태)
     const fullPipelineCode = useMemo(() => {
@@ -78,6 +82,41 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
         } catch (err) {
             console.error('Failed to copy code:', err);
         }
+    };
+
+    // 스코어링/배포 코드 생성 (별도 생성기 — 기존 파이프라인 코드 경로 미사용)
+    const handleScoringExport = () => {
+        setScoringCopied(false);
+        try {
+            const result = buildScoringExport(modules, connections);
+            setScoring(result);
+        } catch (e: any) {
+            setScoring({ available: false, reason: e?.message || String(e), code: '' });
+        }
+    };
+
+    const handleScoringCopy = async () => {
+        if (!scoring?.code) return;
+        try {
+            await navigator.clipboard.writeText(scoring.code);
+            setScoringCopied(true);
+            setTimeout(() => setScoringCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy scoring code:', err);
+        }
+    };
+
+    const handleScoringDownload = () => {
+        if (!scoring?.code) return;
+        const blob = new Blob([scoring.code], { type: 'text/x-python;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = scoring.kind === 'pricing' ? 'pricing_service.py' : 'scoring_service.py';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     };
 
     const handleRun = async () => {
@@ -212,6 +251,14 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
                     >
                         {aiBusy ? '...' : aiLabel}
                     </button>
+                    <button
+                        onClick={handleScoringExport}
+                        disabled={modules.length === 0}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white text-xs font-medium rounded-md transition-colors"
+                        title="적합된 모델/프라이싱 체인을 joblib + FastAPI/Flask 스코어링 코드로 내보내기"
+                    >
+                        🚀 스코어링 내보내기
+                    </button>
                 </div>
             </div>
 
@@ -293,6 +340,49 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
                             <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 font-sans">{aiResult}</pre>
                         )}
                         {aiError && <p className="text-red-500">{aiError}</p>}
+                    </div>
+                </div>
+            )}
+
+            {/* 스코어링 / 배포 코드 내보내기 결과 */}
+            {scoring && (
+                <div className="flex-shrink-0 border-t border-teal-300 dark:border-teal-700">
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-teal-100 dark:bg-teal-900/40">
+                        <span className="text-xs font-medium text-teal-700 dark:text-teal-300">
+                            🚀 스코어링 / 배포 코드
+                            {scoring.available && scoring.artifactName ? ` — ${scoring.artifactName}` : ''}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            {scoring.available && (
+                                <>
+                                    <button
+                                        onClick={handleScoringCopy}
+                                        className="text-xs text-teal-700 dark:text-teal-300 hover:underline"
+                                    >
+                                        {scoringCopied ? '복사됨' : '복사'}
+                                    </button>
+                                    <button
+                                        onClick={handleScoringDownload}
+                                        className="text-xs text-teal-700 dark:text-teal-300 hover:underline"
+                                    >
+                                        .py 다운로드
+                                    </button>
+                                </>
+                            )}
+                            <button
+                                onClick={() => { setScoring(null); setScoringCopied(false); }}
+                                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                            >
+                                지우기
+                            </button>
+                        </div>
+                    </div>
+                    <div className="max-h-72 overflow-auto bg-gray-100 dark:bg-gray-900 p-3 text-xs">
+                        {scoring.available ? (
+                            <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 font-mono">{scoring.code}</pre>
+                        ) : (
+                            <p className="text-yellow-600 dark:text-yellow-400">{scoring.reason}</p>
+                        )}
                     </div>
                 </div>
             )}

@@ -18,3 +18,4 @@
 |------|----------|------|------|
 | 2026-06-07 | 초기 구성 (에이전트 5종 + 스킬 4종 + 오케스트레이터) | 전체 | 파이썬 재현성·로컬 API 키·전체코드 클린화 요구 |
 | 2026-06-07 | API 키 로컬화(멀티 프로바이더) + 전체코드 데이터 임베드 재현성 + DFA 재현성 버그 4종 수정 | aiClient/AiSettingsModal/generatePipelineCode/codeSnippets | 1차 실행 |
+| 2026-06-22 | Phase 4 — URL/원격 데이터 로더(데이터 입력 계층 전용) | server/split-data-server.js(GET /api/proxy-csv CORS 프록시), vite.config.ts(/api/proxy-csv 프록시), components/PropertiesPanel.tsx(UrlSourceLoader: LoadData/LoadClaimData에 URL 입력→프록시 fetch→업로드와 동일하게 fileContent 저장, sourceType:'url'), utils/generatePipelineCode.ts(sourceType==='url'일 때만 pd.read_csv(<url>) 부가 분기) | 공개 CSV URL 로드 지원. Pyodide 실행 경로 불변, 파일 소스 생성 코드 byte-identical 보장(sourceType 미설정 시 기존 분기). build 성공 |

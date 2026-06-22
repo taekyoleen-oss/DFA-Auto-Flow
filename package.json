@@ -11,7 +11,8 @@
     "samples-server": "node server/samples-server.js",
     "dev:full": "concurrently \"pnpm run server\" \"pnpm run samples-server\" \"pnpm run dev\"",
     "seed:dfa-model": "node scripts/seed-dfa-model-mla-to-supabase.mjs",
-    "seed:xol": "node scripts/seed-xol-mla-to-supabase.mjs"
+    "seed:xol": "node scripts/seed-xol-mla-to-supabase.mjs",
+    "verify:pipelines": "node verify/run-verification.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.21.0",

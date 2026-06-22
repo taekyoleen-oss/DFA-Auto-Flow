@@ -1,11 +1,16 @@
 [
   {
     "name": "Example: OLS Model",
+    "description": "claim 데이터에 보통최소제곱(OLS) 선형회귀를 적합하는 기본 레퍼런스 파이프라인.",
+    "category": "DFA",
+    "tags": ["OLS", "회귀", "DFA", "레퍼런스"],
+    "expectedOutput": "회귀계수·R²·잔차 요약이 Result Model 미리보기에 표시됨.",
+    "distributionAssumption": "정규(가우시안) 잔차 가정 하의 선형회귀",
     "modules": [
       {
-        "type": "LoadData",
+        "type": "LoadClaimData",
         "position": { "x": 100, "y": 100 },
-        "name": "Load Data"
+        "name": "Load Claim Data"
       },
       {
         "type": "OLSModel",
@@ -32,6 +37,185 @@
         "toPort": "model_in"
       }
     ]
+  },
+  {
+    "name": "DFA: 빈도-심도 → 집계분포 시뮬레이션",
+    "description": "클레임 데이터를 빈도(연도별 건수)와 심도(개별 금액)로 분리한 뒤 각각 분포를 적합하고, 두 모델을 결합해 몬테카를로로 연간 집계 손실분포를 시뮬레이션하는 표준 DFA 레퍼런스 파이프라인.",
+    "category": "DFA",
+    "tags": ["빈도-심도", "집계분포", "몬테카를로", "DFA", "레퍼런스"],
+    "expectedOutput": "Simulate Freq-Serv 미리보기에 연간 집계 손실의 평균·표준편차·백분위(VaR/TVaR 추정용)와 사고별 시뮬레이션 결과가 표시됨.",
+    "distributionAssumption": "빈도: Poisson, 심도: Lognormal 가정의 복합(Compound) 집계분포",
+    "modules": [
+      {
+        "type": "LoadClaimData",
+        "position": { "x": 100, "y": 100 },
+        "name": "Load Claim Data"
+      },
+      {
+        "type": "SplitByFreqServ",
+        "position": { "x": 100, "y": 250 },
+        "name": "Split Freq/Severity"
+      },
+      {
+        "type": "FitFrequencyModel",
+        "position": { "x": -120, "y": 420 },
+        "name": "Fit Frequency Model"
+      },
+      {
+        "type": "FitSeverityModel",
+        "position": { "x": 320, "y": 420 },
+        "name": "Fit Severity Model"
+      },
+      {
+        "type": "SimulateFreqServ",
+        "position": { "x": 100, "y": 590 },
+        "name": "Simulate Freq-Serv"
+      }
+    ],
+    "connections": [
+      {
+        "fromModuleIndex": 0,
+        "fromPort": "data_out",
+        "toModuleIndex": 1,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 1,
+        "fromPort": "frequency_out",
+        "toModuleIndex": 2,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 1,
+        "fromPort": "severity_out",
+        "toModuleIndex": 3,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 2,
+        "fromPort": "data_out",
+        "toModuleIndex": 4,
+        "toPort": "frequency_in"
+      },
+      {
+        "fromModuleIndex": 3,
+        "fromPort": "data_out",
+        "toModuleIndex": 4,
+        "toPort": "severity_in"
+      }
+    ]
+  },
+  {
+    "name": "재보험: XoL 레이어 프라이싱",
+    "description": "클레임 손실 데이터에 손실분포(Pareto)를 적합하고 익스포저 커브를 생성한 뒤, 초과손해액(XoL) 재보험 레이어의 기대손실·요율(Rate on Line)·보험료를 산출하는 재보험 프라이싱 레퍼런스 파이프라인.",
+    "category": "재보험",
+    "tags": ["XoL", "재보험", "프라이싱", "익스포저커브", "레퍼런스"],
+    "expectedOutput": "Price XoL Layer 미리보기에 레이어 기대손실·Rate on Line(%)·보험료가 표시됨.",
+    "distributionAssumption": "심도 손실에 대한 Pareto 분포 적합",
+    "reinsuranceLayer": "XoL 5M xs 1M (retention 1,000,000 / limit 5,000,000)",
+    "modules": [
+      {
+        "type": "LoadClaimData",
+        "position": { "x": 100, "y": 100 },
+        "name": "Load Claim Data"
+      },
+      {
+        "type": "FitLossDistribution",
+        "position": { "x": 100, "y": 250 },
+        "name": "Fit Loss Distribution"
+      },
+      {
+        "type": "GenerateExposureCurve",
+        "position": { "x": 100, "y": 400 },
+        "name": "Generate Exposure Curve"
+      },
+      {
+        "type": "PriceXoLLayer",
+        "position": { "x": 100, "y": 550 },
+        "name": "Price XoL Layer"
+      }
+    ],
+    "connections": [
+      {
+        "fromModuleIndex": 0,
+        "fromPort": "data_out",
+        "toModuleIndex": 1,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 1,
+        "fromPort": "dist_out",
+        "toModuleIndex": 2,
+        "toPort": "dist_in"
+      },
+      {
+        "fromModuleIndex": 0,
+        "fromPort": "data_out",
+        "toModuleIndex": 2,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 2,
+        "fromPort": "curve_out",
+        "toModuleIndex": 3,
+        "toPort": "curve_in"
+      }
+    ]
+  },
+  {
+    "name": "DFA: 임계값 설정 + 분석",
+    "description": "클레임 데이터의 분포를 분석(히스토그램·ECDF·Mean Excess Plot)해 적정 대형사고 임계값 후보를 탐색하고, 임계값을 설정해 손실을 임계값 미만/초과(attritional vs. large)로 분리하는 임계값 분석 레퍼런스 파이프라인.",
+    "category": "DFA",
+    "tags": ["임계값", "threshold", "대형사고", "Mean Excess", "DFA", "레퍼런스"],
+    "expectedOutput": "Analysis Threshold 미리보기에 분포·ECDF·Mean Excess Plot과 임계값 후보가, Split By Threshold 미리보기에 임계값 기준 분리 결과가 표시됨.",
+    "distributionAssumption": "극단값(EVT) 관점의 두꺼운 꼬리(heavy tail) 손실 분포",
+    "modules": [
+      {
+        "type": "LoadClaimData",
+        "position": { "x": 100, "y": 100 },
+        "name": "Load Claim Data"
+      },
+      {
+        "type": "AnalysisThreshold",
+        "position": { "x": -120, "y": 270 },
+        "name": "Analysis Threshold"
+      },
+      {
+        "type": "SettingThreshold",
+        "position": { "x": 320, "y": 270 },
+        "name": "Setting Threshold"
+      },
+      {
+        "type": "SplitByThreshold",
+        "position": { "x": 320, "y": 440 },
+        "name": "Split By Threshold"
+      }
+    ],
+    "connections": [
+      {
+        "fromModuleIndex": 0,
+        "fromPort": "data_out",
+        "toModuleIndex": 1,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 0,
+        "fromPort": "data_out",
+        "toModuleIndex": 2,
+        "toPort": "data_in"
+      },
+      {
+        "fromModuleIndex": 2,
+        "fromPort": "threshold_out",
+        "toModuleIndex": 3,
+        "toPort": "threshold_in"
+      },
+      {
+        "fromModuleIndex": 0,
+        "fromPort": "data_out",
+        "toModuleIndex": 3,
+        "toPort": "data_in"
+      }
+    ]
   }
 ]
-

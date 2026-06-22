@@ -271,6 +271,11 @@ const App: React.FC = () => {
       description?: string;
       category?: string;
       developerEmail?: string;
+      // 선택적 강화 메타데이터 (additive)
+      tags?: string[];
+      expectedOutput?: string;
+      distributionAssumption?: string;
+      reinsuranceLayer?: string;
     }>
   >([]);
   const [isLoadingSamples, setIsLoadingSamples] = useState(false);

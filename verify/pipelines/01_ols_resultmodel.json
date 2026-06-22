@@ -1,0 +1,13 @@
+{
+  "name": "statsmodels-OLS + ResultModel (dfa_claims_numeric)",
+  "requires": ["statsmodels"],
+  "modules": [
+    { "type": "LoadData", "name": "Load Data", "parameters": { "source": "dfa_claims_numeric.csv" } },
+    { "type": "OLSModel", "name": "OLS Model", "parameters": {} },
+    { "type": "ResultModel", "name": "Result Model", "parameters": { "feature_columns": ["exposure", "prior_claims", "vehicle_age", "driver_age", "region_risk"], "label_column": "claim_amount" } }
+  ],
+  "connections": [
+    { "fromModuleIndex": 1, "fromPort": "model_out", "toModuleIndex": 2, "toPort": "model_in" },
+    { "fromModuleIndex": 0, "fromPort": "data_out", "toModuleIndex": 2, "toPort": "data_in" }
+  ]
+}

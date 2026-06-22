@@ -6,6 +6,7 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
 // import { calculatePCAForScoreVisualization } from '../utils/pyodideRunner'; // Python 버전 (이상치 처리)
 import { calculatePCA } from '../utils/pcaCalculator'; // JavaScript 버전 (ml-pca 사용)
+import { computeDataOverview } from '../utils/dataOverview';
 
 interface DataPreviewModalProps {
     module: CanvasModule;
@@ -1028,6 +1029,93 @@ const ColumnStatistics: React.FC<{ data: (string | number | null)[]; columnName:
     );
 };
 
+
+// 데이터 개요/요약 패널 (Phase 3, 작업 1) — 읽기 전용·additive.
+// 미리보기 객체(columns+rows)에서 순수 TS로 집계한 요약을 표시한다.
+// Pyodide 호출 없음, 모듈 실행/연결/시각화에 영향 없음. 데이터 없으면 아무것도 렌더링하지 않음.
+const DataOverviewPanel: React.FC<{
+    columns: ColumnInfo[];
+    rows: Record<string, any>[];
+    totalRowCount?: number | null;
+}> = ({ columns, rows, totalRowCount }) => {
+    const overview = useMemo(
+        () => computeDataOverview({ columns, rows, totalRowCount }),
+        [columns, rows, totalRowCount]
+    );
+
+    if (!overview) return null;
+
+    return (
+        <details className="flex-shrink-0 border border-gray-200 rounded-lg bg-gray-50" open>
+            <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-gray-700 flex items-center gap-3 flex-wrap">
+                <span>데이터 개요</span>
+                <span className="font-normal text-gray-500">
+                    행 {overview.rowCount.toLocaleString('ko-KR')}
+                    {overview.isSample && (
+                        <span className="text-gray-400"> (미리보기 {overview.sampleRowCount.toLocaleString('ko-KR')}행 기준)</span>
+                    )}
+                    {' · '}열 {overview.columnCount.toLocaleString('ko-KR')}
+                </span>
+                {overview.columnsWithMissing > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-medium">
+                        결측 컬럼 {overview.columnsWithMissing}개
+                    </span>
+                ) : (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-medium">
+                        결측 없음
+                    </span>
+                )}
+            </summary>
+            <div className="px-4 pb-3 pt-1 overflow-x-auto">
+                <table className="min-w-full text-xs text-left border-t border-gray-200">
+                    <thead>
+                        <tr className="text-gray-500">
+                            <th className="py-1.5 pr-4 font-medium">컬럼</th>
+                            <th className="py-1.5 pr-4 font-medium">추론 타입</th>
+                            <th className="py-1.5 pr-4 font-medium text-right">결측/빈값</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {overview.columns.map((col) => (
+                            <tr
+                                key={col.name}
+                                className={`border-t border-gray-100 ${col.hasMissing ? 'bg-amber-50' : ''}`}
+                            >
+                                <td className="py-1.5 pr-4 font-mono text-gray-800">{col.name || '(이름 없음)'}</td>
+                                <td className="py-1.5 pr-4">
+                                    <span
+                                        className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                            col.inferredType === 'numeric'
+                                                ? 'bg-blue-100 text-blue-700'
+                                                : 'bg-purple-100 text-purple-700'
+                                        }`}
+                                    >
+                                        {col.inferredTypeLabel}
+                                    </span>
+                                </td>
+                                <td className="py-1.5 pr-4 text-right font-mono">
+                                    {col.hasMissing ? (
+                                        <span className="text-amber-700 font-semibold">
+                                            {col.missingCount.toLocaleString('ko-KR')}
+                                            <span className="text-amber-500 font-normal"> ({(col.missingRatio * 100).toFixed(1)}%)</span>
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-400">0</span>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                {overview.sampleRowCount === 0 && (
+                    <p className="mt-2 text-xs text-gray-400">
+                        미리보기 표본 행이 없어 타입은 선언된 컬럼 정보로 추론했고 결측 집계는 생략되었습니다.
+                    </p>
+                )}
+            </div>
+        </details>
+    );
+};
 
 export const DataPreviewModal: React.FC<DataPreviewModalProps> = ({ module, projectName, onClose, allModules = [], allConnections = [] }) => {
     // XoL Contract 모듈의 경우 입력 데이터 가져오기
@@ -2338,6 +2426,14 @@ const PCAScoreVisualization: React.FC<{
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
                     <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections} />
+                    {/* 데이터 개요/요약 (읽기 전용·additive) — 미리보기 데이터가 있을 때만 표시 */}
+                    {columns.length > 0 && (
+                        <DataOverviewPanel
+                            columns={columns}
+                            rows={rows}
+                            totalRowCount={displayData?.totalRowCount}
+                        />
+                    )}
                     {/* XoL Calculator 모듈의 경우 탭 구성 */}
                     {module.type === ModuleType.XolCalculator ? (
                     <div className="flex-shrink-0 border-b border-gray-200">

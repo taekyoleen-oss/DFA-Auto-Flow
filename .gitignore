@@ -34,3 +34,6 @@ _workspace/
 # Playwright/검증 아티팩트
 .playwright-mcp/
 dfa-*.png
+
+# verify 하네스 임시 번들 (run-verification.mjs가 생성·삭제하는 esbuild 산출물)
+verify/.gen.cjs

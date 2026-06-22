@@ -24,6 +24,11 @@ interface Sample {
   category?: string;
   appSection?: string;
   developerEmail?: string;
+  // 선택적 강화 메타데이터 (additive · 없으면 기존 동작 동일)
+  tags?: string[];
+  expectedOutput?: string;
+  distributionAssumption?: string;
+  reinsuranceLayer?: string;
 }
 
 interface SamplesModalProps {
@@ -40,6 +45,11 @@ interface SamplesModalProps {
     category?: string;
     appSection?: string;
     developerEmail?: string;
+    // 선택적 강화 메타데이터 (additive)
+    tags?: string[];
+    expectedOutput?: string;
+    distributionAssumption?: string;
+    reinsuranceLayer?: string;
   }>;
   onLoadSample: (
     sampleName: string,
@@ -453,6 +463,36 @@ const SamplesModal: React.FC<SamplesModalProps> = ({
                         <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">모델 설명:</span>
                         <p className="text-gray-700 dark:text-gray-300 text-sm mt-1 line-clamp-3">{sample.description || "설명 없음"}</p>
                       </div>
+                      {(sample as Sample).distributionAssumption && (
+                        <div>
+                          <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">분포가정: </span>
+                          <span className="text-gray-900 dark:text-white text-sm">{(sample as Sample).distributionAssumption}</span>
+                        </div>
+                      )}
+                      {(sample as Sample).reinsuranceLayer && (
+                        <div>
+                          <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">재보험 레이어: </span>
+                          <span className="text-gray-900 dark:text-white text-sm">{(sample as Sample).reinsuranceLayer}</span>
+                        </div>
+                      )}
+                      {(sample as Sample).expectedOutput && (
+                        <div>
+                          <span className="text-gray-600 dark:text-gray-400 text-sm font-medium">기대 출력:</span>
+                          <p className="text-gray-700 dark:text-gray-300 text-sm mt-1 line-clamp-2">{(sample as Sample).expectedOutput}</p>
+                        </div>
+                      )}
+                      {Array.isArray((sample as Sample).tags) && (sample as Sample).tags!.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {(sample as Sample).tags!.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-block px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 text-xs font-medium"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <button
                       onClick={() => handleLoad(sample as Sample)}
