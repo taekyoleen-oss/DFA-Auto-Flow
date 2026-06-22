@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { CodeBracketIcon, ClipboardIcon, CheckIcon } from './icons';
 import { CanvasModule, Connection } from '../types';
 import { generateFullPipelineCode } from '../utils/generatePipelineCode';
-import { buildScoringExport, ScoringExportResult } from '../utils/scoringExport';
+import { buildScoringExport, ScoringExportResult, buildRetrainSnapshot, RetrainSnapshotResult } from '../utils/scoringExport';
 import { generateAiText, MissingApiKeyError } from '../utils/aiClient';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -61,6 +61,10 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
     // 스코어링/배포 코드 내보내기 (additive — 기존 코드 생성과 독립)
     const [scoring, setScoring] = useState<ScoringExportResult | null>(null);
     const [scoringCopied, setScoringCopied] = useState(false);
+    // 모델 버전 스냅샷 내보내기 (additive — 2-7 재학습/지속학습)
+    const [versionLabel, setVersionLabel] = useState('v1');
+    const [snapshot, setSnapshot] = useState<RetrainSnapshotResult | null>(null);
+    const [snapshotCopied, setSnapshotCopied] = useState(false);
 
     // 표시용 코드 (pd.read_csv 포함 - 외부 실행 가능한 형태)
     const fullPipelineCode = useMemo(() => {
@@ -113,6 +117,42 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
         const a = document.createElement('a');
         a.href = url;
         a.download = scoring.kind === 'pricing' ? 'pricing_service.py' : 'scoring_service.py';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    // 모델 버전 스냅샷 생성 (별도 생성기 — VERSION 라벨은 UI 입력에서 주입, 결정적)
+    const handleSnapshotExport = () => {
+        setSnapshotCopied(false);
+        try {
+            const result = buildRetrainSnapshot(modules, connections, versionLabel);
+            setSnapshot(result);
+        } catch (e: any) {
+            setSnapshot({ available: false, reason: e?.message || String(e), version: versionLabel || 'v1', code: '' });
+        }
+    };
+
+    const handleSnapshotCopy = async () => {
+        if (!snapshot?.code) return;
+        try {
+            await navigator.clipboard.writeText(snapshot.code);
+            setSnapshotCopied(true);
+            setTimeout(() => setSnapshotCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy snapshot code:', err);
+        }
+    };
+
+    const handleSnapshotDownload = () => {
+        if (!snapshot?.code) return;
+        const slug = (snapshot.version || 'v1').trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'v1';
+        const blob = new Blob([snapshot.code], { type: 'text/x-python;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${snapshot.kind === 'pricing' ? 'pricing' : 'model'}_snapshot_${slug}.py`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -259,6 +299,24 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
                     >
                         🚀 스코어링 내보내기
                     </button>
+                    <div className="flex items-center gap-1">
+                        <input
+                            type="text"
+                            value={versionLabel}
+                            onChange={(e) => setVersionLabel(e.target.value)}
+                            placeholder="v1"
+                            className="w-16 px-1.5 py-1.5 text-xs rounded-md border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                            title="모델 버전 라벨 (예: v1, 2024AY). 같은 라벨이면 동일한 출력(결정적)."
+                        />
+                        <button
+                            onClick={handleSnapshotExport}
+                            disabled={modules.length === 0}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-medium rounded-md transition-colors"
+                            title="적합된 모델/프라이싱 체인을 버전 메타데이터 + joblib 스냅샷 번들로 내보내기 (재학습/지속학습)"
+                        >
+                            📦 버전 스냅샷
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -382,6 +440,55 @@ export const PipelineCodePanel: React.FC<PipelineCodePanelProps> = ({
                             <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 font-mono">{scoring.code}</pre>
                         ) : (
                             <p className="text-yellow-600 dark:text-yellow-400">{scoring.reason}</p>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* 모델 버전 스냅샷 내보내기 결과 (재학습/지속학습) */}
+            {snapshot && (
+                <div className="flex-shrink-0 border-t border-indigo-300 dark:border-indigo-700">
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/40">
+                        <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                            📦 모델 버전 스냅샷 — {snapshot.version}
+                            {snapshot.available && snapshot.artifactName ? ` (${snapshot.artifactName})` : ''}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            {snapshot.available && (
+                                <>
+                                    <button
+                                        onClick={handleSnapshotCopy}
+                                        className="text-xs text-indigo-700 dark:text-indigo-300 hover:underline"
+                                    >
+                                        {snapshotCopied ? '복사됨' : '복사'}
+                                    </button>
+                                    <button
+                                        onClick={handleSnapshotDownload}
+                                        className="text-xs text-indigo-700 dark:text-indigo-300 hover:underline"
+                                    >
+                                        .py 다운로드
+                                    </button>
+                                </>
+                            )}
+                            <button
+                                onClick={() => { setSnapshot(null); setSnapshotCopied(false); }}
+                                className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                            >
+                                지우기
+                            </button>
+                        </div>
+                    </div>
+                    {/* 재학습 워크플로 안내 (additive) */}
+                    <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-200 dark:border-indigo-800">
+                        <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-snug">
+                            <span className="font-semibold">재학습 흐름:</span> 파이프라인 로드(.mla) → LoadClaimData 소스를 새 사고연도 데이터(파일/URL)로 교체 → 재실행으로 재적합 → 버전 라벨을 바꿔 새 스냅샷 저장(버전 비교·롤백).
+                        </p>
+                    </div>
+                    <div className="max-h-72 overflow-auto bg-gray-100 dark:bg-gray-900 p-3 text-xs">
+                        {snapshot.available ? (
+                            <pre className="whitespace-pre-wrap text-gray-800 dark:text-gray-200 font-mono">{snapshot.code}</pre>
+                        ) : (
+                            <p className="text-yellow-600 dark:text-yellow-400">{snapshot.reason}</p>
                         )}
                     </div>
                 </div>

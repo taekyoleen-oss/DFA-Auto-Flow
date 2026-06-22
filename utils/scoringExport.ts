@@ -42,6 +42,14 @@ interface DetectedPricing {
   inputKeys: Array<{ key: string; value: number }>;
 }
 
+/** 감지된 데이터 소스 정보(LoadClaimData/LoadData 파라미터 기반) */
+interface DetectedDataSource {
+  /** 'url' | 'file' | 'unknown' */
+  sourceType: string;
+  /** 사용자가 지정한 소스 경로/URL (없으면 'data.csv') */
+  source: string;
+}
+
 const ML_MODEL_OUTPUT = 'TrainedModelOutput';
 const PRICING_MODULE_TYPES: ModuleType[] = [
   ModuleType.PriceXoLLayer,
@@ -87,6 +95,20 @@ function detectPricing(modules: CanvasModule[]): DetectedPricing | null {
     };
   }
   return null;
+}
+
+/** LoadClaimData/LoadData 모듈에서 데이터 소스 참조를 추출한다. */
+function detectDataSource(modules: CanvasModule[]): DetectedDataSource {
+  for (const m of modules) {
+    if (m.type === ModuleType.LoadClaimData || m.type === ModuleType.LoadData) {
+      const p = m.parameters || {};
+      return {
+        sourceType: String(p.sourceType ?? (p.source ? 'file' : 'unknown')),
+        source: String(p.source ?? 'data.csv'),
+      };
+    }
+  }
+  return { sourceType: 'unknown', source: 'data.csv' };
 }
 
 function pyStr(s: string): string {
@@ -356,6 +378,230 @@ def price():
 #     -H "Content-Type: application/json" \\
 #     -d '${JSON.stringify(requestSample)}'
 `;
+}
+
+// =============================================================================
+// 재학습 / 모델 버전 스냅샷 내보내기 (additive — 2-7 재학습/지속학습)
+// =============================================================================
+// 적합된 모델/프라이싱 체인을 "버전이 부여된 번들"로 내보낸다:
+//   - 메타데이터 헤더(모델/프라이싱 종류, 피처/파라미터, 데이터 소스 참조, VERSION 라벨)
+//   - joblib 저장/로드 스니펫(버전 라벨로 파일명 구성)
+// 결정성을 위해 VERSION 라벨은 UI 입력에서 받으며 Date.now()/자동 타임스탬프를
+// 쓰지 않는다(같은 라벨 입력 → 같은 출력).
+// =============================================================================
+
+export interface RetrainSnapshotResult {
+  available: boolean;
+  reason?: string;
+  kind?: 'ml-model' | 'pricing';
+  artifactName?: string;
+  /** 사용된 버전 라벨 */
+  version: string;
+  code: string;
+}
+
+/** 파일/식별자에 안전한 버전 슬러그(결정적). */
+function versionSlug(label: string): string {
+  const slug = String(label || '')
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return slug || 'v1';
+}
+
+function buildModelSnapshot(
+  model: DetectedModel,
+  ds: DetectedDataSource,
+  version: string,
+): string {
+  const slug = versionSlug(version);
+  const feats = model.featureColumns.length ? model.featureColumns : ['feature_1', 'feature_2'];
+  const featListPy = '[' + feats.map(pyStr).join(', ') + ']';
+  const isClf = model.modelPurpose === 'classification';
+
+  return `# =============================================================================
+# 모델 버전 스냅샷 — ${model.moduleName} (${model.modelType}, ${isClf ? '분류' : '회귀'})
+# VERSION: ${version}
+# =============================================================================
+# 재학습/지속학습 워크플로:
+#   1) 저장된 파이프라인 로드 (.mla)
+#   2) LoadClaimData 소스를 새 사고연도 데이터로 교체(파일 업로드 또는 URL)
+#   3) 캔버스에서 재실행하여 모델을 재적합
+#   4) 아래 [2] 코드로 이 버전 라벨의 스냅샷을 저장 → 버전 간 비교/롤백 가능
+#
+# 이 스니펫은 앱의 파이프라인 코드와 독립적인 *버전 번들* 생성기입니다.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [1] 버전 메타데이터 (결정적 — VERSION 라벨은 UI 입력에서 주입)
+# -----------------------------------------------------------------------------
+MODEL_VERSION = ${pyStr(version)}
+MODEL_KIND = "ml-model"
+MODEL_TYPE = ${pyStr(model.modelType)}
+MODEL_PURPOSE = ${pyStr(isClf ? 'classification' : 'regression')}
+FEATURE_COLUMNS = ${featListPy}
+LABEL_COLUMN = ${pyStr(model.labelColumn)}
+# 데이터 소스 참조(재학습 시 새 사고연도 데이터로 교체)
+DATA_SOURCE_TYPE = ${pyStr(ds.sourceType)}
+DATA_SOURCE_REF = ${pyStr(ds.source)}
+
+METADATA = {
+    "version": MODEL_VERSION,
+    "kind": MODEL_KIND,
+    "model_type": MODEL_TYPE,
+    "model_purpose": MODEL_PURPOSE,
+    "feature_columns": FEATURE_COLUMNS,
+    "label_column": LABEL_COLUMN,
+    "data_source": {"type": DATA_SOURCE_TYPE, "ref": DATA_SOURCE_REF},
+}
+
+
+# -----------------------------------------------------------------------------
+# [2] 버전 스냅샷 저장 / 로드 (joblib)
+#     파일명에 버전 라벨을 포함 → 사고연도/리비전별로 누적 보관
+# -----------------------------------------------------------------------------
+import joblib
+
+SNAPSHOT_PATH = "model_${slug}.joblib"
+
+def save_snapshot(model, path: str = SNAPSHOT_PATH) -> str:
+    """적합된 모델 + 메타데이터(피처/데이터소스/버전)를 함께 저장."""
+    joblib.dump({"model": model, "metadata": METADATA}, path)
+    return path
+
+def load_snapshot(path: str = SNAPSHOT_PATH):
+    bundle = joblib.load(path)
+    return bundle["model"], bundle["metadata"]
+
+
+# -----------------------------------------------------------------------------
+# [3] 재학습 루프(개념) — 새 데이터로 적합 후 새 버전 라벨로 저장
+# -----------------------------------------------------------------------------
+# 학습 파이프라인(앱에서 내보낸 전체 코드)으로 'model'을 새 사고연도 데이터에
+# 재적합한 뒤, VERSION 라벨만 바꿔 아래처럼 새 스냅샷을 남깁니다.
+#   >>> save_snapshot(model)              # 현재 버전: ${version}
+#   >>> # 다음 사고연도: VERSION/파일명을 바꿔 다시 save_snapshot(...) 호출
+`;
+}
+
+function buildPricingSnapshot(
+  pricing: DetectedPricing,
+  ds: DetectedDataSource,
+  version: string,
+): string {
+  const slug = versionSlug(version);
+  const inputs = pricing.inputKeys.length
+    ? pricing.inputKeys
+    : [{ key: 'retention', value: 1_000_000 }, { key: 'limit', value: 5_000_000 }];
+  const defaultsPy = '{' + inputs.map((i) => `${pyStr(i.key)}: ${i.value}`).join(', ') + '}';
+
+  return `# =============================================================================
+# 프라이싱 버전 스냅샷 — ${pricing.moduleName} (${pricing.moduleType}, 프라이싱)
+# VERSION: ${version}
+# =============================================================================
+# 재학습/지속학습 워크플로:
+#   1) 저장된 파이프라인 로드 (.mla)
+#   2) LoadClaimData 소스를 새 사고연도 손해 데이터로 교체(파일 업로드 또는 URL)
+#   3) 캔버스에서 재실행하여 분포/프라이싱을 재적합
+#   4) 아래 [2] 코드로 이 버전 라벨의 스냅샷을 저장 → 프라이싱 리비전 추적
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# [1] 버전 메타데이터 (결정적 — VERSION 라벨은 UI 입력에서 주입)
+# -----------------------------------------------------------------------------
+PRICING_VERSION = ${pyStr(version)}
+PRICING_KIND = "pricing"
+PRICING_MODULE_TYPE = ${pyStr(pricing.moduleType)}
+DEFAULT_PARAMS = ${defaultsPy}
+# 데이터 소스 참조(재학습 시 새 사고연도 데이터로 교체)
+DATA_SOURCE_TYPE = ${pyStr(ds.sourceType)}
+DATA_SOURCE_REF = ${pyStr(ds.source)}
+
+METADATA = {
+    "version": PRICING_VERSION,
+    "kind": PRICING_KIND,
+    "module_type": PRICING_MODULE_TYPE,
+    "default_params": DEFAULT_PARAMS,
+    "data_source": {"type": DATA_SOURCE_TYPE, "ref": DATA_SOURCE_REF},
+}
+
+
+# -----------------------------------------------------------------------------
+# [2] 버전 스냅샷 저장 / 로드 (joblib)
+#     적합된 분포 파라미터 등 상태 + 메타데이터를 함께 저장
+# -----------------------------------------------------------------------------
+import joblib
+
+SNAPSHOT_PATH = "pricing_${slug}.joblib"
+
+def save_snapshot(state: dict, path: str = SNAPSHOT_PATH) -> str:
+    """프라이싱 적합 상태(분포 파라미터 등) + 메타데이터를 저장."""
+    joblib.dump({"state": state, "metadata": METADATA}, path)
+    return path
+
+def load_snapshot(path: str = SNAPSHOT_PATH):
+    bundle = joblib.load(path)
+    return bundle["state"], bundle["metadata"]
+
+
+# -----------------------------------------------------------------------------
+# [3] 재학습 루프(개념) — 새 손해 데이터로 재적합 후 새 버전 라벨로 저장
+# -----------------------------------------------------------------------------
+#   >>> save_snapshot(fitted_state)       # 현재 버전: ${version}
+#   >>> # 다음 사고연도: VERSION/파일명을 바꿔 다시 save_snapshot(...) 호출
+`;
+}
+
+/**
+ * 적합된 모델/프라이싱 체인을 버전 스냅샷 번들로 내보낸다.
+ * VERSION 라벨은 UI 입력에서 받으며, 같은 라벨이면 같은 출력(결정적)이다.
+ */
+export function buildRetrainSnapshot(
+  modules: CanvasModule[],
+  _connections: Connection[],
+  versionLabel: string,
+): RetrainSnapshotResult {
+  const version = (versionLabel || '').trim() || 'v1';
+  if (!modules || modules.length === 0) {
+    return {
+      available: false,
+      reason: '파이프라인이 비어 있습니다. 모듈을 추가하고 실행해 주세요.',
+      version,
+      code: '',
+    };
+  }
+  const ds = detectDataSource(modules);
+
+  const ml = detectMlModel(modules);
+  if (ml) {
+    return {
+      available: true,
+      kind: 'ml-model',
+      artifactName: ml.moduleName,
+      version,
+      code: buildModelSnapshot(ml, ds, version),
+    };
+  }
+
+  const pricing = detectPricing(modules);
+  if (pricing) {
+    return {
+      available: true,
+      kind: 'pricing',
+      artifactName: pricing.moduleName,
+      version,
+      code: buildPricingSnapshot(pricing, ds, version),
+    };
+  }
+
+  return {
+    available: false,
+    reason:
+      '적합된 모델 또는 프라이싱 체인이 없습니다. TrainModel(지도학습) 또는 ' +
+      'PriceXoLLayer/XolPricing/FitLossDistribution 등의 모듈을 실행한 뒤 다시 시도하세요.',
+    version,
+    code: '',
+  };
 }
 
 /**
