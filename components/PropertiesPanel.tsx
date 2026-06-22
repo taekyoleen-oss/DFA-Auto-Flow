@@ -2351,6 +2351,38 @@ const renderParameters = (
         </>
       );
     }
+    case ModuleType.GradientBoosting: {
+      const purpose = module.parameters.model_purpose;
+      return (
+        <>
+          <PropertySelect
+            label="Model Purpose"
+            value={purpose}
+            onChange={(v) => onParamChange("model_purpose", v)}
+            options={["classification", "regression"]}
+          />
+          <PropertyInput
+            label="N Estimators"
+            type="number"
+            value={module.parameters.n_estimators}
+            onChange={(v) => onParamChange("n_estimators", v)}
+          />
+          <PropertyInput
+            label="Learning Rate"
+            type="number"
+            value={module.parameters.learning_rate}
+            onChange={(v) => onParamChange("learning_rate", v)}
+            step="0.01"
+          />
+          <PropertyInput
+            label="Max Depth"
+            type="number"
+            value={module.parameters.max_depth}
+            onChange={(v) => onParamChange("max_depth", v)}
+          />
+        </>
+      );
+    }
     case ModuleType.SVM:
       return (
         <>
@@ -5069,6 +5101,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             const complexModels = [
               ModuleType.DecisionTree,
               ModuleType.RandomForest,
+              ModuleType.GradientBoosting,
               ModuleType.SVM,
               ModuleType.KNN,
               ModuleType.NaiveBayes,

@@ -294,6 +294,7 @@ const TuningChart: React.FC<TuningChartProps> = ({ candidates, scoringMetric }) 
 const complexModels = [
     ModuleType.DecisionTree,
     ModuleType.RandomForest,
+    ModuleType.GradientBoosting,
     ModuleType.SVM,
     ModuleType.KNN,
     ModuleType.NaiveBayes,

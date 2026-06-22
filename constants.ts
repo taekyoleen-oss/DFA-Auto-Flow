@@ -123,6 +123,13 @@ export const TOOLBOX_MODULES = [
       "An ensemble of decision trees for classification or regression.",
   },
   {
+    type: ModuleType.GradientBoosting,
+    name: "Gradient Boosting",
+    icon: ShareIcon,
+    description:
+      "A boosted ensemble of trees for classification or regression (strong for claim severity/frequency).",
+  },
+  {
     type: ModuleType.SVM,
     name: "Support Vector Machine",
     icon: ShieldCheckIcon,
@@ -512,6 +519,18 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
         n_estimators: 100,
         criterion: "gini",
         max_depth: null,
+      },
+      inputs: [],
+      outputs: [{ name: "model_out", type: "model" }],
+    },
+    {
+      type: ModuleType.GradientBoosting,
+      status: ModuleStatus.Pending,
+      parameters: {
+        model_purpose: "classification",
+        n_estimators: 100,
+        learning_rate: 0.1,
+        max_depth: 3,
       },
       inputs: [],
       outputs: [{ name: "model_out", type: "model" }],

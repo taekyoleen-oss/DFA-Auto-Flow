@@ -79,3 +79,28 @@ DFA-Auto-Flow는 ML Auto Flow와 **동일한 패턴**을 공유한다(탐색 확
 | 7 | 1-2 지표 정합 / 2-7 재학습 | 낮음/상 | |
 
 > **불변식:** `data_analysis_modules.py` ↔ `codeSnippets.ts` 정합, 무작위·시뮬 단계 seed 고정, verify 픽스처로 byte-identical 재현(DFA CLAUDE.md의 재현성 원칙과 정합).
+
+
+---
+
+## 부록: 구현 결과 (2026-06-22)
+
+> DFA 도메인에 맞춰 개선안을 구현·검증했습니다(재현성 verify 하네스 신설 포함). 재학습은 후속.
+
+### 항목별 구현 상태
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| 1-1 Evaluate/EvaluateStat 강화 | ✅ | 분류 ROC-AUC·Average Precision, GLM Deviance·Pearson χ²·AIC/BIC |
+| 1-2 회귀/GLM 지표 정합 | ✅ | RMSE/MAE/RSE/RAE |
+| 1-3 데이터 개요 패널 | ✅ | utils/dataOverview.ts |
+| 2-1 그래디언트 부스팅 | ✅ | 지도학습군 확장, random_state=42, 픽스처 03 |
+| 2-2 URL claim 로더 | ✅ | 입력층 fetch+/api/proxy-csv |
+| 2-3 레퍼런스 파이프라인 / 2-4 메타 | ✅ | 빈도-심도·XoL·임계값 3종 + 메타 |
+| 2-5 재현성 verify 하네스 정식화 | ✅ | verify/ 신설 + verify:pipelines 스크립트 (+OLS 예제 LoadData→LoadClaimData 버그 수정) |
+| 2-6 스코어링 내보내기 | ✅ | utils/scoringExport.ts(joblib+FastAPI/Flask) |
+| 2-7 재학습/지속학습 | ⏳ 후속 | 장기 |
+| 3-5 추천 | — 범위 외 | DFA 도메인 무관(해당 없음) |
+
+### 검증
+- `npm run verify:pipelines` → **3/3 PASS** (01_ols_resultmodel, 02_linreg_chain, 03_gradient_boosting; 외부 Python 2회 byte-identical).
+- `vite build` 성공. 모든 변경 가산적, 기존 실행/연결/시각화 불변.

@@ -194,6 +194,7 @@ const isClassification = (
     ModuleType.KNN,
     ModuleType.DecisionTree,
     ModuleType.RandomForest,
+    ModuleType.GradientBoosting,
     ModuleType.SVM,
   ];
 
@@ -2657,6 +2658,7 @@ ${header}
     ModuleType.NegativeBinomialRegression,
     ModuleType.DecisionTree,
     ModuleType.RandomForest,
+    ModuleType.GradientBoosting,
     ModuleType.SVM,
     ModuleType.LinearDiscriminantAnalysis,
     ModuleType.NaiveBayes,

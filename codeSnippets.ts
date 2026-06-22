@@ -38,7 +38,7 @@ const UI_PARAM_NAMES = new Set([
   'custom_count', 'cv_folds', 'date_column', 'deductible', 'defaultReinstatementRate', 'disp',
   'distribution_type', 'drop', 'expenseRate', 'expenseRatio', 'feature_columns', 'fit_intercept',
   'frequency_type', 'gamma', 'handle_unknown', 'inflation_rate', 'init', 'kernel', 'l1_ratio',
-  'l1_ratio_candidates', 'label_column', 'limit', 'linkage', 'max_depth', 'max_iter', 'method',
+  'l1_ratio_candidates', 'label_column', 'learning_rate', 'limit', 'linkage', 'max_depth', 'max_iter', 'method',
   'metric', 'min_samples_leaf', 'min_samples_split', 'model_purpose', 'model_type', 'n_clusters',
   'n_estimators', 'n_init', 'n_neighbors', 'ordinal_mapping', 'output_format', 'penalty',
   'prediction_column', 'random_state', 'reinstatements', 'scoring_metric', 'selected_distributions',
@@ -516,6 +516,42 @@ print(f"  Min Samples Leaf: {p_min_samples_leaf}")
 # model variable contains the model instance ready for training.
 `,
 
+    GradientBoosting: `
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+
+# This module creates a gradient boosting tree model instance.
+# The model will be trained in the 'Train Model' module.
+# Parameters from UI
+p_model_purpose = {model_purpose}
+p_n_estimators = {n_estimators}
+p_learning_rate = {learning_rate}
+p_max_depth = {max_depth} if {max_depth} else 3
+
+# Create model instance based on model purpose
+if p_model_purpose == 'classification':
+    model = GradientBoostingClassifier(
+        n_estimators=p_n_estimators,
+        learning_rate=p_learning_rate,
+        max_depth=p_max_depth,
+        random_state=42
+    )
+else:
+    model = GradientBoostingRegressor(
+        n_estimators=p_n_estimators,
+        learning_rate=p_learning_rate,
+        max_depth=p_max_depth,
+        random_state=42
+    )
+
+print(f"Gradient Boosting model instance created successfully ({p_model_purpose}).")
+print(f"  N Estimators: {p_n_estimators}")
+print(f"  Learning Rate: {p_learning_rate}")
+print(f"  Max Depth: {p_max_depth}")
+
+# Note: The model is not fitted here. It will be fitted in the 'Train Model' module.
+# model variable contains the model instance ready for training.
+`,
+
     LogisticTradition: `
 from sklearn.linear_model import LogisticRegression
 
@@ -588,6 +624,8 @@ scored_data['Predict'] = predictions
 `,
     EvaluateModel: `
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, mean_absolute_error, r2_score
+from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.preprocessing import label_binarize
 import pandas as pd
 import numpy as np
 
@@ -617,32 +655,66 @@ if p_model_type == 'classification':
         'recall': recall,
         'f1_score': f1
     }
-    
+
     print("Classification Evaluation Metrics:")
     print(f"  Accuracy: {accuracy:.6f}")
     print(f"  Precision: {precision:.6f}")
     print(f"  Recall: {recall:.6f}")
     print(f"  F1-Score: {f1:.6f}")
-    
+
+    # ROC-AUC + Average Precision (PR-AUC) — additive, guarded.
+    # Binary: y_pred used as score; Multiclass: one-vs-rest macro.
+    classes = np.unique(y_true)
+    try:
+        if len(classes) <= 2:
+            roc_auc = float(roc_auc_score(y_true, y_pred))
+            avg_prec = float(average_precision_score(y_true, y_pred))
+        else:
+            y_true_bin = label_binarize(y_true, classes=sorted(classes.tolist()))
+            y_pred_bin = label_binarize(y_pred, classes=sorted(classes.tolist()))
+            roc_auc = float(roc_auc_score(y_true_bin, y_pred_bin, average='macro', multi_class='ovr'))
+            avg_prec = float(average_precision_score(y_true_bin, y_pred_bin, average='macro'))
+        evaluation_metrics['roc_auc'] = roc_auc
+        evaluation_metrics['average_precision'] = avg_prec
+        print(f"  ROC-AUC: {roc_auc:.6f}")
+        print(f"  Average Precision (PR-AUC): {avg_prec:.6f}")
+    except Exception as _auc_err:
+        print(f"  ROC-AUC / Average Precision: 계산 불가 ({_auc_err})")
+
 else:  # regression
     # Regression metrics
+    y_true_arr = np.asarray(y_true, dtype=float)
+    y_pred_arr = np.asarray(y_pred, dtype=float)
     mse = mean_squared_error(y_true, y_pred)
     rmse = np.sqrt(mse)
     mae = mean_absolute_error(y_true, y_pred)
     r2 = r2_score(y_true, y_pred)
-    
+
+    # Relative errors (additive). Baseline = mean predictor.
+    _y_mean = float(np.mean(y_true_arr))
+    _ss_tot = float(np.sum((y_true_arr - _y_mean) ** 2))
+    _abs_tot = float(np.sum(np.abs(y_true_arr - _y_mean)))
+    _ss_res = float(np.sum((y_true_arr - y_pred_arr) ** 2))
+    _abs_res = float(np.sum(np.abs(y_true_arr - y_pred_arr)))
+    rse = float(_ss_res / _ss_tot) if _ss_tot > 0 else float('nan')   # Relative Squared Error
+    rae = float(_abs_res / _abs_tot) if _abs_tot > 0 else float('nan') # Relative Absolute Error
+
     evaluation_metrics = {
         'mse': mse,
         'rmse': rmse,
         'mae': mae,
-        'r2': r2
+        'r2': r2,
+        'relative_squared_error': rse,
+        'relative_absolute_error': rae
     }
-    
+
     print("Regression Evaluation Metrics:")
     print(f"  Mean Squared Error (MSE): {mse:.6f}")
     print(f"  Root Mean Squared Error (RMSE): {rmse:.6f}")
     print(f"  Mean Absolute Error (MAE): {mae:.6f}")
     print(f"  R-squared (R²): {r2:.6f}")
+    print(f"  Relative Squared Error (RSE): {rse:.6f}")
+    print(f"  Relative Absolute Error (RAE): {rae:.6f}")
 
 # evaluation_metrics contains all calculated statistics
 `,
@@ -2785,7 +2857,44 @@ print(f"오류: 알 수 없는 모델 타입 '${modelType}'")
 model_results = None
 `;
     }
-    
+
+    // GLM/OLS 적합도 지표 명시 노출 (additive, guarded). summary()에 더해
+    // Deviance·Pearson χ²·AIC·BIC를 결정적 고정소수로 출력한다.
+    code += `
+# --- 적합도 지표 (Goodness-of-fit) — additive ---
+if model_results is not None:
+    print("\\n--- 적합도 지표 (Goodness-of-fit) ---")
+    # Deviance: GLM은 results.deviance, OLS류는 잔차제곱합(ssr)
+    try:
+        _dev = getattr(model_results, 'deviance', None)
+        if _dev is None:
+            _dev = getattr(model_results, 'ssr', None)
+        if _dev is not None:
+            print(f"Deviance: {float(_dev):.6f}")
+    except Exception:
+        pass
+    # Pearson chi-square (GLM에서 제공)
+    try:
+        _pchi2 = getattr(model_results, 'pearson_chi2', None)
+        if _pchi2 is not None:
+            print(f"Pearson chi²: {float(_pchi2):.6f}")
+    except Exception:
+        pass
+    # 정보기준 (AIC/BIC)
+    try:
+        _aic = getattr(model_results, 'aic', None)
+        if _aic is not None:
+            print(f"AIC: {float(_aic):.6f}")
+    except Exception:
+        pass
+    try:
+        _bic_attr = getattr(model_results, 'bic', None)
+        if _bic_attr is not None:
+            print(f"BIC: {float(_bic_attr):.6f}")
+    except Exception:
+        pass
+`;
+
     return code;
 }
 

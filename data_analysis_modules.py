@@ -10,6 +10,7 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler, La
 from sklearn.linear_model import LinearRegression, Lasso, Ridge, ElasticNet, LogisticRegression, PoissonRegressor
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.svm import SVC, SVR
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB
@@ -17,7 +18,9 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.decomposition import PCA
-from sklearn.metrics import accuracy_score, mean_squared_error, r2_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, mean_squared_error, mean_absolute_error, r2_score, classification_report, confusion_matrix
+from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.preprocessing import label_binarize
 from sklearn.impute import SimpleImputer, KNNImputer
 from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import NearMiss
@@ -842,6 +845,47 @@ def create_random_forest(model_purpose: str = 'classification', n_estimators: in
     return model
 
 
+def create_gradient_boosting(model_purpose: str = 'classification', n_estimators: int = 100,
+                             learning_rate: float = 0.1, max_depth: int = 3):
+    """
+    그래디언트 부스팅 트리 모델을 생성합니다.
+
+    Parameters:
+    -----------
+    model_purpose : str
+        모델 목적: 'classification', 'regression'
+    n_estimators : int
+        부스팅 단계(트리) 개수
+    learning_rate : float
+        각 트리의 기여도를 줄이는 학습률
+    max_depth : int
+        개별 회귀 추정기의 최대 깊이
+
+    Returns:
+    --------
+    GradientBoosting 모델 객체
+    """
+    print(f"그래디언트 부스팅 모델 생성 중 ({model_purpose})...")
+
+    if model_purpose == 'classification':
+        model = GradientBoostingClassifier(
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            random_state=42
+        )
+    else:
+        model = GradientBoostingRegressor(
+            n_estimators=n_estimators,
+            learning_rate=learning_rate,
+            max_depth=max_depth,
+            random_state=42
+        )
+
+    print("모델 생성 완료.")
+    return model
+
+
 def create_svm(model_purpose: str = 'classification', C: float = 1.0,
               kernel: str = 'rbf', gamma: str = 'scale'):
     """
@@ -1050,26 +1094,63 @@ def evaluate_model(model, df: pd.DataFrame, label_column: str, prediction_column
         accuracy = accuracy_score(y_true, y_pred)
         metrics['accuracy'] = accuracy
         print(f"정확도: {accuracy:.4f}")
-        
+
         print("\n분류 리포트:")
         print(classification_report(y_true, y_pred))
-        
+
         print("\n혼동 행렬:")
         print(confusion_matrix(y_true, y_pred))
-    
+
+        # ROC-AUC + Average Precision (PR-AUC) — additive, guarded.
+        # 이진은 y_pred를 score로, 다중분류는 one-vs-rest macro.
+        classes = np.unique(y_true)
+        try:
+            if len(classes) <= 2:
+                roc_auc = float(roc_auc_score(y_true, y_pred))
+                avg_prec = float(average_precision_score(y_true, y_pred))
+            else:
+                y_true_bin = label_binarize(y_true, classes=sorted(classes.tolist()))
+                y_pred_bin = label_binarize(y_pred, classes=sorted(classes.tolist()))
+                roc_auc = float(roc_auc_score(y_true_bin, y_pred_bin, average='macro', multi_class='ovr'))
+                avg_prec = float(average_precision_score(y_true_bin, y_pred_bin, average='macro'))
+            metrics['roc_auc'] = roc_auc
+            metrics['average_precision'] = avg_prec
+            print(f"ROC-AUC: {roc_auc:.4f}")
+            print(f"Average Precision (PR-AUC): {avg_prec:.4f}")
+        except Exception as _auc_err:
+            print(f"ROC-AUC / Average Precision: 계산 불가 ({_auc_err})")
+
     else:  # regression
+        y_true_arr = np.asarray(y_true, dtype=float)
+        y_pred_arr = np.asarray(y_pred, dtype=float)
         mse = mean_squared_error(y_true, y_pred)
         rmse = np.sqrt(mse)
+        mae = mean_absolute_error(y_true, y_pred)
         r2 = r2_score(y_true, y_pred)
-        
+
+        # 상대오차 (additive). 기준선 = 평균 예측기.
+        y_mean = float(np.mean(y_true_arr))
+        ss_tot = float(np.sum((y_true_arr - y_mean) ** 2))
+        abs_tot = float(np.sum(np.abs(y_true_arr - y_mean)))
+        ss_res = float(np.sum((y_true_arr - y_pred_arr) ** 2))
+        abs_res = float(np.sum(np.abs(y_true_arr - y_pred_arr)))
+        rse = float(ss_res / ss_tot) if ss_tot > 0 else float('nan')
+        rae = float(abs_res / abs_tot) if abs_tot > 0 else float('nan')
+
         metrics['mse'] = mse
         metrics['rmse'] = rmse
+        metrics['mae'] = mae
         metrics['r2'] = r2
-        
+        metrics['relative_squared_error'] = rse
+        metrics['relative_absolute_error'] = rae
+
         print(f"평균 제곱 오차 (MSE): {mse:.4f}")
         print(f"평균 제곱근 오차 (RMSE): {rmse:.4f}")
+        print(f"평균 절대 오차 (MAE): {mae:.4f}")
         print(f"결정 계수 (R²): {r2:.4f}")
-    
+        print(f"상대 제곱 오차 (RSE): {rse:.4f}")
+        print(f"상대 절대 오차 (RAE): {rae:.4f}")
+
     return metrics
 
 
@@ -1320,6 +1401,24 @@ def run_stats_model(df: pd.DataFrame, model_type: str, feature_columns: list, la
         results = model.fit()
         print(f"\n--- {model_type} 모델 결과 ---")
         print(results.summary())
+
+        # 적합도 지표 (Goodness-of-fit) — additive, guarded.
+        print("\n--- 적합도 지표 (Goodness-of-fit) ---")
+        deviance = getattr(results, 'deviance', None)
+        if deviance is None:
+            deviance = getattr(results, 'ssr', None)
+        if deviance is not None:
+            print(f"Deviance: {float(deviance):.6f}")
+        pearson_chi2 = getattr(results, 'pearson_chi2', None)
+        if pearson_chi2 is not None:
+            print(f"Pearson chi²: {float(pearson_chi2):.6f}")
+        aic = getattr(results, 'aic', None)
+        if aic is not None:
+            print(f"AIC: {float(aic):.6f}")
+        bic = getattr(results, 'bic', None)
+        if bic is not None:
+            print(f"BIC: {float(bic):.6f}")
+
         return results
     except Exception as e:
         print(f"모델 피팅 중 오류 발생: {e}")

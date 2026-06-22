@@ -18,6 +18,7 @@ export enum ModuleType {
   NegativeBinomialRegression = "NegativeBinomialRegression",
   DecisionTree = "DecisionTree",
   RandomForest = "RandomForest",
+  GradientBoosting = "GradientBoosting",
   SVM = "SVM",
   LinearDiscriminantAnalysis = "LinearDiscriminantAnalysis",
   NaiveBayes = "NaiveBayes",

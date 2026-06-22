@@ -235,6 +235,33 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
                         </div>
                     )}
 
+                    {/* Classification: additive AUC metrics (Python-computed: ROC-AUC, Average Precision) */}
+                    {modelType === 'classification' && (metrics['ROC-AUC'] !== undefined || metrics['Average Precision'] !== undefined) && (
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
+                            <h3 className="text-lg font-semibold text-gray-700 mb-3 text-center">
+                                AUC Metrics
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-base">
+                                {metrics['ROC-AUC'] !== undefined && (
+                                    <div className="flex flex-col">
+                                        <span className="text-gray-600 text-sm">ROC-AUC</span>
+                                        <span className="font-mono text-gray-800 font-medium text-lg">
+                                            {typeof metrics['ROC-AUC'] === 'number' ? (metrics['ROC-AUC'] as number).toFixed(4) : metrics['ROC-AUC']}
+                                        </span>
+                                    </div>
+                                )}
+                                {metrics['Average Precision'] !== undefined && (
+                                    <div className="flex flex-col">
+                                        <span className="text-gray-600 text-sm">Average Precision (PR-AUC)</span>
+                                        <span className="font-mono text-gray-800 font-medium text-lg">
+                                            {typeof metrics['Average Precision'] === 'number' ? (metrics['Average Precision'] as number).toFixed(4) : metrics['Average Precision']}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Classification-specific content */}
                     {modelType === 'classification' && (
                         <>

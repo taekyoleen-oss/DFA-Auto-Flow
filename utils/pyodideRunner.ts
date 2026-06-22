@@ -3560,6 +3560,8 @@ import json
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, mean_squared_error, mean_absolute_error, r2_score, confusion_matrix
+from sklearn.metrics import roc_auc_score, average_precision_score
+from sklearn.preprocessing import label_binarize
 
 # 데이터 준비
 df = pd.DataFrame(js_data.to_py())
@@ -3608,7 +3610,21 @@ if model_type == 'classification':
     metrics['FP'] = fp
     metrics['TN'] = tn
     metrics['FN'] = fn
-    
+
+    # ROC-AUC + Average Precision (PR-AUC) — additive, guarded.
+    # 확률값(y_pred_proba)을 score로 사용. 다중분류는 one-vs-rest macro.
+    classes = np.unique(y_true)
+    try:
+        if len(classes) <= 2:
+            metrics['ROC-AUC'] = float(roc_auc_score(y_true, y_pred_proba))
+            metrics['Average Precision'] = float(average_precision_score(y_true, y_pred_proba))
+        else:
+            y_true_bin = label_binarize(y_true, classes=sorted(classes.tolist()))
+            metrics['ROC-AUC'] = float(roc_auc_score(y_true_bin, y_pred_proba, average='macro', multi_class='ovr'))
+            metrics['Average Precision'] = float(average_precision_score(y_true_bin, y_pred_proba, average='macro'))
+    except Exception:
+        pass
+
     # 여러 threshold에 대한 모든 통계량 계산 (0부터 1까지 0.01 단위)
     if calculate_threshold_metrics:
         threshold_list = np.arange(0, 1.01, 0.01)
@@ -3653,15 +3669,28 @@ else:
     y_pred = df[prediction_column].values
     
     # 회귀 메트릭
+    y_true_f = np.asarray(y_true, dtype=float)
+    y_pred_f = np.asarray(y_pred, dtype=float)
     mse = float(mean_squared_error(y_true, y_pred))
     rmse = float(np.sqrt(mse))
     mae = float(mean_absolute_error(y_true, y_pred))
     r2 = float(r2_score(y_true, y_pred))
-    
+
+    # 상대오차 (additive). 기준선 = 평균 예측기.
+    _y_mean = float(np.mean(y_true_f))
+    _ss_tot = float(np.sum((y_true_f - _y_mean) ** 2))
+    _abs_tot = float(np.sum(np.abs(y_true_f - _y_mean)))
+    _ss_res = float(np.sum((y_true_f - y_pred_f) ** 2))
+    _abs_res = float(np.sum(np.abs(y_true_f - y_pred_f)))
+    rse = float(_ss_res / _ss_tot) if _ss_tot > 0 else float('nan')
+    rae = float(_abs_res / _abs_tot) if _abs_tot > 0 else float('nan')
+
     metrics['Mean Squared Error (MSE)'] = mse
     metrics['Root Mean Squared Error (RMSE)'] = rmse
     metrics['Mean Absolute Error (MAE)'] = mae
     metrics['R-squared'] = r2
+    metrics['Relative Squared Error (RSE)'] = rse
+    metrics['Relative Absolute Error (RAE)'] = rae
 
 metrics
 `;
