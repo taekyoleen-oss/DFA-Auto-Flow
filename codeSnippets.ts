@@ -552,6 +552,44 @@ print(f"  Max Depth: {p_max_depth}")
 # model variable contains the model instance ready for training.
 `,
 
+    RandomForest: `
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+
+# This module creates a random forest (bagged decision trees) model instance.
+# The model will be trained in the 'Train Model' module.
+# Parameters from UI
+p_model_purpose = {model_purpose}
+p_n_estimators = {n_estimators}
+p_criterion = {criterion}
+p_max_depth = {max_depth} if {max_depth} else None
+
+# Create model instance based on model purpose
+if p_model_purpose == 'classification':
+    criterion_clf = p_criterion.lower() if p_criterion else 'gini'
+    model = RandomForestClassifier(
+        n_estimators=p_n_estimators,
+        criterion=criterion_clf,
+        max_depth=p_max_depth,
+        random_state=42
+    )
+else:
+    criterion_reg = 'squared_error' if p_criterion == 'mse' else 'absolute_error'
+    model = RandomForestRegressor(
+        n_estimators=p_n_estimators,
+        criterion=criterion_reg,
+        max_depth=p_max_depth,
+        random_state=42
+    )
+
+print(f"Random Forest model instance created successfully ({p_model_purpose}).")
+print(f"  N Estimators: {p_n_estimators}")
+print(f"  Criterion: {p_criterion}")
+print(f"  Max Depth: {p_max_depth}")
+
+# Note: The model is not fitted here. It will be fitted in the 'Train Model' module.
+# model variable contains the model instance ready for training.
+`,
+
     LogisticTradition: `
 from sklearn.linear_model import LogisticRegression
 
