@@ -590,6 +590,64 @@ print(f"  Max Depth: {p_max_depth}")
 # model variable contains the model instance ready for training.
 `,
 
+    LogisticRegression: `
+from sklearn.linear_model import LogisticRegression
+
+# This module creates a logistic regression (classification) model instance.
+# The model will be trained in the 'Train Model' module.
+# Parameters from UI
+p_penalty = {penalty}
+p_C = {C}
+p_solver = {solver}
+p_max_iter = {max_iter}
+
+model = LogisticRegression(penalty=p_penalty, C=p_C, solver=p_solver, max_iter=p_max_iter, random_state=42)
+
+print(f"Logistic Regression model instance created (solver={p_solver}, C={p_C}, penalty={p_penalty}).")
+
+# Note: The model is not fitted here. It will be fitted in the 'Train Model' module.
+# model variable contains the model instance ready for training.
+`,
+
+    SVM: `
+from sklearn.svm import SVC, SVR
+
+# This module creates a support vector machine model instance.
+# The model will be trained in the 'Train Model' module.
+# Parameters from UI
+p_model_purpose = {model_purpose}
+p_C = {C}
+p_kernel = {kernel}
+p_gamma = {gamma}
+
+if p_model_purpose == 'classification':
+    model = SVC(C=p_C, kernel=p_kernel, gamma=p_gamma, random_state=42)
+else:
+    model = SVR(C=p_C, kernel=p_kernel, gamma=p_gamma)
+
+print(f"SVM model instance created ({p_model_purpose}, kernel={p_kernel}, C={p_C}).")
+
+# Note: The model is not fitted here. It will be fitted in the 'Train Model' module.
+# model variable contains the model instance ready for training.
+`,
+
+    NaiveBayes: `
+from sklearn.naive_bayes import GaussianNB
+
+# This module creates a Gaussian naive Bayes (classification) model instance.
+# The model will be trained in the 'Train Model' module.
+# Parameters from UI
+p_var_smoothing = {var_smoothing}
+
+# Naive Bayes is deterministic (no random_state needed).
+model = GaussianNB(var_smoothing=p_var_smoothing)
+
+print(f"Naive Bayes (GaussianNB) model instance created (var_smoothing={p_var_smoothing}).")
+
+# Note: The model is not fitted here. It will be fitted in the 'Train Model' module.
+# model variable contains the model instance ready for training.
+`,
+
     LogisticTradition: `
 from sklearn.linear_model import LogisticRegression
 

@@ -1,0 +1,20 @@
+{
+  "name": "sklearn LogisticRegression classification chain (dfa_claims_class)",
+  "requires": ["sklearn"],
+  "modules": [
+    { "type": "LoadData", "name": "Load Data", "parameters": { "source": "dfa_claims_class.csv" } },
+    { "type": "SplitData", "name": "Split Data", "parameters": { "train_size": 0.75, "random_state": 42, "shuffle": "True", "stratify": "False", "stratify_column": null } },
+    { "type": "LogisticRegression", "name": "LogisticRegression", "parameters": { "penalty": "l2", "C": 1.0, "solver": "lbfgs", "max_iter": 200 } },
+    { "type": "TrainModel", "name": "Train Model", "parameters": { "feature_columns": ["exposure","prior_claims","vehicle_age","driver_age","region_risk"], "label_column": "high_claim" } },
+    { "type": "ScoreModel", "name": "Score Model", "parameters": {} },
+    { "type": "EvaluateModel", "name": "Evaluate Model", "parameters": { "model_type": "classification", "label_column": "high_claim", "prediction_column": "Predict", "threshold": 0.5 } }
+  ],
+  "connections": [
+    { "fromModuleIndex": 0, "fromPort": "data_out", "toModuleIndex": 1, "toPort": "data_in" },
+    { "fromModuleIndex": 1, "fromPort": "train_data_out", "toModuleIndex": 3, "toPort": "data_in" },
+    { "fromModuleIndex": 2, "fromPort": "model_out", "toModuleIndex": 3, "toPort": "model_in" },
+    { "fromModuleIndex": 3, "fromPort": "trained_model_out", "toModuleIndex": 4, "toPort": "model_in" },
+    { "fromModuleIndex": 1, "fromPort": "test_data_out", "toModuleIndex": 4, "toPort": "data_in" },
+    { "fromModuleIndex": 4, "fromPort": "scored_data_out", "toModuleIndex": 5, "toPort": "data_in" }
+  ]
+}
