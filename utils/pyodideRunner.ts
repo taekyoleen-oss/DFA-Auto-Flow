@@ -4260,6 +4260,681 @@ except Exception as e:
 }
 
 /**
+ * Decision Tree 모델을 사용하여 예측을 수행합니다
+ * 타임아웃: 60초
+ */
+export async function scoreDecisionTreePython(
+  data: any[],
+  featureColumns: string[],
+  labelColumn: string,
+  modelPurpose: "classification" | "regression",
+  criterion: string,
+  maxDepth: number | null,
+  minSamplesSplit: number,
+  minSamplesLeaf: number,
+  trainingData: any[],
+  trainingFeatureColumns: string[],
+  trainingLabelColumn: string,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    // Pyodide 로드 (타임아웃: 30초)
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    // 데이터를 Python에 전달
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_model_purpose", modelPurpose);
+    py.globals.set("js_criterion", criterion);
+    py.globals.set("js_max_depth", maxDepth);
+    py.globals.set("js_min_samples_split", minSamplesSplit);
+    py.globals.set("js_min_samples_leaf", minSamplesLeaf);
+    py.globals.set("js_training_data", trainingData);
+    py.globals.set("js_training_feature_columns", trainingFeatureColumns);
+    py.globals.set("js_training_label_column", trainingLabelColumn);
+
+    // Python 코드 실행
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+
+try:
+    # 데이터 준비
+    df = pd.DataFrame(js_data.to_py())
+    feature_columns = js_feature_columns.to_py()
+    label_column = str(js_label_column)
+    model_purpose = str(js_model_purpose)
+    
+    # 훈련 데이터 준비
+    training_df = pd.DataFrame(js_training_data.to_py())
+    training_feature_columns = js_training_feature_columns.to_py()
+    training_label_column = str(js_training_label_column)
+    
+    # 모델 파라미터
+    criterion = str(js_criterion)
+    max_depth = js_max_depth if js_max_depth is not None else None
+    min_samples_split = int(js_min_samples_split)
+    min_samples_leaf = int(js_min_samples_leaf)
+    
+    # 훈련 데이터에서 특성과 레이블 추출
+    X_train = training_df[training_feature_columns]
+    y_train = training_df[training_label_column]
+    
+    # 모델 생성 및 훈련
+    if model_purpose == 'classification':
+        model = DecisionTreeClassifier(
+            criterion=criterion.lower(),
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            random_state=42
+        )
+    else:
+        criterion_reg = 'squared_error' if criterion == 'mse' else 'absolute_error'
+        model = DecisionTreeRegressor(
+            criterion=criterion_reg,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            random_state=42
+        )
+    
+    # 모델 훈련
+    model.fit(X_train, y_train)
+    
+    # 예측 수행
+    X = df[feature_columns]
+    predictions = model.predict(X)
+    
+    # 결과 데이터프레임 생성
+    result_df = df.copy()
+    result_df['Predict'] = predictions
+    
+    # 분류 모델인 경우 확률도 계산
+    if model_purpose == 'classification':
+        try:
+            probabilities = model.predict_proba(X)
+            if probabilities.shape[1] == 2:
+                # 이진 분류
+                result_df[f"{label_column}_Predict_Proba_0"] = probabilities[:, 0]
+                result_df[f"{label_column}_Predict_Proba_1"] = probabilities[:, 1]
+            else:
+                # 다중 클래스
+                for i in range(probabilities.shape[1]):
+                    result_df[f"{label_column}_Predict_Proba_{i}"] = probabilities[:, i]
+        except Exception:
+            pass
+    
+    # 결과를 딕셔너리 리스트로 변환
+    result_rows = result_df.to_dict('records')
+    result_columns = [{'name': col, 'type': str(result_df[col].dtype)} for col in result_df.columns]
+    
+    result = {
+        'rows': result_rows,
+        'columns': result_columns
+    }
+    
+    # 전역 변수에 저장
+    js_result = result
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    error_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+    # 전역 변수에 저장
+    js_result = error_result
+`;
+
+    // Python 코드 실행
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python Decision Tree ScoreModel 실행 타임아웃 (60초 초과)"
+    );
+
+    // 전역 변수에서 결과 가져오기
+    const resultPyObj = py.globals.get("js_result");
+
+    // 결과 객체 검증
+    if (!resultPyObj) {
+      throw new Error(
+        `Python Decision Tree ScoreModel error: Python code returned None or undefined.`
+      );
+    }
+
+    // Python 딕셔너리를 JavaScript 객체로 변환
+    const result = fromPython(resultPyObj);
+
+    // 에러가 발생한 경우 처리
+    if (result && result.__error__) {
+      throw new Error(
+        `Python Decision Tree ScoreModel error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+
+    // 필수 속성 검증
+    if (!result || !result.rows || !result.columns) {
+      throw new Error(
+        `Python Decision Tree ScoreModel error: Missing or invalid 'rows' or 'columns' in result.`
+      );
+    }
+
+    // 정리
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_model_purpose");
+    py.globals.delete("js_criterion");
+    py.globals.delete("js_max_depth");
+    py.globals.delete("js_min_samples_split");
+    py.globals.delete("js_min_samples_leaf");
+    py.globals.delete("js_training_data");
+    py.globals.delete("js_training_feature_columns");
+    py.globals.delete("js_training_label_column");
+    py.globals.delete("js_result");
+
+    return {
+      rows: result.rows,
+      columns: result.columns,
+    };
+  } catch (error: any) {
+    // 정리
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_model_purpose");
+        py.globals.delete("js_criterion");
+        py.globals.delete("js_max_depth");
+        py.globals.delete("js_min_samples_split");
+        py.globals.delete("js_min_samples_leaf");
+        py.globals.delete("js_training_data");
+        py.globals.delete("js_training_feature_columns");
+        py.globals.delete("js_training_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python Decision Tree ScoreModel error: ${errorMessage}`);
+  }
+}
+
+/**
+ * SVM ScoreModel: 훈련 데이터로 모델을 재적합한 뒤 입력 데이터를 예측합니다
+ * (결정적 random_state=42). fitSVMPython 정합.
+ */
+export async function scoreSVMPython(
+  data: any[],
+  featureColumns: string[],
+  labelColumn: string,
+  modelPurpose: "classification" | "regression",
+  kernel: string,
+  C: number,
+  gamma: string | number,
+  degree: number,
+  trainingData: any[],
+  trainingFeatureColumns: string[],
+  trainingLabelColumn: string,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_model_purpose", modelPurpose);
+    py.globals.set("js_training_data", trainingData);
+    py.globals.set("js_training_feature_columns", trainingFeatureColumns);
+    py.globals.set("js_training_label_column", trainingLabelColumn);
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.svm import SVC, SVR
+
+try:
+    df = pd.DataFrame(js_data.to_py())
+    feature_columns = js_feature_columns.to_py()
+    label_column = str(js_label_column)
+    model_purpose = str(js_model_purpose)
+
+    training_df = pd.DataFrame(js_training_data.to_py())
+    training_feature_columns = js_training_feature_columns.to_py()
+    training_label_column = str(js_training_label_column)
+
+    p_kernel = '${kernel}'
+    p_C = ${C}
+    ${typeof gamma === "string" ? `p_gamma = '${gamma}'` : `p_gamma = ${gamma}`}
+    p_degree = ${degree}
+
+    X_train = training_df[training_feature_columns]
+    y_train = training_df[training_label_column]
+
+    if model_purpose == 'classification':
+        model = SVC(
+            kernel=p_kernel,
+            C=p_C,
+            gamma=p_gamma,
+            degree=p_degree,
+            probability=True,
+            random_state=42
+        )
+    else:
+        model = SVR(
+            kernel=p_kernel,
+            C=p_C,
+            gamma=p_gamma,
+            degree=p_degree
+        )
+
+    model.fit(X_train, y_train)
+    X = df[feature_columns]
+    predictions = model.predict(X)
+
+    result_df = df.copy()
+    result_df['Predict'] = predictions
+
+    if model_purpose == 'classification':
+        try:
+            probabilities = model.predict_proba(X)
+            if probabilities.shape[1] == 2:
+                result_df[f"{label_column}_Predict_Proba_0"] = probabilities[:, 0]
+                result_df[f"{label_column}_Predict_Proba_1"] = probabilities[:, 1]
+            else:
+                for i in range(probabilities.shape[1]):
+                    result_df[f"{label_column}_Predict_Proba_{i}"] = probabilities[:, i]
+        except Exception:
+            pass
+
+    result_rows = result_df.to_dict('records')
+    result_columns = [{'name': col, 'type': str(result_df[col].dtype)} for col in result_df.columns]
+    js_result = {'rows': result_rows, 'columns': result_columns}
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    js_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python SVM ScoreModel 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error(
+        `Python SVM ScoreModel error: Python code returned None or undefined.`
+      );
+    }
+    const result = fromPython(resultPyObj);
+    if (result && result.__error__) {
+      throw new Error(
+        `Python SVM ScoreModel error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+    if (!result || !result.rows || !result.columns) {
+      throw new Error(
+        `Python SVM ScoreModel error: Missing or invalid 'rows' or 'columns' in result.`
+      );
+    }
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_model_purpose");
+    py.globals.delete("js_training_data");
+    py.globals.delete("js_training_feature_columns");
+    py.globals.delete("js_training_label_column");
+    py.globals.delete("js_result");
+
+    return { rows: result.rows, columns: result.columns };
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_model_purpose");
+        py.globals.delete("js_training_data");
+        py.globals.delete("js_training_feature_columns");
+        py.globals.delete("js_training_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python SVM ScoreModel error: ${errorMessage}`);
+  }
+}
+
+/**
+ * LDA ScoreModel: 훈련 데이터로 모델을 재적합한 뒤 입력 데이터를 예측합니다 (분류 전용).
+ * fitLDAPython 정합.
+ */
+export async function scoreLDAPython(
+  data: any[],
+  featureColumns: string[],
+  labelColumn: string,
+  solver: string,
+  shrinkage: number | null,
+  nComponents: number | null,
+  trainingData: any[],
+  trainingFeatureColumns: string[],
+  trainingLabelColumn: string,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_training_data", trainingData);
+    py.globals.set("js_training_feature_columns", trainingFeatureColumns);
+    py.globals.set("js_training_label_column", trainingLabelColumn);
+
+    const shrinkageStr = shrinkage !== null ? String(shrinkage) : "None";
+    const nComponentsStr = nComponents !== null ? String(nComponents) : "None";
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
+try:
+    df = pd.DataFrame(js_data.to_py())
+    feature_columns = js_feature_columns.to_py()
+    label_column = str(js_label_column)
+
+    training_df = pd.DataFrame(js_training_data.to_py())
+    training_feature_columns = js_training_feature_columns.to_py()
+    training_label_column = str(js_training_label_column)
+
+    p_solver = '${solver}'
+    p_shrinkage = ${shrinkageStr} if ${shrinkageStr} != 'None' else None
+    p_n_components = ${nComponentsStr} if ${nComponentsStr} != 'None' else None
+
+    X_train = training_df[training_feature_columns]
+    y_train = training_df[training_label_column]
+
+    model = LinearDiscriminantAnalysis(
+        solver=p_solver,
+        shrinkage=p_shrinkage,
+        n_components=p_n_components
+    )
+
+    model.fit(X_train, y_train)
+    X = df[feature_columns]
+    predictions = model.predict(X)
+
+    result_df = df.copy()
+    result_df['Predict'] = predictions
+
+    try:
+        probabilities = model.predict_proba(X)
+        if probabilities.shape[1] == 2:
+            result_df[f"{label_column}_Predict_Proba_0"] = probabilities[:, 0]
+            result_df[f"{label_column}_Predict_Proba_1"] = probabilities[:, 1]
+        else:
+            for i in range(probabilities.shape[1]):
+                result_df[f"{label_column}_Predict_Proba_{i}"] = probabilities[:, i]
+    except Exception:
+        pass
+
+    result_rows = result_df.to_dict('records')
+    result_columns = [{'name': col, 'type': str(result_df[col].dtype)} for col in result_df.columns]
+    js_result = {'rows': result_rows, 'columns': result_columns}
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    js_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python LDA ScoreModel 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error(
+        `Python LDA ScoreModel error: Python code returned None or undefined.`
+      );
+    }
+    const result = fromPython(resultPyObj);
+    if (result && result.__error__) {
+      throw new Error(
+        `Python LDA ScoreModel error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+    if (!result || !result.rows || !result.columns) {
+      throw new Error(
+        `Python LDA ScoreModel error: Missing or invalid 'rows' or 'columns' in result.`
+      );
+    }
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_training_data");
+    py.globals.delete("js_training_feature_columns");
+    py.globals.delete("js_training_label_column");
+    py.globals.delete("js_result");
+
+    return { rows: result.rows, columns: result.columns };
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_training_data");
+        py.globals.delete("js_training_feature_columns");
+        py.globals.delete("js_training_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python LDA ScoreModel error: ${errorMessage}`);
+  }
+}
+
+/**
+ * Naive Bayes ScoreModel: 훈련 데이터로 모델을 재적합한 뒤 입력 데이터를 예측합니다 (분류 전용).
+ * fitNaiveBayesPython 정합 (fit_prior 기본 True).
+ */
+export async function scoreNaiveBayesPython(
+  data: any[],
+  featureColumns: string[],
+  labelColumn: string,
+  modelType: string,
+  alpha: number,
+  trainingData: any[],
+  trainingFeatureColumns: string[],
+  trainingLabelColumn: string,
+  timeoutMs: number = 60000
+): Promise<{ rows: any[]; columns: Array<{ name: string; type: string }> }> {
+  try {
+    const py = await withTimeout(
+      loadPyodide(30000),
+      30000,
+      "Pyodide 로딩 타임아웃 (30초 초과)"
+    );
+
+    py.globals.set("js_data", data);
+    py.globals.set("js_feature_columns", featureColumns);
+    py.globals.set("js_label_column", labelColumn);
+    py.globals.set("js_training_data", trainingData);
+    py.globals.set("js_training_feature_columns", trainingFeatureColumns);
+    py.globals.set("js_training_label_column", trainingLabelColumn);
+
+    const code = `
+import json
+import numpy as np
+import pandas as pd
+import traceback
+import sys
+from sklearn.naive_bayes import GaussianNB, MultinomialNB, BernoulliNB, ComplementNB
+
+try:
+    df = pd.DataFrame(js_data.to_py())
+    feature_columns = js_feature_columns.to_py()
+    label_column = str(js_label_column)
+
+    training_df = pd.DataFrame(js_training_data.to_py())
+    training_feature_columns = js_training_feature_columns.to_py()
+    training_label_column = str(js_training_label_column)
+
+    p_model_type = '${modelType}'
+    p_alpha = ${alpha}
+    p_fit_prior = True
+
+    X_train = training_df[training_feature_columns]
+    y_train = training_df[training_label_column]
+
+    if p_model_type == 'Gaussian':
+        model = GaussianNB()
+    elif p_model_type == 'Multinomial':
+        model = MultinomialNB(alpha=p_alpha, fit_prior=p_fit_prior)
+    elif p_model_type == 'Bernoulli':
+        model = BernoulliNB(alpha=p_alpha, fit_prior=p_fit_prior)
+    elif p_model_type == 'Complement':
+        model = ComplementNB(alpha=p_alpha, fit_prior=p_fit_prior)
+    else:
+        model = GaussianNB()
+
+    model.fit(X_train, y_train)
+    X = df[feature_columns]
+    predictions = model.predict(X)
+
+    result_df = df.copy()
+    result_df['Predict'] = predictions
+
+    try:
+        probabilities = model.predict_proba(X)
+        if probabilities.shape[1] == 2:
+            result_df[f"{label_column}_Predict_Proba_0"] = probabilities[:, 0]
+            result_df[f"{label_column}_Predict_Proba_1"] = probabilities[:, 1]
+        else:
+            for i in range(probabilities.shape[1]):
+                result_df[f"{label_column}_Predict_Proba_{i}"] = probabilities[:, i]
+    except Exception:
+        pass
+
+    result_rows = result_df.to_dict('records')
+    result_columns = [{'name': col, 'type': str(result_df[col].dtype)} for col in result_df.columns]
+    js_result = {'rows': result_rows, 'columns': result_columns}
+except Exception as e:
+    error_traceback = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+    js_result = {
+        '__error__': True,
+        'error_type': type(e).__name__,
+        'error_message': str(e),
+        'error_traceback': error_traceback
+    }
+`;
+
+    await withTimeout(
+      Promise.resolve(py.runPython(code)),
+      timeoutMs,
+      "Python Naive Bayes ScoreModel 실행 타임아웃 (60초 초과)"
+    );
+
+    const resultPyObj = py.globals.get("js_result");
+    if (!resultPyObj) {
+      throw new Error(
+        `Python Naive Bayes ScoreModel error: Python code returned None or undefined.`
+      );
+    }
+    const result = fromPython(resultPyObj);
+    if (result && result.__error__) {
+      throw new Error(
+        `Python Naive Bayes ScoreModel error:\n${
+          result.error_traceback || result.error_message || "Unknown error"
+        }`
+      );
+    }
+    if (!result || !result.rows || !result.columns) {
+      throw new Error(
+        `Python Naive Bayes ScoreModel error: Missing or invalid 'rows' or 'columns' in result.`
+      );
+    }
+
+    py.globals.delete("js_data");
+    py.globals.delete("js_feature_columns");
+    py.globals.delete("js_label_column");
+    py.globals.delete("js_training_data");
+    py.globals.delete("js_training_feature_columns");
+    py.globals.delete("js_training_label_column");
+    py.globals.delete("js_result");
+
+    return { rows: result.rows, columns: result.columns };
+  } catch (error: any) {
+    try {
+      const py = pyodide;
+      if (py) {
+        py.globals.delete("js_data");
+        py.globals.delete("js_feature_columns");
+        py.globals.delete("js_label_column");
+        py.globals.delete("js_training_data");
+        py.globals.delete("js_training_feature_columns");
+        py.globals.delete("js_training_label_column");
+        py.globals.delete("js_result");
+      }
+    } catch {}
+    const errorMessage = error.message || String(error);
+    throw new Error(`Python Naive Bayes ScoreModel error: ${errorMessage}`);
+  }
+}
+
+/**
  * EvaluateModel을 Python으로 실행합니다 (평가 메트릭 계산)
  * 타임아웃: 60초
  */
