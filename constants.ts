@@ -156,33 +156,8 @@ export const TOOLBOX_MODULES = [
       "An algorithm for classification or regression based on nearest neighbors.",
   },
 
-  // Unsupervised Models
-  {
-    type: ModuleType.KMeans,
-    name: "K-Means Clustering",
-    icon: UsersIcon,
-    description:
-      "An unsupervised algorithm for partitioning data into K clusters.",
-  },
-  {
-    type: ModuleType.HierarchicalClustering,
-    name: "Hierarchical Clustering",
-    icon: UsersIcon,
-    description:
-      "An unsupervised algorithm that builds a hierarchy of clusters.",
-  },
-  {
-    type: ModuleType.DBSCAN,
-    name: "DBSCAN",
-    icon: FingerPrintIcon,
-    description: "A density-based clustering algorithm.",
-  },
-  {
-    type: ModuleType.PrincipalComponentAnalysis,
-    name: "PCA",
-    icon: ChartPieIcon,
-    description: "A technique for dimensionality reduction.",
-  },
+  // (군집/PCA 비지도 모듈은 DFA에서 미완성[TrainClusteringModel/ClusteringData 부재]이라 팔레트에서 제외.
+  //  필요 시 ML/JMDC에서 군집 패밀리를 완전 포팅할 것 — docs(ML)/azure_ml_book/05 참고. enum/python은 하위호환 유지.)
 
   // Traditional Analysis - Statsmodels Models
   {
@@ -593,49 +568,7 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       inputs: [],
       outputs: [{ name: "model_out", type: "model" }],
     },
-    {
-      type: ModuleType.KMeans,
-      status: ModuleStatus.Pending,
-      parameters: {
-        n_clusters: 3,
-        init: "k-means++",
-        n_init: 10,
-        max_iter: 300,
-        random_state: 42,
-        feature_columns: [],
-      },
-      inputs: [{ name: "data_in", type: "data" }],
-      outputs: [
-        { name: "data_out", type: "data" },
-        { name: "model_out", type: "model" },
-      ],
-    },
-    {
-      type: ModuleType.HierarchicalClustering,
-      status: ModuleStatus.Pending,
-      parameters: {
-        n_clusters: 3,
-        affinity: "euclidean",
-        linkage: "ward",
-        feature_columns: [],
-      },
-      inputs: [{ name: "data_in", type: "data" }],
-      outputs: [{ name: "data_out", type: "data" }],
-    },
-    {
-      type: ModuleType.DBSCAN,
-      status: ModuleStatus.Pending,
-      parameters: { eps: 0.5, min_samples: 5, feature_columns: [] },
-      inputs: [{ name: "data_in", type: "data" }],
-      outputs: [{ name: "data_out", type: "data" }],
-    },
-    {
-      type: ModuleType.PrincipalComponentAnalysis,
-      status: ModuleStatus.Pending,
-      parameters: { n_components: 2, feature_columns: [] },
-      inputs: [{ name: "data_in", type: "data" }],
-      outputs: [{ name: "data_out", type: "data" }],
-    },
+    // (군집/PCA 비지도 모듈은 DFA에서 미완성이라 DEFAULT_MODULES에서 제외 — 위 팔레트 주석 참고)
     {
       type: ModuleType.TrainModel,
       status: ModuleStatus.Pending,
