@@ -7,7 +7,7 @@
 - **새 분석 모듈 추가 시 반드시 ① `codeSnippets.ts` export 템플릿(결정적·시드 고정, `data_analysis_modules.py`와 정합) + ② `verify/pipelines/` 픽스처를 함께 추가**하고 `npm run verify:pipelines`로 외부 Python **2회 byte-identical** 검증한다. "설정만 출력"하는 인앱 전용 스텁 금지.
 - 2026-06-23 점검·복구: RandomForest·LogisticRegression/SVM/NaiveBayes export 갭 해소, PythonScript 신설, 비기능 군집/PCA 팔레트 정리. verify 8/8. (웹 Pyodide 한계로 인앱 미지원인 최신 기법은 ML Auto Flow `docs/azure_ml_book/05` 참조 — 내보낸 코드는 사용자 환경에서 무제한 확장 가능.)
 - **✅ 해결됨(2026-06-23): 인앱 RandomForest/GradientBoosting 정확도.** RF/GB가 인앱 TrainModel 분기 부재로 `Math.random()` 시뮬레이션 폴백(가짜·비결정적)에 빠지던 버그 수정 — fit/scoreRandomForestPython·fit/scoreGradientBoostingPython 신설(sklearn.ensemble, random_state=42 결정적, scoreKNNPython 패턴 미러), App.tsx TrainModel 회귀·분류 분기 + ScoreModel 재적합 디스패치 추가. 가산·하위호환, export·verify 불변(8/8 PASS), 브라우저 Pyodide 검증(RF R²≈0.994·GB≈0.9998). 3개 앱 공통. 상세: ML Auto Flow `docs/azure_ml_book/05` §8.
-- **⚠️ 알려진 이슈(별개·미해결):** 인앱 ScoreModel이 호출하는 `scoreDecisionTreePython`·`scoreSVMPython`·`scoreLDAPython`·`scoreNaiveBayesPython` 정의가 DFA `pyodideRunner.ts`에 없어 **해당 모델 인앱 스코어링이 런타임 크래시**(SVM/LDA/NaiveBayes는 ML/JMDC도 공통). export·verify는 정확. 권고: KNN/RF/GB처럼 재적합 score 함수 추가(가산). 상세: ML Auto Flow `docs/azure_ml_book/05` §8.
+- **✅ 해결됨(2026-06-23): 인앱 DecisionTree/SVM/LDA/NaiveBayes ScoreModel 크래시.** 누락됐던 `scoreDecisionTreePython`·`scoreSVMPython`·`scoreLDAPython`·`scoreNaiveBayesPython` 신설(ML과 byte-identical, 재적합 후 `.predict`). 인앱 전용·가산, export·verify 무관, 브라우저 Pyodide 검증(4모델 분류 정확도 1.0). 상세: ML Auto Flow `docs/azure_ml_book/05` §8.
 
 ## 하네스: DFA 파이썬 코드 생성·재현·AI
 
