@@ -2791,6 +2791,22 @@ export const getModuleCode = (
     if (module.type === "EvaluateStat") {
         return generateEvaluateStatCode(module);
     }
+
+    // PythonScript: 사용자 코드를 RAW로 삽입(replacePlaceholders 우회). 'dataframe'→'scripted_data'(없으면 통과).
+    if (module.type === "PythonScript") {
+        const userCode =
+            (module.parameters?.code as string) || "scripted_data = dataframe";
+        return [
+            "import pandas as pd",
+            "import numpy as np",
+            "",
+            "# === 사용자 정의 Python 코드(고급) — 'dataframe' 입력, 'scripted_data' 출력 ===",
+            "# 주의: 임의 코드 실행. 무작위 사용 시 시드를 고정하세요(random_state=42 등).",
+            userCode,
+            "if 'scripted_data' not in dir():",
+            "    scripted_data = dataframe  # 사용자가 scripted_data를 만들지 않으면 입력을 그대로 통과",
+        ].join("\n");
+    }
     
     // ResultModel의 경우 연결된 모델 타입에 따라 코드 생성
     if (module.type === "ResultModel" && allModules && connections) {

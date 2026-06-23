@@ -1,0 +1,11 @@
+{
+  "name": "PythonScript custom code (dfa_claims_numeric) — deterministic export",
+  "requires": ["sklearn"],
+  "modules": [
+    { "type": "LoadData", "name": "Load Data", "parameters": { "source": "dfa_claims_numeric.csv" } },
+    { "type": "PythonScript", "name": "Script", "parameters": { "code": "scripted_data = dataframe.assign(loss_ratio=(dataframe['claim_amount'] / dataframe['exposure']).round(4))" } }
+  ],
+  "connections": [
+    { "fromModuleIndex": 0, "fromPort": "data_out", "toModuleIndex": 1, "toPort": "data_in" }
+  ]
+}

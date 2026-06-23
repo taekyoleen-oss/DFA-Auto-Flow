@@ -8,6 +8,7 @@ export enum ModuleType {
   EncodeCategorical = "EncodeCategorical",
   NormalizeData = "NormalizeData",
   TransitionData = "TransitionData",
+  PythonScript = "PythonScript",
   ResampleData = "ResampleData",
   SplitData = "SplitData",
 

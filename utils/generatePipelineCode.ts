@@ -181,6 +181,7 @@ const MODULE_OUTPUT_VAR: Record<string, string> = {
   NormalizeData: 'normalized_data',
   TransformData: 'transformed_data',
   TransitionData: 'transformed_data',
+  PythonScript: 'scripted_data',
   ResampleData: 'resampled_data',
   TrainModel: 'trained_model',
   ScoreModel: 'scored_data',

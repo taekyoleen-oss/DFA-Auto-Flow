@@ -3,7 +3,9 @@
 보험·계리(XoL 재보험 프라이싱 / DFA) 비주얼 파이프라인 빌더. Vite + React 19 + Pyodide.
 
 ## 불변 원칙 (최우선)
-모든 캔버스 모듈은 파이썬으로 구축되며, 앱이 생성하는 파이썬 코드로 **외부 환경에서 동일 결과를 재현**할 수 있어야 한다. 새 모듈/기능엔 반드시 대응 파이썬 코드를 함께 만든다. 이 1:1 대응이 앱의 존재 이유다.
+**모든 데이터 분석은 오직 검증 가능한 파이썬으로 수행된다.** 모든 캔버스 모듈은 브라우저 Pyodide로 실행되고, 앱이 생성하는 "전체 코드"(standalone Python)로 **외부 환경에서 동일 결과를 재현**할 수 있어야 한다. 이 1:1 대응이 앱의 존재 이유다.
+- **새 분석 모듈 추가 시 반드시 ① `codeSnippets.ts` export 템플릿(결정적·시드 고정, `data_analysis_modules.py`와 정합) + ② `verify/pipelines/` 픽스처를 함께 추가**하고 `npm run verify:pipelines`로 외부 Python **2회 byte-identical** 검증한다. "설정만 출력"하는 인앱 전용 스텁 금지.
+- 2026-06-23 점검·복구: RandomForest·LogisticRegression/SVM/NaiveBayes export 갭 해소, PythonScript 신설, 비기능 군집/PCA 팔레트 정리. verify 8/8. (웹 Pyodide 한계로 인앱 미지원인 최신 기법은 ML Auto Flow `docs/azure_ml_book/05` 참조 — 내보낸 코드는 사용자 환경에서 무제한 확장 가능.)
 
 ## 하네스: DFA 파이썬 코드 생성·재현·AI
 
