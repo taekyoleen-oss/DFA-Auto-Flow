@@ -6,6 +6,7 @@
 **모든 데이터 분석은 오직 검증 가능한 파이썬으로 수행된다.** 모든 캔버스 모듈은 브라우저 Pyodide로 실행되고, 앱이 생성하는 "전체 코드"(standalone Python)로 **외부 환경에서 동일 결과를 재현**할 수 있어야 한다. 이 1:1 대응이 앱의 존재 이유다.
 - **새 분석 모듈 추가 시 반드시 ① `codeSnippets.ts` export 템플릿(결정적·시드 고정, `data_analysis_modules.py`와 정합) + ② `verify/pipelines/` 픽스처를 함께 추가**하고 `npm run verify:pipelines`로 외부 Python **2회 byte-identical** 검증한다. "설정만 출력"하는 인앱 전용 스텁 금지.
 - 2026-06-23 점검·복구: RandomForest·LogisticRegression/SVM/NaiveBayes export 갭 해소, PythonScript 신설, 비기능 군집/PCA 팔레트 정리. verify 8/8. (웹 Pyodide 한계로 인앱 미지원인 최신 기법은 ML Auto Flow `docs/azure_ml_book/05` 참조 — 내보낸 코드는 사용자 환경에서 무제한 확장 가능.)
+- **⚠️ 알려진 이슈(수정 승인 대기, 3개 앱 공통):** *인앱* ScoreModel이 선형 근사(`intercept+X·coef`)라 **인앱 트리모델(RandomForest/GB) 예측·평가가 부정확**(export·verify는 실제 `.predict`라 정확). 권고 수정: trainModelPython 모델 pickle→base64 저장 후 scoreModelPython unpickle `.predict`(가산·하위호환). 상세: ML Auto Flow `docs/azure_ml_book/05` §8.
 
 ## 하네스: DFA 파이썬 코드 생성·재현·AI
 
