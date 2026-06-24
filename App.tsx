@@ -121,6 +121,8 @@ import SamplesModal from "./components/SamplesModal";
 import { generateAiText } from "./utils/aiClient";
 import { savePipeline, loadPipeline } from "./utils/fileOperations";
 import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
+import { bindDatasetsToModules, contentSizeMB, EMBED_SIZE_LIMIT_MB, uploadDatasetToWeb } from "./utils/datasetRegistry";
+import { SaveModelOptionsModal, type LoaderDataInfo, type SaveDecisions } from "./components/SaveModelOptionsModal";
 import { setPyodideStatusCallback } from "./utils/pyodideRunner";
 import {
   isSupabaseConfigured,
@@ -283,6 +285,14 @@ const App: React.FC = () => {
   const [isMyWorkMenuOpen, setIsMyWorkMenuOpen] = useState(false);
   const myWorkMenuRef = useRef<HTMLDivElement>(null);
   const [myWorkModels, setMyWorkModels] = useState<any[]>([]);
+  // 저장 옵션 모달(데이터 포함/제외·웹 등록·설명 선택)
+  const [saveOptions, setSaveOptions] = useState<{
+    open: boolean;
+    mode: "mywork" | "sample";
+    name: string;
+    loaders: LoaderDataInfo[];
+  }>({ open: false, mode: "mywork", name: "", loaders: [] });
+  const [isSavingModel, setIsSavingModel] = useState(false);
 
   // Pyodide 로딩 진행 상태
   const [pyodideStatus, setPyodideStatus] = useState<{ message: string; progress: number } | null>(null);
@@ -494,6 +504,193 @@ const App: React.FC = () => {
       setIsCodePanelVisible(false); // 에러/경고 시 속성 패널 열면 코드 패널 닫기
     }
   }, []);
+
+  // ── 저장 옵션(데이터 포함/제외·웹 등록·설명) 지원 ──
+  // 데이터 로더로 취급할 모듈 타입 판정(DFA: LoadData·LoadClaimData).
+  const isLoaderModuleType = useCallback(
+    (t: ModuleType) =>
+      t === ModuleType.LoadData || t === ModuleType.LoadClaimData,
+    []
+  );
+
+  // 현재 모듈에서 데이터 로더 정보를 수집(저장 옵션 모달용).
+  const collectLoaderInfos = useCallback(
+    (mods: CanvasModule[]): LoaderDataInfo[] => {
+      const out: LoaderDataInfo[] = [];
+      for (const m of mods) {
+        if (!isLoaderModuleType(m.type)) continue;
+        const p: any = m.parameters || {};
+        const content = typeof p.fileContent === "string" ? p.fileContent : "";
+        out.push({
+          moduleId: m.id,
+          name: m.name || m.type,
+          source: String(p.source || ""),
+          sizeMB: content ? contentSizeMB(content) : 0,
+          hasContent: !!content,
+          description: String(p.dataDescription || ""),
+        });
+      }
+      return out;
+    },
+    [isLoaderModuleType]
+  );
+
+  // 저장 옵션 모달 열기(mode: mywork=로컬 저장, sample=JSON 다운로드).
+  const openSaveOptions = useCallback(
+    (mode: "mywork" | "sample") => {
+      if (modules.length === 0) {
+        addLog("WARN", "저장할 모델이 없습니다. 먼저 모듈을 추가해주세요.");
+        return;
+      }
+      setSaveOptions({
+        open: true,
+        mode,
+        name:
+          projectName ||
+          (mode === "sample" ? "Untitled Sample" : "My Model"),
+        loaders: collectLoaderInfos(modules),
+      });
+    },
+    [modules, projectName, collectLoaderInfos, addLog]
+  );
+
+  const isQuotaError = (e: any): boolean =>
+    !!e &&
+    (e.name === "QuotaExceededError" ||
+      e.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      e.code === 22 ||
+      e.code === 1014);
+
+  // 저장 옵션 모달 확정 시 실제 저장 수행.
+  const performModelSave = useCallback(
+    async (name: string, decisions: SaveDecisions) => {
+      const mode = saveOptions.mode;
+      setIsSavingModel(true);
+      const warnings: string[] = [];
+      try {
+        // 모듈 파라미터에 결정 적용(필요 시 웹 업로드).
+        const moduleOut = await Promise.all(
+          modules.map(async (m) => {
+            const params: any = { ...(m.parameters || {}) };
+            const d = decisions[m.id];
+            if (d && isLoaderModuleType(m.type)) {
+              params.dataDescription = d.description || "";
+              const content =
+                typeof params.fileContent === "string"
+                  ? params.fileContent
+                  : "";
+              if (d.registerToWeb && content) {
+                const res = await uploadDatasetToWeb(
+                  String(params.source || ""),
+                  content
+                );
+                if (res.ok) {
+                  // 참조 저장: 본문 제거, 파일명(source) 유지 → 로드 시 레지스트리/웹에서 해석.
+                  delete params.fileContent;
+                  params.sourceType = "file";
+                  addLog(
+                    "SUCCESS",
+                    `'${m.name}' 데이터를 웹 예제로 등록했습니다: ${params.source}`
+                  );
+                } else {
+                  warnings.push(
+                    `'${m.name}' 웹 등록 실패(${res.error}). 데이터 본문은 그대로 둡니다.`
+                  );
+                }
+              }
+              // 사용자가 '제외' 선택(웹 등록이 아니면서 포함 해제) → 본문 제거.
+              if (!d.include && !d.registerToWeb && params.fileContent) {
+                delete params.fileContent;
+              }
+            }
+            return {
+              type: m.type,
+              position: m.position || { x: 0, y: 0 },
+              name: m.name || m.type,
+              parameters: params,
+            };
+          })
+        );
+
+        const connOut = connections
+          .map((c) => {
+            const fromIndex = modules.findIndex(
+              (m) => m.id === c.from.moduleId
+            );
+            const toIndex = modules.findIndex((m) => m.id === c.to.moduleId);
+            if (fromIndex < 0 || toIndex < 0) return null;
+            return {
+              fromModuleIndex: fromIndex,
+              fromPort: c.from.portName,
+              toModuleIndex: toIndex,
+              toPort: c.to.portName,
+            };
+          })
+          .filter((c) => c !== null);
+
+        const savedModel = { name, modules: moduleOut, connections: connOut };
+
+        if (mode === "mywork") {
+          const existingStr = localStorage.getItem("myWorkModels");
+          let existing: any[] = [];
+          try {
+            existing = existingStr ? JSON.parse(existingStr) : [];
+            if (!Array.isArray(existing)) existing = [];
+          } catch {
+            existing = [];
+          }
+          const updated = [
+            ...existing.filter((m: any) => m.name !== name),
+            savedModel,
+          ];
+          try {
+            localStorage.setItem("myWorkModels", JSON.stringify(updated));
+            setMyWorkModels(updated);
+            addLog("SUCCESS", `모델 "${name}"이 저장되었습니다. (개인용)`);
+          } catch (e: any) {
+            if (isQuotaError(e)) {
+              addLog(
+                "ERROR",
+                `저장 용량 초과: 데이터가 브라우저 저장 한도(약 5MB)를 넘었습니다. 큰 데이터는 저장 옵션에서 '제외' 또는 '웹 예제로 등록'을 선택해 다시 저장하세요.`
+              );
+            } else {
+              addLog("ERROR", `저장 실패: ${e?.message || e}`);
+            }
+            warnings.forEach((w) => addLog("WARN", w));
+            return; // 모달 유지(사용자가 옵션을 조정하도록)
+          }
+        } else {
+          const blob = new Blob([JSON.stringify(savedModel, null, 2)], {
+            type: "application/json",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const safe = (name || "sample")
+            .replace(/[^a-zA-Z0-9가-힣\s]/g, "_")
+            .replace(/\s+/g, "_");
+          a.download = `${safe}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          addLog(
+            "SUCCESS",
+            `Sample 파일이 다운로드되었습니다. 'samples' 폴더에 복사 후 빌드하면 Samples 메뉴에 표시됩니다.`
+          );
+        }
+
+        warnings.forEach((w) => addLog("WARN", w));
+        setSaveOptions((s) => ({ ...s, open: false }));
+      } catch (error: any) {
+        console.error("Model save failed:", error);
+        addLog("ERROR", `저장 실패: ${error?.message || error}`);
+      } finally {
+        setIsSavingModel(false);
+      }
+    },
+    [saveOptions.mode, modules, connections, isLoaderModuleType, addLog]
+  );
 
   const handleSuggestModule = useCallback(
     async (fromModuleId: string, fromPortName: string) => {
@@ -1516,6 +1713,24 @@ ${header}
             };
           }
         );
+
+        // 데이터 자동 바인딩(가산적): 로더 모듈이 파일명만 있고 본문이 없을 때
+        // 캐시→번들→Supabase Storage 순으로 본문을 해석해 즉시 실행 가능하게 한다.
+        // 이미 본문(fileContent)이 있으면 no-op이라 기존 .mla 내장 데이터는 불변.
+        try {
+          const bindResult = await bindDatasetsToModules(newModules);
+          if (bindResult.missing.length > 0) {
+            const names = bindResult.missing
+              .map((m) => `${m.name}(${m.source})`)
+              .join(", ");
+            addLog(
+              "WARN",
+              `데이터를 자동으로 찾지 못한 로더: ${names}. 직접 데이터를 불러오세요.`
+            );
+          }
+        } catch (bindErr: any) {
+          console.warn("Dataset auto-binding skipped:", bindErr);
+        }
 
         resetModules(newModules);
         _setConnections(newConnections);
@@ -10297,112 +10512,9 @@ result
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (modules.length === 0) {
-                        addLog(
-                          "WARN",
-                          "저장할 모델이 없습니다. 먼저 모듈을 추가해주세요."
-                        );
-                        setIsMyWorkMenuOpen(false);
-                        return;
-                      }
-
-                      const modelName = prompt(
-                        "모델 이름을 입력하세요:",
-                        projectName || "My Model"
-                      );
-                      if (!modelName || !modelName.trim()) {
-                        setIsMyWorkMenuOpen(false);
-                        return;
-                      }
-
-                      const trimmedName = modelName.trim();
-
-                      // 기존 모델 목록 가져오기
-                      const existingModelsStr =
-                        localStorage.getItem("myWorkModels");
-                      let existingModels: any[] = [];
-                      if (existingModelsStr) {
-                        try {
-                          existingModels = JSON.parse(existingModelsStr);
-                          if (!Array.isArray(existingModels)) {
-                            existingModels = [];
-                          }
-                        } catch (parseError) {
-                          console.error(
-                            "Failed to parse existing models:",
-                            parseError
-                          );
-                          existingModels = [];
-                        }
-                      }
-
-                      // 동일한 이름의 모델이 있는지 확인
-                      const existingModel = existingModels.find(
-                        (m: any) => m.name === trimmedName
-                      );
-                      if (existingModel) {
-                        const shouldOverwrite = window.confirm(
-                          `모델 "${trimmedName}"이 이미 존재합니다. 덮어쓰시겠습니까?`
-                        );
-                        if (!shouldOverwrite) {
-                          setIsMyWorkMenuOpen(false);
-                          return;
-                        }
-                      }
-
-                      const savedModel = {
-                        name: trimmedName,
-                        modules: modules.map((m) => ({
-                          type: m.type,
-                          position: m.position,
-                          name: m.name,
-                          parameters: m.parameters,
-                        })),
-                        connections: connections
-                          .map((c) => {
-                            const fromIndex = modules.findIndex(
-                              (m) => m.id === c.from.moduleId
-                            );
-                            const toIndex = modules.findIndex(
-                              (m) => m.id === c.to.moduleId
-                            );
-                            if (fromIndex < 0 || toIndex < 0) {
-                              console.warn(
-                                `Invalid connection: fromModuleId=${c.from.moduleId}, toModuleId=${c.to.moduleId}`
-                              );
-                              return null;
-                            }
-                            return {
-                              fromModuleIndex: fromIndex,
-                              fromPort: c.from.portName,
-                              toModuleIndex: toIndex,
-                              toPort: c.to.portName,
-                            };
-                          })
-                          .filter((c) => c !== null) as Array<{
-                            fromModuleIndex: number;
-                            fromPort: string;
-                            toModuleIndex: number;
-                            toPort: string;
-                          }>,
-                      };
-
-                      // 같은 이름의 모델이 있으면 제거하고 새로 추가
-                      const filteredModels = existingModels.filter(
-                        (m: any) => m.name !== trimmedName
-                      );
-                      const updatedModels = [...filteredModels, savedModel];
-
-                      localStorage.setItem(
-                        "myWorkModels",
-                        JSON.stringify(updatedModels)
-                      );
-                      setMyWorkModels(updatedModels);
-                      addLog(
-                        "SUCCESS",
-                        `모델 "${trimmedName}"이 저장되었습니다. (개인용)`
-                      );
                       setIsMyWorkMenuOpen(false);
+                      // 데이터 포함/제외·웹 등록·설명을 선택하는 저장 옵션 모달로 진입.
+                      openSaveOptions("mywork");
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-300 dark:border-gray-700"
                     type="button"
@@ -11027,6 +11139,19 @@ result
         onRefresh={loadFolderSamplesLocal}
         isLoading={isLoadingSamples}
       />
+
+      {/* 모델 저장 옵션 모달 (데이터 포함/제외·웹 등록·설명) */}
+      <SaveModelOptionsModal
+        isOpen={saveOptions.open}
+        title={saveOptions.mode === "sample" ? "Sample로 저장" : "내 작업으로 저장"}
+        defaultName={saveOptions.name}
+        loaders={saveOptions.loaders}
+        embedLimitMB={EMBED_SIZE_LIMIT_MB}
+        isSaving={isSavingModel}
+        onConfirm={performModelSave}
+        onClose={() => setSaveOptions((s) => ({ ...s, open: false }))}
+      />
+
       {viewingSplitFreqServ && (
         <ErrorBoundary>
           <SplitFreqServPreviewModal

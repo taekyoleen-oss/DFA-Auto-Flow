@@ -819,6 +819,19 @@ const renderParameters = (
             isClaimData={true}
             updateModuleParameters={updateModuleParameters}
           />
+          {/* 데이터 설명(위치·출처) — 모델 저장 시 참조 정보로 보존 */}
+          <div className="mt-3">
+            <label className="block text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-1">
+              데이터 설명(위치·출처)
+            </label>
+            <textarea
+              value={module.parameters.dataDescription || ""}
+              onChange={(e) => onParamChange("dataDescription", e.target.value)}
+              rows={2}
+              placeholder="예: 사내 공유드라이브 /data/claims.csv, 또는 https://… (참조 저장 시 데이터 위치를 남겨두세요)"
+              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            />
+          </div>
           <div className="mt-4">
             <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Examples
@@ -900,6 +913,19 @@ const renderParameters = (
             isClaimData={false}
             updateModuleParameters={updateModuleParameters}
           />
+          {/* 데이터 설명(위치·출처) — 모델 저장 시 참조 정보로 보존 */}
+          <div className="mt-3">
+            <label className="block text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-1">
+              데이터 설명(위치·출처)
+            </label>
+            <textarea
+              value={module.parameters.dataDescription || ""}
+              onChange={(e) => onParamChange("dataDescription", e.target.value)}
+              rows={2}
+              placeholder="예: 사내 공유드라이브 /data/sales.csv, 또는 https://… (참조 저장 시 데이터 위치를 남겨두세요)"
+              className="w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            />
+          </div>
           <div className="mt-4">
             <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
               Examples
