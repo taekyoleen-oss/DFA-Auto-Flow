@@ -5591,6 +5591,12 @@ result
             throw new Error("No feature columns specified.");
           }
 
+          // 분류 모델은 범주형(문자열) 라벨을 정수 코드로 인코딩한다.
+          // (이전 버그: 라벨이 숫자가 아니면 모든 행을 버려 'No valid data rows' 발생 —
+          //  문자열 분류 라벨에서 분류 학습 불가했음.)
+          const labelClassMap: Record<string, number> = {};
+          let nextLabelCode = 0;
+
           for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
             const row = rows[rowIdx];
             if (!row) {
@@ -5633,14 +5639,31 @@ result
             }
 
             const labelValue = row[label_column];
-            if (
-              typeof labelValue === "number" &&
-              !isNaN(labelValue) &&
-              labelValue !== null &&
-              labelValue !== undefined
-            ) {
-              X.push(featureRow);
-              y.push(labelValue);
+            if (modelIsClassification) {
+              // 분류: 비어있지 않은 라벨이면 클래스 코드로 인코딩(문자열/숫자/불리언 허용).
+              if (
+                labelValue !== null &&
+                labelValue !== undefined &&
+                String(labelValue).trim() !== ""
+              ) {
+                const key = String(labelValue);
+                if (!(key in labelClassMap)) labelClassMap[key] = nextLabelCode++;
+                X.push(featureRow);
+                y.push(labelClassMap[key]);
+              }
+            } else {
+              // 회귀: 숫자 라벨만(숫자 형태의 문자열도 허용).
+              const num =
+                typeof labelValue === "number" ? labelValue : Number(labelValue);
+              if (
+                labelValue !== null &&
+                labelValue !== undefined &&
+                String(labelValue).trim() !== "" &&
+                !isNaN(num)
+              ) {
+                X.push(featureRow);
+                y.push(num);
+              }
             }
           }
 
