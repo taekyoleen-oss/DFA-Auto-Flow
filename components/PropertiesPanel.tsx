@@ -47,6 +47,7 @@ import { computeDataOverview } from "../utils/dataOverview";
 import { DEFAULT_MODULES } from "../constants";
 import * as XLSX from "xlsx";
 import { ExcelInputModal } from "./ExcelInputModal";
+import { ModuleDescriptionModal } from "./ModuleDescriptionModal";
 import { useTheme } from "../contexts/ThemeContext";
 
 type TerminalLog = {
@@ -4158,10 +4159,10 @@ const StatRow: React.FC<{ label: string; value: React.ReactNode }> = ({
   label,
   value,
 }) => (
-  <div className="flex justify-between items-center text-sm py-1.5 px-2 border-b border-gray-700 last:border-b-0">
-    <span className="text-gray-400">{label}</span>
+  <div className="flex justify-between items-center text-sm py-1.5 px-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0">
+    <span className="text-gray-600 dark:text-gray-400">{label}</span>
     <span
-      className="font-mono text-gray-200 font-medium truncate"
+      className="font-mono text-gray-800 dark:text-gray-200 font-medium truncate"
       title={String(value)}
     >
       {value}
@@ -4178,13 +4179,13 @@ const ColumnInfoTable: React.FC<{
       const highlight = highlights[col.name] || {};
       const colorClass = highlight.color
         ? `text-${highlight.color}-400`
-        : "text-gray-200";
+        : "text-gray-800 dark:text-gray-200";
       const strikethroughClass = highlight.strikethrough ? "line-through" : "";
 
       return (
         <div
           key={col.name}
-          className="flex justify-between items-center py-1 px-2 border-b border-gray-700 last:border-b-0"
+          className="flex justify-between items-center py-1 px-2 border-b border-gray-200 dark:border-gray-700 last:border-b-0"
         >
           <span
             className={`font-mono truncate ${colorClass} ${strikethroughClass}`}
@@ -4307,8 +4308,8 @@ const DataStatsSummary: React.FC<{ data: DataPreview; title?: string }> = ({
               .reduce((a, b) => a + b, 0) / values.length
           );
           return (
-            <div key={col.name} className="bg-gray-800 p-2 rounded">
-              <p className="font-semibold text-sm truncate">{col.name}</p>
+            <div key={col.name} className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-transparent p-2 rounded">
+              <p className="font-semibold text-sm truncate text-gray-900 dark:text-white">{col.name}</p>
               <div className="grid grid-cols-2 gap-x-2 text-xs">
                 <StatRow label="Mean" value={mean.toFixed(2)} />
                 <StatRow label="Std Dev" value={stdDev.toFixed(2)} />
@@ -4410,12 +4411,12 @@ const DataTableStats: React.FC<{
   return (
     <div>
       {title && (
-        <h3 className="text-md font-semibold mb-2 text-gray-300">{title}</h3>
+        <h3 className="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">{title}</h3>
       )}
-      <div className="bg-gray-900 rounded-lg overflow-hidden">
-        <div className="text-gray-200">
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-transparent rounded-lg overflow-hidden">
+        <div className="text-gray-800 dark:text-gray-200">
           {/* Header */}
-          <div className="grid grid-cols-5 gap-4 px-4 py-2 border-b border-gray-600 font-semibold text-sm text-gray-400">
+          <div className="grid grid-cols-5 gap-4 px-4 py-2 border-b border-gray-300 dark:border-gray-600 font-semibold text-sm text-gray-600 dark:text-gray-400">
             <div className="col-span-1">Column</div>
             <div className="text-right">Mean</div>
             <div className="text-right">Std Dev</div>
@@ -4430,7 +4431,7 @@ const DataTableStats: React.FC<{
               return (
                 <div
                   key={colName}
-                  className="grid grid-cols-5 gap-4 px-4 py-2.5 text-sm border-b border-gray-800 last:border-b-0"
+                  className="grid grid-cols-5 gap-4 px-4 py-2.5 text-sm border-b border-gray-200 dark:border-gray-800 last:border-b-0"
                 >
                   <div
                     className={`font-mono truncate ${
@@ -4499,13 +4500,13 @@ const ReinstatementPremiumRateEditor: React.FC<{
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-semibold text-gray-300 mb-2">
+        <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
           기본 복원보험료율
         </label>
         <select
           value={defaultReinstatementRate}
           onChange={(e) => onParamChange("defaultReinstatementRate", parseFloat(e.target.value))}
-          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value={100}>100%</option>
           <option value={0}>0%</option>
@@ -4517,7 +4518,7 @@ const ReinstatementPremiumRateEditor: React.FC<{
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="block text-sm font-semibold text-gray-300">
+          <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
             연도별 복원보험료율
           </label>
           <button
@@ -4536,9 +4537,9 @@ const ReinstatementPremiumRateEditor: React.FC<{
             {yearRates.map((yearRate, index) => (
               <div
                 key={index}
-                className="flex items-center gap-2 p-2 bg-gray-800 rounded-md"
+                className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-transparent rounded-md"
               >
-                <span className="text-sm text-gray-400 w-20">
+                <span className="text-sm text-gray-600 dark:text-gray-400 w-20">
                   {yearRate.year}년차
                 </span>
                 <input
@@ -4547,7 +4548,7 @@ const ReinstatementPremiumRateEditor: React.FC<{
                   onChange={(e) =>
                     handleYearRateChange(index, parseFloat(e.target.value) || 0)
                   }
-                  className="flex-1 px-2 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 px-2 py-1.5 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded text-sm text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="100"
                   min="0"
                   max="100"
@@ -4569,8 +4570,8 @@ const ReinstatementPremiumRateEditor: React.FC<{
         </p>
       </div>
 
-      <div className="pt-2 border-t border-gray-700">
-        <p className="text-xs text-gray-400 mb-2">복원회수: {reinstatements}</p>
+      <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+        <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">복원회수: {reinstatements}</p>
         <p className="text-xs text-gray-500">
           모든 복원회수({reinstatements}회)에 기본 복원보험료율({defaultReinstatementRate}%)이 적용되며,
           {yearRates.length > 0 && ` ${yearRates.map(yr => `${yr.year}년차`).join(", ")}만 다른 비율이 적용됩니다.`}
@@ -4585,10 +4586,10 @@ const PanelModelMetrics: React.FC<{
   metrics: Record<string, string | number>;
 }> = ({ metrics }) => (
   <div>
-    <h3 className="text-md font-semibold mb-2 text-gray-300">
+    <h3 className="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">
       Performance Metrics
     </h3>
-    <div className="bg-gray-800 rounded-lg p-3 space-y-2">
+    <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-transparent rounded-lg p-3 space-y-2">
       {Object.entries(metrics).map(([key, value]) => (
         <StatRow
           key={key}
@@ -4622,6 +4623,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const [localModuleName, setLocalModuleName] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [showExcelModal, setShowExcelModal] = useState(false);
+  const [showDescriptionModal, setShowDescriptionModal] = useState(false);
 
   useEffect(() => {
     if (logContainerRef.current) {
@@ -4999,7 +5001,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     };
 
     const renderTitle = (title: string) => (
-      <h3 className="text-md font-semibold mb-2 text-gray-300">{title}</h3>
+      <h3 className="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">{title}</h3>
     );
 
     const previewContent = (() => {
@@ -5008,7 +5010,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           if (outputData.type === "DataPreview") {
             return (
               <>
-                <h3 className="text-md font-semibold mb-2 text-gray-300">
+                <h3 className="text-md font-semibold mb-2 text-gray-700 dark:text-gray-300">
                   Column Structure
                 </h3>
                 <ColumnInfoTable columns={outputData.columns} />
@@ -5021,10 +5023,10 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             return (
               <div>
                 {renderTitle("Column Statistics")}
-                <div className="bg-gray-900 rounded-lg overflow-hidden">
-                  <div className="text-gray-200">
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-transparent rounded-lg overflow-hidden">
+                  <div className="text-gray-800 dark:text-gray-200">
                     {/* Header */}
-                    <div className="grid grid-cols-4 gap-4 px-4 py-2 border-b border-gray-600 font-semibold text-sm text-gray-400">
+                    <div className="grid grid-cols-4 gap-4 px-4 py-2 border-b border-gray-300 dark:border-gray-600 font-semibold text-sm text-gray-600 dark:text-gray-400">
                       <div>Column</div>
                       <div className="text-right">Mean</div>
                       <div className="text-right">Median</div>
@@ -5037,7 +5039,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                         return (
                           <div
                             key={col}
-                            className="grid grid-cols-4 gap-4 px-4 py-2.5 text-sm border-b border-gray-800 last:border-b-0"
+                            className="grid grid-cols-4 gap-4 px-4 py-2.5 text-sm border-b border-gray-200 dark:border-gray-800 last:border-b-0"
                           >
                             <div className="font-mono truncate" title={col}>
                               {col}
@@ -5185,7 +5187,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     <h4 className="text-xs text-gray-600 dark:text-gray-500 uppercase font-bold mb-2">
                       Model Equation
                     </h4>
-                    <div className="bg-gray-900/50 p-3 rounded-lg font-mono text-xs text-green-700 whitespace-normal break-words">
+                    <div className="bg-gray-100 dark:bg-gray-900/50 border border-gray-200 dark:border-transparent p-3 rounded-lg font-mono text-xs text-green-700 dark:text-green-400 whitespace-normal break-words">
                       <span>{formulaParts[0]}</span>
                       {formulaParts.slice(1).map((part, i) => (
                         <span key={i}>{part}</span>
@@ -5261,9 +5263,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             placeholder="Module Name"
             disabled={!module}
           />
-          <p className="text-xs text-gray-600 dark:text-gray-500 mt-1">
-            {module ? module.type : "No module selected"}
-          </p>
+          <div className="flex items-center justify-between mt-1">
+            <p className="text-xs text-gray-600 dark:text-gray-500">
+              {module ? module.type : "No module selected"}
+            </p>
+            {module && (
+              <button
+                onClick={() => setShowDescriptionModal(true)}
+                title="이 모듈의 입력·역할·결과 설명 보기"
+                aria-label="모듈 설명 보기"
+                className="flex-shrink-0 text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 transition-colors"
+              >
+                <InformationCircleIcon className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {module && (
@@ -5505,6 +5519,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             });
             setShowExcelModal(false);
           }}
+        />
+      )}
+
+      {/* Module Description Modal */}
+      {showDescriptionModal && module && (
+        <ModuleDescriptionModal
+          moduleType={module.type}
+          onClose={() => setShowDescriptionModal(false)}
         />
       )}
     </div>

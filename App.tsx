@@ -121,7 +121,7 @@ import SamplesModal from "./components/SamplesModal";
 import { generateAiText } from "./utils/aiClient";
 import { savePipeline, loadPipeline } from "./utils/fileOperations";
 import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
-import { bindDatasetsToModules, contentSizeMB, EMBED_SIZE_LIMIT_MB, uploadDatasetToWeb } from "./utils/datasetRegistry";
+import { bindDatasetsToModules, contentSizeMB, EMBED_SIZE_LIMIT_MB, resolveDatasetContent, uploadDatasetToWeb } from "./utils/datasetRegistry";
 import { SaveModelOptionsModal, type LoaderDataInfo, type SaveDecisions } from "./components/SaveModelOptionsModal";
 import { setPyodideStatusCallback } from "./utils/pyodideRunner";
 import {
@@ -3362,7 +3362,30 @@ ${header}
           module.type === ModuleType.LoadData ||
           module.type === ModuleType.LoadClaimData
         ) {
-          const fileContent = module.parameters.fileContent as string;
+          let fileContent = module.parameters.fileContent as string;
+          // 데이터 본문이 없으면 데이터셋 레지스트리에서 파일명(source)으로 해석 시도.
+          // 캐시 → 번들 예제 → Supabase 'datasets' 웹 폴백 순.
+          // 샘플/참조 저장 모델이 어떤 경로로 로드됐든 실행 시 데이터를 자동 확보한다.
+          if (!fileContent) {
+            const src = String(module.parameters.source || "").trim();
+            if (src) {
+              addLog(
+                "INFO",
+                `데이터 본문이 없어 '${src}'를 데이터셋(예제/웹)에서 불러옵니다…`
+              );
+              const resolved = await resolveDatasetContent(src);
+              if (resolved) {
+                fileContent = resolved;
+                const isExcel = /\.xlsx?$/i.test(src);
+                updateModuleParameters(module.id, {
+                  fileContent: resolved,
+                  fileType: isExcel ? "excel" : "csv",
+                  sourceType: "file",
+                });
+                addLog("SUCCESS", `'${src}' 데이터를 불러왔습니다.`);
+              }
+            }
+          }
           if (!fileContent)
             throw new Error(
               "No file content loaded. Please select a CSV file."
@@ -10043,6 +10066,9 @@ result
           e.preventDefault();
           redo();
         } else if (e.key === "c") {
+          // 텍스트가 선택돼 있으면 기본 복사를 허용(모듈 복사로 가로채지 않음).
+          const s = window.getSelection();
+          if (s && s.toString().trim()) return;
           if (selectedModuleIds.length > 0) {
             e.preventDefault();
             pasteOffset.current = 0;
@@ -10104,6 +10130,9 @@ result
           }
         } else if (e.key === "x") {
           // Cut (copy and delete)
+          // 텍스트가 선택돼 있으면 기본 잘라내기를 허용(모듈 잘라내기로 가로채지 않음).
+          const s = window.getSelection();
+          if (s && s.toString().trim()) return;
           if (selectedModuleIds.length > 0) {
             e.preventDefault();
             pasteOffset.current = 0;
