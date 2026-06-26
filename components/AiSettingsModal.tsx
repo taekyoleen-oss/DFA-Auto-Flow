@@ -13,12 +13,12 @@ interface AiSettingsModalProps {
   onClose: () => void;
 }
 
-const PROVIDER_ORDER: AiProvider[] = ["gemini", "openai", "anthropic"];
+const PROVIDER_ORDER: AiProvider[] = ["anthropic", "gemini", "openai"];
 
 const KEY_HELP: Record<AiProvider, { url: string; hint: string }> = {
+  anthropic: { url: "https://console.anthropic.com/settings/keys", hint: "Anthropic Console → API Keys (권장)" },
   gemini: { url: "https://aistudio.google.com/apikey", hint: "Google AI Studio에서 무료 발급" },
   openai: { url: "https://platform.openai.com/api-keys", hint: "OpenAI Platform → API keys" },
-  anthropic: { url: "https://console.anthropic.com/settings/keys", hint: "Anthropic Console → API Keys" },
 };
 
 export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ isOpen, onClose }) => {
@@ -97,6 +97,9 @@ export const AiSettingsModal: React.FC<AiSettingsModalProps> = ({ isOpen, onClos
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
               사용할 AI 제공자
+              <span className="ml-1 font-normal text-gray-500 dark:text-gray-400">
+                — 기본값은 Anthropic Claude (sk-ant-… 키)
+              </span>
             </label>
             <div className="flex gap-2">
               {PROVIDER_ORDER.map((p) => (

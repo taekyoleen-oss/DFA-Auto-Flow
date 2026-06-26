@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, StatsModelsResultOutput } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
-import { getGeminiClient } from "../utils/aiClient";
+import { generateAiText } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface StatsModelsResultPreviewModalProps {
@@ -25,8 +25,6 @@ export const StatsModelsResultPreviewModal: React.FC<StatsModelsResultPreviewMod
         setIsInterpreting(true);
         setAiInterpretation(null);
         try {
-            const ai = getGeminiClient();
-
             const metricsText = Object.entries(output.summary.metrics).map(([key, value]) => `- ${key}: ${value}`).join('\n');
             const coefficientsText = Object.entries(output.summary.coefficients).map(([param, values]) => {
                 const pValue = values['P>|t|'] ?? values['P>|z|'] ?? 1.0;
@@ -61,12 +59,9 @@ ${coefficientsText}
 
 **지시:** 각 항목을 한두 문장으로 매우 간결하게 작성하십시오.
 `;
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-            });
+            const text = await generateAiText({ prompt, tier: "fast" });
 
-            setAiInterpretation(response.text);
+            setAiInterpretation(text);
         } catch (error) {
             console.error("AI interpretation failed:", error);
             setAiInterpretation("결과를 해석하는 동안 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");

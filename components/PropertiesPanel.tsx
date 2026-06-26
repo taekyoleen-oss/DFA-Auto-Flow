@@ -41,8 +41,7 @@ import {
 } from "./icons";
 import { getModuleCode } from "../codeSnippets";
 import { SAMPLE_DATA } from "../sampleData";
-import { Type } from "@google/genai";
-import { getGeminiClient } from "../utils/aiClient";
+import { generateAiText } from "../utils/aiClient";
 import { computeDataOverview } from "../utils/dataOverview";
 import { DEFAULT_MODULES } from "../constants";
 import * as XLSX from "xlsx";
@@ -173,8 +172,6 @@ const AIModuleExplanation: React.FC<{ module: CanvasModule }> = ({
     setIsLoading(true);
     setShow(true);
     try {
-      const ai = getGeminiClient();
-
       const defaultModuleData = DEFAULT_MODULES.find(
         (m) => m.type === module.type
       );
@@ -237,11 +234,8 @@ ${optionsContext}
 전체적으로 초보자도 이해하기 쉽게, 간결하면서도 정보를 충분히 담아 작성해 주세요.
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-      });
-      setExplanation(response.text);
+      const text = await generateAiText({ prompt, tier: "fast" });
+      setExplanation(text);
     } catch (error) {
       console.error("AI explanation failed:", error);
       setExplanation("설명을 생성하는 데 실패했습니다.");
@@ -289,8 +283,6 @@ const AIParameterRecommender: React.FC<{
   const handleRecommend = async () => {
     setIsLoading(true);
     try {
-      const ai = getGeminiClient();
-
       const prompt = `
 You are an expert data scientist AI assistant. Your task is to recommend the optimal feature columns and a single label/target column for a machine learning model based on a project goal and a list of available data columns.
 
@@ -309,25 +301,9 @@ You are an expert data scientist AI assistant. Your task is to recommend the opt
     - \`feature_columns\`: An array of strings with the names of the recommended feature columns.
 `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              feature_columns: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-              },
-              label_column: { type: Type.STRING },
-            },
-          },
-        },
-      });
+      const text = await generateAiText({ prompt, json: true, tier: "smart" });
 
-      const resultJson = JSON.parse(response.text);
+      const resultJson = JSON.parse(text);
 
       if (resultJson.feature_columns && resultJson.label_column) {
         const validFeatures = resultJson.feature_columns.filter((col: string) =>

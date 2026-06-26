@@ -1,15 +1,16 @@
 /**
- * 중앙 AI 클라이언트 — 멀티 프로바이더(Gemini / OpenAI / Anthropic) + 사용자 로컬 API 키.
+ * 중앙 AI 클라이언트 — 멀티 프로바이더(Anthropic Claude / Gemini / OpenAI) + 사용자 로컬 API 키.
  *
  * 설계 원칙(.claude/skills/ai-provider-integration):
+ *  - 기본 프로바이더는 Anthropic Claude. 모든 AI 호출은 프로바이더 비의존 경로(generateAiText)를 사용한다.
  *  - API 키는 번들에 넣지 않는다. 런타임에 localStorage에서 읽는다.
  *  - 키가 없으면 MissingApiKeyError를 던지고, UI가 설정 모달을 열도록 유도한다(앱 크래시 금지).
  *  - 모든 LLM 호출은 이 파일을 단일 진입점으로 사용한다.
  *  - 키는 콘솔/로그/외부로 전송하지 않는다(프로바이더 API 호출 제외).
  */
-import { GoogleGenAI } from "@google/genai";
+import Anthropic from "@anthropic-ai/sdk";
 
-export type AiProvider = "gemini" | "openai" | "anthropic";
+export type AiProvider = "anthropic" | "gemini" | "openai";
 
 export interface AiSettings {
   provider: AiProvider;
@@ -19,16 +20,29 @@ export interface AiSettings {
 
 const STORAGE_KEY = "dfa_ai_settings";
 
+/**
+ * 작업 티어 → 권장 모델.
+ *  - fast: 결과 해설/짧은 요약류(빠르고 저렴). Claude Haiku.
+ *  - smart: 모듈 추천/JSON 구조화/코드·인사이트 해석(추론 필요). Claude Sonnet.
+ * 설정 모달의 anthropic 기본값은 smart(=Sonnet)이며, fast 티어 호출은 자동으로 Haiku를 쓴다.
+ */
+export type AiTier = "fast" | "smart";
+
+export const ANTHROPIC_TIER_MODELS: Record<AiTier, string> = {
+  fast: "claude-haiku-4-5",
+  smart: "claude-sonnet-4-6",
+};
+
 export const DEFAULT_MODELS: Record<AiProvider, string> = {
+  anthropic: ANTHROPIC_TIER_MODELS.smart,
   gemini: "gemini-2.5-flash",
   openai: "gpt-4o-mini",
-  anthropic: "claude-3-5-haiku-latest",
 };
 
 export const PROVIDER_LABELS: Record<AiProvider, string> = {
+  anthropic: "Anthropic Claude",
   gemini: "Google Gemini",
   openai: "OpenAI",
-  anthropic: "Anthropic Claude",
 };
 
 export class MissingApiKeyError extends Error {
@@ -44,9 +58,9 @@ export class MissingApiKeyError extends Error {
 function envFallbackKey(provider: AiProvider): string {
   try {
     const env = (import.meta as any)?.env || {};
+    if (provider === "anthropic") return env.VITE_ANTHROPIC_API_KEY || "";
     if (provider === "gemini") return env.VITE_GEMINI_API_KEY || "";
     if (provider === "openai") return env.VITE_OPENAI_API_KEY || "";
-    if (provider === "anthropic") return env.VITE_ANTHROPIC_API_KEY || "";
   } catch {
     /* import.meta 미지원 환경 */
   }
@@ -55,8 +69,8 @@ function envFallbackKey(provider: AiProvider): string {
 
 export function getAiSettings(): AiSettings {
   const base: AiSettings = {
-    provider: "gemini",
-    keys: { gemini: "", openai: "", anthropic: "" },
+    provider: "anthropic",
+    keys: { anthropic: "", gemini: "", openai: "" },
     models: { ...DEFAULT_MODELS },
   };
   try {
@@ -102,46 +116,83 @@ export function requestOpenAiSettings(): void {
   }
 }
 
-/**
- * 기존 Gemini 전용 호출부(구조화 스키마 등)를 위한 클라이언트.
- * 로컬 Gemini 키를 사용하며, 없으면 MissingApiKeyError를 던진다.
- */
-export function getGeminiClient(): GoogleGenAI {
-  const key = getApiKey("gemini");
-  if (!key) {
-    requestOpenAiSettings();
-    throw new MissingApiKeyError("gemini");
+/** 코드펜스(```json … ```)를 제거하고 순수 JSON 문자열만 반환한다. */
+function stripJsonFence(text: string): string {
+  let t = (text || "").trim();
+  if (t.startsWith("```")) {
+    // ```json\n … \n``` 또는 ```\n … \n```
+    t = t.replace(/^```[a-zA-Z]*\s*\n?/, "").replace(/\n?```\s*$/, "").trim();
   }
-  return new GoogleGenAI({ apiKey: key });
+  return t;
 }
 
 export interface GenerateTextOptions {
   prompt: string;
   system?: string;
-  /** JSON 출력 강제 */
+  /** JSON 출력 강제(프로바이더별로 JSON 모드/프롬프트 가드를 적용). */
   json?: boolean;
-  /** Gemini용 responseSchema(@google/genai Type 스키마). 다른 프로바이더에선 무시되고 json 모드만 적용. */
+  /**
+   * Gemini용 responseSchema(@google/genai Type 스키마)였던 인자.
+   * Claude/OpenAI에선 사용하지 않으며 json 모드만 적용한다.
+   * (구조 강제는 json:true + 프롬프트에서 출력 형태를 명시하는 방식으로 처리한다.)
+   */
   schema?: any;
   provider?: AiProvider;
+  /** 명시 모델. 없으면 tier(anthropic) 또는 설정/기본 모델을 사용한다. */
   model?: string;
+  /** 작업 티어. anthropic에서 model 미지정 시 fast=Haiku / smart=Sonnet를 선택한다. */
+  tier?: AiTier;
   temperature?: number;
+}
+
+/** anthropic 분기에서 사용할 모델 결정: model > tier 매핑 > 설정/기본. */
+function resolveAnthropicModel(opts: GenerateTextOptions, settings: AiSettings): string {
+  if (opts.model) return opts.model;
+  if (opts.tier) return ANTHROPIC_TIER_MODELS[opts.tier];
+  return settings.models.anthropic || DEFAULT_MODELS.anthropic;
 }
 
 /**
  * 프로바이더 비의존 텍스트 생성. 새 AI 기능은 이 함수를 사용한다.
- * 반환값은 모델이 생성한 텍스트(json 모드면 JSON 문자열).
+ * 반환값은 모델이 생성한 텍스트(json 모드면 코드펜스를 제거한 JSON 문자열).
  */
 export async function generateAiText(opts: GenerateTextOptions): Promise<string> {
   const settings = getAiSettings();
   const provider = opts.provider || settings.provider;
-  const model = opts.model || settings.models[provider] || DEFAULT_MODELS[provider];
   const key = getApiKey(provider);
   if (!key) {
     requestOpenAiSettings();
     throw new MissingApiKeyError(provider);
   }
 
+  // ── Anthropic Claude (기본) ──────────────────────────────────────────────
+  if (provider === "anthropic") {
+    const model = resolveAnthropicModel(opts, settings);
+    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+    const userContent = opts.json
+      ? `${opts.prompt}\n\n반드시 유효한 JSON만 출력하세요. 코드펜스(\`\`\`)나 다른 설명 텍스트 없이 JSON 객체만 응답하세요.`
+      : opts.prompt;
+    const response = await client.messages.create({
+      model,
+      max_tokens: 4096,
+      ...(opts.system ? { system: opts.system } : {}),
+      ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      messages: [{ role: "user", content: userContent }],
+    });
+    const text = (response.content || [])
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("")
+      .trim();
+    return opts.json ? stripJsonFence(text) : text;
+  }
+
+  const model = opts.model || settings.models[provider] || DEFAULT_MODELS[provider];
+
+  // ── Google Gemini ────────────────────────────────────────────────────────
   if (provider === "gemini") {
+    // @google/genai는 anthropic 전환 후 선택적 의존성. 동적 import로 번들에서 분리한다.
+    const { GoogleGenAI } = await import("@google/genai");
     const ai = new GoogleGenAI({ apiKey: key });
     const config: any = {};
     if (opts.json) config.responseMimeType = "application/json";
@@ -153,56 +204,29 @@ export async function generateAiText(opts: GenerateTextOptions): Promise<string>
       contents: opts.prompt,
       ...(Object.keys(config).length ? { config } : {}),
     });
-    return (response.text || "").trim();
+    const text = (response.text || "").trim();
+    return opts.json ? stripJsonFence(text) : text;
   }
 
-  if (provider === "openai") {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          ...(opts.system ? [{ role: "system", content: opts.system }] : []),
-          { role: "user", content: opts.prompt },
-        ],
-        ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
-        ...(opts.json ? { response_format: { type: "json_object" } } : {}),
-      }),
-    });
-    if (!res.ok) throw new Error(`OpenAI 오류 ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    return (data.choices?.[0]?.message?.content || "").trim();
-  }
-
-  // anthropic
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  // ── OpenAI ────────────────────────────────────────────────────────────────
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": key,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
+      Authorization: `Bearer ${key}`,
     },
     body: JSON.stringify({
       model,
-      max_tokens: 4096,
-      ...(opts.system ? { system: opts.system } : {}),
-      ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       messages: [
-        {
-          role: "user",
-          content: opts.json
-            ? `${opts.prompt}\n\n반드시 유효한 JSON만 출력하세요. 다른 텍스트 금지.`
-            : opts.prompt,
-        },
+        ...(opts.system ? [{ role: "system", content: opts.system }] : []),
+        { role: "user", content: opts.prompt },
       ],
+      ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
   });
-  if (!res.ok) throw new Error(`Anthropic 오류 ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new Error(`OpenAI 오류 ${res.status}: ${await res.text()}`);
   const data = await res.json();
-  return (data.content?.[0]?.text || "").trim();
+  const text = (data.choices?.[0]?.message?.content || "").trim();
+  return opts.json ? stripJsonFence(text) : text;
 }
