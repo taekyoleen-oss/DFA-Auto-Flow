@@ -361,6 +361,13 @@ export const TOOLBOX_MODULES = [
     icon: ChartCurveIcon,
     description: "Analyzes claim data distribution with three tabs: data distribution plot, empirical distribution (Histogram, ECDF, QQ-Plot) for tail change detection, and Mean Excess Plot for identifying linear tail regions.",
   },
+  {
+    type: ModuleType.ModelAnalysisReport,
+    name: "모델 분석보고서",
+    icon: DocumentTextIcon,
+    description:
+      "파이프라인 맨 끝에 두는 문서화 모듈. 업스트림 메타데이터+추가정보(PDF/텍스트)로 AI가 자기완결 HTML 분석보고서를 생성합니다(키 없으면 결정적 폴백).",
+  },
 ];
 
 // fix: Replaced all instances of status: 'Pending' with status: ModuleStatus.Pending to conform to the ModuleStatus enum type.
@@ -970,6 +977,27 @@ export const DEFAULT_MODULES: Omit<CanvasModule, "id" | "position" | "name">[] =
       outputs: [
         { name: "analysis_out", type: "evaluation" },
       ],
+    },
+    {
+      // 문서화(메타) 모듈 — 파이프라인 말단. 출력 포트 없음.
+      // report_in(data)을 기본 입력으로, 평가(evaluation)/모델(model) 종단도 받도록
+      // 추가 입력 포트를 둔다(연결은 포트 type 일치 필요). 실제 메타데이터는 전체
+      // 업스트림 그래프를 역방향으로 거슬러 수집한다(어느 포트로 들어와도 동일).
+      type: ModuleType.ModelAnalysisReport,
+      status: ModuleStatus.Pending,
+      parameters: {
+        title: "",
+        extra_info: "",
+        extra_pdf_text: "",
+        extra_pdf_name: "",
+        use_web_research: true,
+      },
+      inputs: [
+        { name: "report_in", type: "data" },
+        { name: "report_in_eval", type: "evaluation" },
+        { name: "report_in_model", type: "model" },
+      ],
+      outputs: [],
     },
   ];
 

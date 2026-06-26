@@ -103,6 +103,7 @@ import { SplitFreqServPreviewModal } from "./components/SplitFreqServPreviewModa
 import { FrequencyModelPreviewModal } from "./components/FrequencyModelPreviewModal";
 import { SeverityModelPreviewModal } from "./components/SeverityModelPreviewModal";
 import { AnalysisThresholdPreviewModal } from "./components/AnalysisThresholdPreviewModal";
+import { ModelReportPreviewModal } from "./components/ModelReportPreviewModal";
 import { CombineLossModelPreviewModal } from "./components/CombineLossModelPreviewModal";
 import { StatsModelsResultPreviewModal } from "./components/StatsModelsResultPreviewModal";
 import { DiversionCheckerPreviewModal } from "./components/DiversionCheckerPreviewModal";
@@ -255,6 +256,8 @@ const App: React.FC = () => {
   const [viewingSeverityModel, setViewingSeverityModel] =
     useState<CanvasModule | null>(null);
   const [viewingAnalysisThreshold, setViewingAnalysisThreshold] =
+    useState<CanvasModule | null>(null);
+  const [viewingModelReport, setViewingModelReport] =
     useState<CanvasModule | null>(null);
 
   const [isAiGenerating, setIsAiGenerating] = useState(false);
@@ -2810,6 +2813,9 @@ ${header}
         setViewingDataForModule(module);
       } else if (module.outputData.type === "AnalysisThresholdOutput") {
         setViewingAnalysisThreshold(module);
+      } else if (module.outputData.type === "ModelReportOutput") {
+        // 모델 분석보고서 결과 — 열람은 게이트 없음(누구나 가능).
+        setViewingModelReport(module);
       } else if (module.outputData.type === "ThresholdAnalysisOutput") {
         setViewingDataForModule(module);
       } else if (module.outputData.type === "TrainedModelOutput") {
@@ -2862,6 +2868,7 @@ ${header}
     setViewingFrequencyModel(null);
     setViewingSeverityModel(null);
     setViewingAnalysisThreshold(null);
+    setViewingModelReport(null);
   };
 
   // Model definition modules that should not be executed directly in Run All
@@ -9825,6 +9832,68 @@ result
             expenseLoading,
             finalPremium,
           };
+        } else if (module.type === ModuleType.ModelAnalysisReport) {
+          // 문서화(메타) 모듈 — 데이터 분석 아님(export/verify 무관).
+          // DFA는 고급기능 게이트가 없어 게이트 없이 정상 실행한다(생성·열람 모두 누구나).
+          try {
+            addLog(
+              "INFO",
+              "업스트림 파이프라인 메타데이터를 수집하여 분석보고서를 생성합니다…"
+            );
+            const { gatherReportContext } = await import("./utils/modelReport");
+            const { generateModelReportHtml } = await import(
+              "./utils/modelReportAi"
+            );
+
+            // 최신 모듈 상태(실행 결과 outputData 포함)에서 수집.
+            const latestModules = getCurrentModules();
+            const latestModule =
+              latestModules.find((m) => m.id === module.id) || module;
+            const ctx = gatherReportContext(
+              latestModule,
+              latestModules,
+              connections
+            );
+
+            // 사용자 추가정보(텍스트) + PDF 추출 텍스트 병합 → extraInfo.
+            const extraText = String(
+              latestModule.parameters?.extra_info || ""
+            ).trim();
+            const pdfText = String(
+              latestModule.parameters?.extra_pdf_text || ""
+            ).trim();
+            const pdfName = String(
+              latestModule.parameters?.extra_pdf_name || ""
+            ).trim();
+            const mergedExtra = [
+              extraText,
+              pdfText
+                ? `${pdfName ? `[첨부 PDF: ${pdfName}]\n` : ""}${pdfText}`
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n\n");
+            if (mergedExtra) ctx.extraInfo = mergedExtra;
+            ctx.generatedAt = new Date().toISOString().slice(0, 10);
+
+            const { html, source } = await generateModelReportHtml(ctx);
+
+            newOutputData = {
+              type: "ModelReportOutput",
+              html,
+              generatedAt: new Date().toISOString(),
+              source,
+              context: ctx,
+            };
+            addLog(
+              "SUCCESS",
+              `모델 분석보고서 생성 완료 (${source === "ai" ? "AI 생성" : "결정적 폴백"}).`
+            );
+          } catch (error: any) {
+            const errorMessage = error.message || String(error);
+            addLog("ERROR", `모델 분석보고서 생성 실패: ${errorMessage}`);
+            throw new Error(`모델 분석보고서 생성 실패: ${errorMessage}`);
+          }
         } else {
           const inputConnection = connections.find(
             (c) => c.to.moduleId === module.id
@@ -11239,6 +11308,17 @@ result
           <AnalysisThresholdPreviewModal
             module={viewingAnalysisThreshold}
             projectName={projectName}
+            onClose={handleCloseModal}
+          />
+        </ErrorBoundary>
+      )}
+      {viewingModelReport && (
+        <ErrorBoundary>
+          <ModelReportPreviewModal
+            module={
+              modules.find((m) => m.id === viewingModelReport.id) ||
+              viewingModelReport
+            }
             onClose={handleCloseModal}
           />
         </ErrorBoundary>

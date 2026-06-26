@@ -94,6 +94,10 @@ const dfaTypes = [
   ModuleType.CombineLossModel,
 ];
 
+const documentationTypes = [
+  ModuleType.ModelAnalysisReport,
+];
+
 const categorizedModules = [
   {
     name: "Data Preprocess",
@@ -106,6 +110,10 @@ const categorizedModules = [
       {
     name: "XoL Analysis",
     modules: TOOLBOX_MODULES.filter((m) => xolPricingTypes.includes(m.type)),
+  },
+  {
+    name: "Documentation",
+    modules: TOOLBOX_MODULES.filter((m) => documentationTypes.includes(m.type)),
   },
 ];
 
@@ -157,6 +165,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
     "Data Preprocess": true,
     "DFA Analysis": true,
     "XoL Analysis": true,
+    "Documentation": true,
   });
 
   const [lastTapInfo, setLastTapInfo] = useState<{

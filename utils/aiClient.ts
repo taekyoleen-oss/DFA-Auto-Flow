@@ -143,6 +143,11 @@ export interface GenerateTextOptions {
   /** 작업 티어. anthropic에서 model 미지정 시 fast=Haiku / smart=Sonnet를 선택한다. */
   tier?: AiTier;
   temperature?: number;
+  /**
+   * 최대 출력 토큰. 미지정 시 4096(기본). 모델 분석보고서처럼 긴 HTML 출력에는
+   * 더 큰 값(예: 16000)을 넘긴다. 프로바이더별 max_tokens/max_output_tokens에 반영.
+   */
+  maxTokens?: number;
 }
 
 /** anthropic 분기에서 사용할 모델 결정: model > tier 매핑 > 설정/기본. */
@@ -174,7 +179,7 @@ export async function generateAiText(opts: GenerateTextOptions): Promise<string>
       : opts.prompt;
     const response = await client.messages.create({
       model,
-      max_tokens: 4096,
+      max_tokens: opts.maxTokens ?? 4096,
       ...(opts.system ? { system: opts.system } : {}),
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
       messages: [{ role: "user", content: userContent }],
@@ -199,6 +204,7 @@ export async function generateAiText(opts: GenerateTextOptions): Promise<string>
     if (opts.schema) config.responseSchema = opts.schema;
     if (opts.temperature != null) config.temperature = opts.temperature;
     if (opts.system) config.systemInstruction = opts.system;
+    if (opts.maxTokens != null) config.maxOutputTokens = opts.maxTokens;
     const response = await ai.models.generateContent({
       model,
       contents: opts.prompt,
@@ -222,6 +228,7 @@ export async function generateAiText(opts: GenerateTextOptions): Promise<string>
         { role: "user", content: opts.prompt },
       ],
       ...(opts.temperature != null ? { temperature: opts.temperature } : {}),
+      ...(opts.maxTokens != null ? { max_tokens: opts.maxTokens } : {}),
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
   });

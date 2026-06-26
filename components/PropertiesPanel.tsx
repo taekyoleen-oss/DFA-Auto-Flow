@@ -4083,6 +4083,104 @@ const renderParameters = (
         </div>
       );
     }
+    case ModuleType.ModelAnalysisReport: {
+      const title = (module.parameters.title as string) ?? "";
+      const extraInfo = (module.parameters.extra_info as string) ?? "";
+      const pdfName = (module.parameters.extra_pdf_name as string) ?? "";
+      const pdfText = (module.parameters.extra_pdf_text as string) ?? "";
+      const useWeb = module.parameters.use_web_research !== false;
+      const hasOutput =
+        (module.outputData as any)?.type === "ModelReportOutput";
+
+      const handlePdf = async (file: File) => {
+        try {
+          const { extractPdfText } = await import("../utils/pdfText");
+          const text = await extractPdfText(file);
+          onParamChange("extra_pdf_name", file.name);
+          onParamChange("extra_pdf_text", text);
+        } catch {
+          onParamChange("extra_pdf_name", file.name);
+          onParamChange("extra_pdf_text", "");
+        }
+      };
+
+      return (
+        <div className="space-y-3">
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            파이프라인 <b>맨 끝</b>에 두는 문서화 모듈입니다. 업스트림 메타데이터를 자동
+            수집하고 아래 추가정보를 합쳐 <b>자기완결 HTML 분석보고서</b>를 만듭니다.
+            <br />모듈 카드의 ▶ 실행으로 보고서를 생성하고, 결과 보기에서 열람·다운로드할 수 있습니다.
+          </p>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+              보고서 제목 (선택)
+            </label>
+            <input
+              type="text"
+              className="w-full text-sm border border-gray-300 rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              defaultValue={title}
+              placeholder="비우면 데이터셋 이름으로 자동 생성"
+              onBlur={(e) => onParamChange("title", e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+              추가 정보 (데이터 속성·구조 등)
+            </label>
+            <textarea
+              className="w-full h-28 text-xs border border-gray-300 rounded p-2 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+              defaultValue={extraInfo}
+              placeholder="데이터 출처·도메인 배경·컬럼 의미 등 보고서에 반영할 설명을 자유롭게 입력하세요."
+              onBlur={(e) => onParamChange("extra_info", e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+              참고 PDF 업로드 (선택)
+            </label>
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              className="block w-full text-xs text-gray-600 dark:text-gray-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handlePdf(f);
+              }}
+            />
+            {pdfName && (
+              <p className="text-[11px] text-green-700 dark:text-green-400 mt-1">
+                ✓ {pdfName}
+                {pdfText
+                  ? ` — 텍스트 ${pdfText.length.toLocaleString()}자 추출됨`
+                  : " — 텍스트 추출 실패(스캔본일 수 있음)"}
+              </p>
+            )}
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+            <input
+              type="checkbox"
+              checked={useWeb}
+              onChange={(e) =>
+                onParamChange("use_web_research", e.target.checked)
+              }
+            />
+            <span>
+              입력이 없으면 AI 일반지식/웹 배경으로 보강 (배경 서술은 "일반 지식 기반"으로 표기)
+            </span>
+          </label>
+
+          {hasOutput && (
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 pt-2">
+              기존 보고서가 있습니다 — "결과 보기"로 열람/다운로드하세요.
+            </p>
+          )}
+        </div>
+      );
+    }
     default:
       const hasParams = Object.keys(module.parameters).length > 0;
       if (!hasParams) {
