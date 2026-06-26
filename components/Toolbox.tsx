@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef } from "react";
 import { TOOLBOX_MODULES } from "../constants";
 import { ModuleType } from "../types";
+import { useAdvancedFeature } from "../contexts/AdvancedFeatureContext";
 import {
   LinkIcon,
   ChevronUpIcon,
@@ -98,6 +99,10 @@ const documentationTypes = [
   ModuleType.ModelAnalysisReport,
 ];
 
+// 일반 사용자(고급기능 잠금)에게는 툴박스에서 숨기는 모듈 유형.
+// ModelAnalysisReport는 상단 '✨ 모델 분석보고서 생성' 버튼(고급)으로만 추가하도록 강제한다.
+const ADVANCED_ONLY_MODULE_TYPES = [ModuleType.ModelAnalysisReport];
+
 const categorizedModules = [
   {
     name: "Data Preprocess",
@@ -159,6 +164,15 @@ export const Toolbox: React.FC<ToolboxProps> = ({
   onModuleDoubleClick,
   onFontSizeChange,
 }) => {
+  const { isUnlocked: isAdvancedUnlocked } = useAdvancedFeature();
+  // 고급기능 잠금 시 고급 전용 모듈을 툴박스 항목에서 제외(드래그/더블클릭으로 추가 차단).
+  const filterAdvanced = useCallback(
+    <T extends { type: ModuleType }>(items: T[]): T[] =>
+      isAdvancedUnlocked
+        ? items
+        : items.filter((m) => !ADVANCED_ONLY_MODULE_TYPES.includes(m.type)),
+    [isAdvancedUnlocked]
+  );
   const [expandedCategories, setExpandedCategories] = useState<
     Record<string, boolean>
   >({
@@ -302,7 +316,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
               </button>
               {expandedCategories[category.name] && (
                 <div className="pl-2 pt-2 flex flex-col gap-2">
-                  {category.modules?.map(
+                  {filterAdvanced(category.modules ?? []).map(
                     ({ type, name, icon, description }) => (
                       <ToolboxItem
                         key={type}
@@ -330,7 +344,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
                       </button>
                       {expandedCategories[subCategory.name] && (
                         <div className="pt-2 flex flex-col gap-2">
-                          {subCategory.modules.map(
+                          {filterAdvanced(subCategory.modules).map(
                             ({ type, name, icon, description }) => (
                               <ToolboxItem
                                 key={type}
