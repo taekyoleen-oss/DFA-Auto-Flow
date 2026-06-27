@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, EvaluationOutput, ConfusionMatrix } from '../types';
 import { XCircleIcon } from './icons';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface EvaluationPreviewModalProps {
     module: CanvasModule;
@@ -316,9 +317,26 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
                                     <div className="flex gap-4">
                                         {/* Left: Threshold Table */}
                                         <div className="flex-1 bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                            <h3 className="text-lg font-semibold text-gray-700 mb-4 text-center">
-                                                Threshold Statistics Table
-                                            </h3>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className="text-lg font-semibold text-gray-700">
+                                                    Threshold Statistics Table
+                                                </h3>
+                                                <TableDownloadButton
+                                                    filename={`${module.name}_임계값통계`}
+                                                    columns={['Threshold', 'Accuracy', 'Precision', 'Recall', 'F1-Score', 'TP', 'FP', 'TN', 'FN']}
+                                                    rows={thresholdTable.map(row => ({
+                                                        'Threshold': row.threshold,
+                                                        'Accuracy': row.accuracy,
+                                                        'Precision': row.precision,
+                                                        'Recall': row.recall,
+                                                        'F1-Score': row.f1Score,
+                                                        'TP': row.tp,
+                                                        'FP': row.fp,
+                                                        'TN': row.tn,
+                                                        'FN': row.fn,
+                                                    }))}
+                                                />
+                                            </div>
                                             <div className="overflow-x-auto max-h-[500px]">
                                                 <table className="w-full border-collapse text-sm">
                                                     <thead className="bg-gray-100 sticky top-0">
@@ -586,9 +604,19 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
                             {/* Confusion Matrix Table - 선택된 threshold의 혼동행렬 */}
                             {selectedRow && (
                                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                    <h3 className="text-lg font-semibold text-gray-700 mb-4 text-center">
-                                        Confusion Matrix (Threshold: {selectedRow.threshold.toFixed(2)})
-                                    </h3>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-lg font-semibold text-gray-700">
+                                            Confusion Matrix (Threshold: {selectedRow.threshold.toFixed(2)})
+                                        </h3>
+                                        <TableDownloadButton
+                                            filename={`${module.name}_혼동행렬_threshold${selectedRow.threshold.toFixed(2)}`}
+                                            columns={['', 'Predicted: 0', 'Predicted: 1']}
+                                            rows={[
+                                                { '': 'Actual: 0', 'Predicted: 0': selectedRow.tn, 'Predicted: 1': selectedRow.fp },
+                                                { '': 'Actual: 1', 'Predicted: 0': selectedRow.fn, 'Predicted: 1': selectedRow.tp },
+                                            ]}
+                                        />
+                                    </div>
                                     <div className="overflow-x-auto">
                                         <table className="w-full border-collapse">
                                             <thead>
