@@ -68,6 +68,24 @@ const getSavedSamples = () => {
     return [];
   }
 };
+
+// 마지막 작업 저장 시각을 사람이 읽기 좋은 상대/절대 시간으로 포맷.
+const formatSavedAt = (ts: number): string => {
+  if (!ts) return "";
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "방금 전";
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}일 전`;
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return "";
+  }
+};
 import {
   LogoIcon,
   PlayIcon,
@@ -91,6 +109,7 @@ import {
 } from "./components/icons";
 import { useTheme } from "./contexts/ThemeContext";
 import useHistoryState from "./hooks/useHistoryState";
+import { useAutoSave, loadLastWork, getLastWorkMeta, type LastWorkMeta } from "./hooks/useAutoSave";
 import { DataPreviewModal } from "./components/DataPreviewModal";
 import { StatisticsPreviewModal } from "./components/StatisticsPreviewModal";
 import { SettingThresholdPreviewModal } from "./components/SettingThresholdPreviewModal";
@@ -296,6 +315,8 @@ const App: React.FC = () => {
   const [isMyWorkMenuOpen, setIsMyWorkMenuOpen] = useState(false);
   const myWorkMenuRef = useRef<HTMLDivElement>(null);
   const [myWorkModels, setMyWorkModels] = useState<any[]>([]);
+  // 마지막 작업(localStorage 영구 저장) 메타 — 'My Work' 메뉴 버튼 라벨/활성화용
+  const [lastWorkMeta, setLastWorkMeta] = useState<LastWorkMeta | null>(null);
   // 저장 옵션 모달(데이터 포함/제외·웹 등록·설명 선택)
   const [saveOptions, setSaveOptions] = useState<{
     open: boolean;
@@ -555,6 +576,20 @@ const App: React.FC = () => {
       setIsCodePanelVisible(false); // 에러/경고 시 속성 패널 열면 코드 패널 닫기
     }
   }, []);
+
+  // 자동 저장 / 복원 (hooks/useAutoSave.ts)
+  // 세션 자동저장(새로고침 복원) + localStorage 마지막 작업 영구저장.
+  useAutoSave({
+    modules,
+    connections,
+    projectName,
+    onRestore: (savedModules, savedConnections, savedProjectName) => {
+      resetModules(savedModules);
+      _setConnections(savedConnections);
+      if (savedProjectName) setProjectName(savedProjectName);
+    },
+    onRestoreLog: (message) => addLog("INFO", message),
+  });
 
   // ── 저장 옵션(데이터 포함/제외·웹 등록·설명) 지원 ──
   // 데이터 로더로 취급할 모듈 타입 판정(DFA: LoadData·LoadClaimData).
@@ -2223,6 +2258,11 @@ ${header}
       }
     }
   }, []);
+
+  // 'My Work' 메뉴가 열릴 때 마지막 작업 메타를 새로고침(저장 시각·모듈 수 표시).
+  useEffect(() => {
+    if (isMyWorkMenuOpen) setLastWorkMeta(getLastWorkMeta());
+  }, [isMyWorkMenuOpen]);
 
   // 초기 화면 로드
   useEffect(() => {
@@ -10923,9 +10963,70 @@ result
               </button>
               {isMyWorkMenuOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[200px]"
+                  className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[220px]"
                   style={{ zIndex: 9999 }}
                 >
+                  {/* 마지막 작업 불러오기 (localStorage 영구 저장 — 브라우저를 닫아도 복원) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const snap = loadLastWork();
+                      if (!snap || !snap.modules?.length) {
+                        addLog("INFO", "복원할 마지막 작업이 없습니다.");
+                        setIsMyWorkMenuOpen(false);
+                        return;
+                      }
+                      const restored = snap.modules.map((m: any) => ({
+                        ...m,
+                        status: m.outputData
+                          ? ModuleStatus.Success
+                          : ModuleStatus.Pending,
+                      }));
+                      resetModules(restored as CanvasModule[]);
+                      _setConnections(snap.connections || []);
+                      if (snap.projectName) setProjectName(snap.projectName);
+                      setSelectedModuleIds([]);
+                      setIsDirty(false);
+                      addLog(
+                        "SUCCESS",
+                        `마지막 작업을 불러왔습니다 (${restored.length}개 모듈, ${formatSavedAt(
+                          snap.savedAt
+                        )} 저장).` +
+                          (snap.dataStripped
+                            ? " 데이터가 커서 본문은 제외됐습니다 — 실행 시 파일명으로 자동 재로드하거나 LoadData에서 파일을 다시 선택하세요."
+                            : "")
+                      );
+                      setIsMyWorkMenuOpen(false);
+                      setTimeout(() => handleFitToView(), 100);
+                    }}
+                    disabled={!lastWorkMeta}
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 border-b border-gray-300 dark:border-gray-700 ${
+                      lastWorkMeta
+                        ? "text-gray-900 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                        : "text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                    }`}
+                    type="button"
+                    title="가장 최근에 작업한 파이프라인을 복원합니다 (브라우저를 닫아도 유지)"
+                  >
+                    <span aria-hidden className="text-base leading-none">
+                      🕘
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium">마지막 작업 불러오기</span>
+                      {lastWorkMeta ? (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                          {formatSavedAt(lastWorkMeta.savedAt)} ·{" "}
+                          {lastWorkMeta.moduleCount}개 모듈
+                          {lastWorkMeta.dataStripped ? " · 데이터 제외" : ""}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                          저장된 작업 없음
+                        </span>
+                      )}
+                    </span>
+                  </button>
+
                   {/* 파일에서 불러오기 */}
                   <button
                     onClick={(e) => {
