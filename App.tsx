@@ -106,6 +106,7 @@ import {
   ArrowDownTrayIcon,
   SunIcon,
   MoonIcon,
+  XMarkIcon,
 } from "./components/icons";
 import { useTheme } from "./contexts/ThemeContext";
 import useHistoryState from "./hooks/useHistoryState";
@@ -329,8 +330,10 @@ const App: React.FC = () => {
   // Pyodide 로딩 진행 상태
   const [pyodideStatus, setPyodideStatus] = useState<{ message: string; progress: number } | null>(null);
 
-  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(false);
+  const [isLeftPanelVisible, setIsLeftPanelVisible] = useState(() => typeof window !== "undefined" && window.innerWidth >= 768);
   const [isRightPanelVisible, setIsRightPanelVisible] = useState(false);
+  // 모바일 전체 메뉴 드로어 (< md)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCodePanelVisible, setIsCodePanelVisible] = useState(false);
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
   // AI 키 미설정 시 호출부가 dispatch하는 이벤트로 설정 모달을 자동 오픈
@@ -361,7 +364,7 @@ const App: React.FC = () => {
   const pasteOffset = useRef(0);
 
   const [isDirty, setIsDirty] = useState(false);
-  const [saveButtonText, setSaveButtonText] = useState("Save");
+  const [saveButtonText, setSaveButtonText] = useState("저장");
   const [dfaPipelineInitialized, setDfaPipelineInitialized] = useState(false);
 
   // Canvas tabs: multiple canvases with add/rename
@@ -1626,8 +1629,8 @@ ${header}
         onSuccess: (fileName) => {
           addLog("SUCCESS", `Pipeline saved to '${fileName}'.`);
       setIsDirty(false);
-      setSaveButtonText("Saved!");
-      setTimeout(() => setSaveButtonText("Save"), 2000);
+      setSaveButtonText("저장됨");
+      setTimeout(() => setSaveButtonText("저장"), 2000);
         },
         onError: (error) => {
           console.error("Failed to save pipeline:", error);
@@ -10815,10 +10818,62 @@ result
               )}
             </div>
           </div>
+          {/* 모바일 전용: 전체 메뉴 햄버거 (< md) */}
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 md:hidden flex-shrink-0 text-gray-700 dark:text-gray-300"
+            aria-label="전체 메뉴"
+            title="전체 메뉴"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
         </div>
 
-        {/* 두 번째 줄: Load, Save 등 버튼들 */}
-        <div className="flex items-center justify-end gap-2 w-full overflow-x-auto scrollbar-hide mt-1">
+        {/* 모바일 액션 바 (신규 Row, < md) — 실행 시 바로 필요한 버튼만 */}
+        <div className="flex md:hidden items-center gap-1 px-1 py-1">
+          <button
+            onClick={() => setIsLeftPanelVisible((v) => !v)}
+            className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+            aria-label="모듈 패널 토글"
+            title="모듈 패널 열기/닫기"
+          >
+            <Bars3Icon className="h-5 w-5" />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsSampleMenuOpen(true);
+            }}
+            className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md font-semibold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200 transition-colors flex-shrink-0"
+            title="샘플 모델 불러오기"
+            type="button"
+          >
+            <SparklesIcon className="h-4 w-4" />
+            <span>샘플</span>
+          </button>
+          <div className="flex-1" />
+          <button
+            onClick={handleRunAll}
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-bold bg-green-600 hover:bg-green-500 text-white transition-colors flex-shrink-0"
+            title="전체 모듈 실행"
+          >
+            <PlayIcon className="h-4 w-4" />
+            <span>실행</span>
+          </button>
+          <button
+            onClick={handleToggleRightPanel}
+            className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+            aria-label="속성 패널 토글"
+            title="속성 패널 열기/닫기"
+          >
+            <CogIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* 두 번째 줄: Load, Save 등 버튼들 — 데스크톱 전용 */}
+        <div className="hidden md:flex items-center justify-end gap-2 w-full overflow-x-auto scrollbar-hide mt-1">
           {/* 테마 전환 버튼 */}
           <button
             onClick={toggleTheme}
@@ -10863,18 +10918,18 @@ result
           <button
             onClick={handleSetFolder}
             className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
-            title="Set Save Folder"
+            title="저장 폴더 설정"
           >
             <FolderOpenIcon className="h-4 w-4" />
-            <span>Set Folder</span>
+            <span>폴더 설정</span>
           </button>
           <button
             onClick={handleLoadPipeline}
             className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
-            title="Load Pipeline"
+            title="파이프라인 불러오기"
           >
             <FolderOpenIcon className="h-4 w-4" />
-            <span>Load</span>
+            <span>불러오기</span>
           </button>
           <button
             onClick={handleSavePipeline}
@@ -10884,20 +10939,29 @@ result
                 ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-500"
                 : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
             }`}
-            title="Save Pipeline"
+            title="파이프라인 저장"
           >
-            {saveButtonText === "Save" ? (
+            {saveButtonText === "저장" ? (
               <ArrowDownTrayIcon className="h-4 w-4" />
             ) : (
               <CheckIcon className="h-4 w-4" />
             )}
             <span>{saveButtonText}</span>
           </button>
+          <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
+          <button
+            onClick={handleRunAll}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors flex-shrink-0 bg-green-600 hover:bg-green-500 text-white"
+            title="전체 모듈 실행"
+          >
+            <PlayIcon className="h-4 w-4" />
+            <span>전체 실행</span>
+          </button>
         </div>
 
-        {/* 세 번째 줄: 햄버거 버튼(왼쪽) 및 AI 버튼 2개, Run All, 설정 버튼(오른쪽) */}
-        <div className="flex items-center justify-between gap-1 md:gap-2 w-full mt-1 overflow-visible">
-          <div className="flex items-center gap-1 md:gap-2">
+        {/* 세 번째 줄: 모듈 토글 · 샘플 · 내 작업(왼쪽), AI/코드/보고서/고급 버튼(오른쪽) — 데스크톱 전용 */}
+        <div className="hidden md:flex items-center justify-between gap-2 w-full mt-1 overflow-visible">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setIsLeftPanelVisible((v) => !v)}
               className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
@@ -10915,27 +10979,18 @@ result
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  console.log(
-                    "Samples button clicked, current state:",
-                    isSampleMenuOpen,
-                    "SAMPLE_MODELS:",
-                    SAMPLE_MODELS
-                  );
-                  setIsSampleMenuOpen((prev) => {
-                    console.log("Toggling from", prev, "to", !prev);
-                    return !prev;
-                  });
+                  setIsSampleMenuOpen((prev) => !prev);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors cursor-pointer ${
                   isSampleMenuOpen
                     ? "bg-purple-600 text-white"
-                    : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                    : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200"
                 }`}
-                title="Load Sample Model"
+                title="샘플 모델 불러오기"
                 type="button"
               >
                 <SparklesIcon className="h-4 w-4" />
-                <span>Samples</span>
+                <span>샘플</span>
               </button>
               {/* Samples는 카드 형태 모달로 표시 (SamplesModal) */}
             </div>
@@ -10955,16 +11010,15 @@ result
                     ? "bg-purple-600 text-white"
                     : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200"
                 }`}
-                title="My Work"
+                title="내 작업"
                 type="button"
               >
                 <FolderOpenIcon className="h-4 w-4" />
-                <span>My Work</span>
+                <span>내 작업</span>
               </button>
               {isMyWorkMenuOpen && (
                 <div
-                  className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[220px]"
-                  style={{ zIndex: 9999 }}
+                  className="absolute top-full left-0 mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[220px]"
                 >
                   {/* 마지막 작업 불러오기 (localStorage 영구 저장 — 브라우저를 닫아도 복원) */}
                   <button
@@ -11185,34 +11239,34 @@ result
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1 md:gap-2 ml-auto">
+          <div className="flex items-center gap-1.5 ml-auto min-w-0 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setIsCodePanelVisible((v) => {
                 if (!v) setIsRightPanelVisible(false); // 코드 패널 열면 속성 패널 닫기
                 return !v;
               })}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-md font-semibold transition-colors flex-shrink-0"
-              title="View Full Pipeline Code"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-md font-semibold transition-colors flex-shrink-0"
+              title="전체 파이프라인 코드 보기"
             >
-              <CodeBracketIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
+              <CodeBracketIcon className="h-3.5 w-3.5" />
               <span className="whitespace-nowrap">전체 코드</span>
             </button>
             <button
               onClick={() => setIsGoalModalOpen(true)}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-purple-600 dark:bg-purple-600 hover:bg-purple-700 dark:hover:bg-purple-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
-              title="Generate pipeline from a goal"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-purple-600 dark:bg-purple-600 hover:bg-purple-700 dark:hover:bg-purple-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
+              title="목표로부터 파이프라인 자동 생성"
             >
-              <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
+              <SparklesIcon className="h-3.5 w-3.5" />
               <span className="whitespace-nowrap">
                 AI로 파이프라인 생성하기
               </span>
             </button>
             <button
               onClick={() => setIsDataModalOpen(true)}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] bg-indigo-600 dark:bg-indigo-600 hover:bg-indigo-700 dark:hover:bg-indigo-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
-              title="Generate pipeline from data"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-indigo-600 dark:bg-indigo-600 hover:bg-indigo-700 dark:hover:bg-indigo-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
+              title="데이터로부터 파이프라인 자동 생성"
             >
-              <SparklesIcon className="h-1.5 w-1.5 md:h-2.5 md:w-2.5" />
+              <SparklesIcon className="h-3.5 w-3.5" />
               <span className="whitespace-nowrap">
                 AI로 데이터 분석 실행하기
               </span>
@@ -11222,14 +11276,14 @@ result
               <button
                 onClick={handleGenerateModelReport}
                 disabled={isGeneratingReport}
-                className={`flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] rounded-md font-semibold transition-colors flex-shrink-0 text-white ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-semibold transition-colors flex-shrink-0 text-white ${
                   isGeneratingReport
                     ? "bg-cyan-700 opacity-70 cursor-not-allowed"
                     : "bg-cyan-600 hover:bg-cyan-500"
                 } ${ADVANCED_BTN_DIM}`}
                 title="종단 모델을 자동 연결해 모델 분석보고서를 생성합니다(고급기능)"
               >
-                <AdvancedLockBadge className="text-[8px] leading-none" />
+                <AdvancedLockBadge className="text-[9px] leading-none" />
                 <span className="whitespace-nowrap">
                   {isGeneratingReport ? "보고서 생성 중…" : "✨ 모델 분석보고서 생성"}
                 </span>
@@ -11238,35 +11292,269 @@ result
             {/* 고급기능 실행/해제 상태 버튼 */}
             <button
               onClick={() => setIsAdvancedModalOpen(true)}
-              className={`flex items-center gap-1 px-1.5 md:px-2 py-0.5 md:py-1 text-[5px] md:text-[8px] rounded-md font-semibold transition-colors flex-shrink-0 ${
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-bold transition-colors flex-shrink-0 ${
                 isAdvancedUnlocked
-                  ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50"
-                  : "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-amber-500 hover:bg-amber-600 text-white"
               }`}
               title={isAdvancedUnlocked ? "고급기능 해제됨 (클릭하여 관리)" : "고급기능 실행 (API·코드·AI·보고서 생성 잠금 해제)"}
             >
               <span aria-hidden>{isAdvancedUnlocked ? "🔓" : "🔒"}</span>
               <span className="whitespace-nowrap">
-                {isAdvancedUnlocked ? "고급 해제됨" : "고급기능 실행"}
+                {isAdvancedUnlocked ? "고급기능 해제됨" : "고급기능 실행"}
               </span>
             </button>
             <button
-              onClick={handleRunAll}
-              className="flex items-center gap-1 md:gap-2 px-1.5 md:px-2 py-0.5 md:py-1 text-[7px] md:text-xs bg-green-600 hover:bg-green-500 rounded-md font-bold text-white transition-colors flex-shrink-0"
-            >
-              <PlayIcon className="h-2.5 w-2.5 md:h-3.5 md:w-3.5" />
-              <span className="hidden sm:inline">Run All</span>
-            </button>
-            <button
               onClick={handleToggleRightPanel}
-              className="p-1 md:p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
-              title="Toggle Properties Panel"
+              className="p-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors flex-shrink-0"
+              title="속성 패널 열기/닫기"
             >
-              <CogIcon className="h-4 w-4 md:h-5 md:w-5" />
+              <CogIcon className="h-5 w-5" />
             </button>
           </div>
         </div>
       </header>
+
+      {/* ─── 모바일 전체 메뉴 드로어 (< md) ─── */}
+      {isMobileMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40 md:hidden"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          <div className="fixed top-0 right-0 h-full w-72 max-w-[85vw] bg-white dark:bg-gray-900 z-50 shadow-2xl overflow-y-auto md:hidden">
+            {/* 드로어 헤더 */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-900 z-10">
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">메뉴</span>
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                aria-label="메뉴 닫기"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* 1. 파일 */}
+            <div className="text-[11px] font-semibold text-gray-400 uppercase px-3 pt-3 pb-1">파일</div>
+            <button
+              onClick={() => { handleSavePipeline(); setIsMobileMenuOpen(false); }}
+              disabled={!isDirty}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4 flex-shrink-0" /> 저장
+            </button>
+            <button
+              onClick={() => { handleLoadPipeline(); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <FolderOpenIcon className="h-4 w-4 flex-shrink-0" /> 불러오기
+            </button>
+            <button
+              onClick={() => { handleSetFolder(); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <FolderOpenIcon className="h-4 w-4 flex-shrink-0" /> 폴더 설정
+            </button>
+
+            {/* 2. 내 작업 */}
+            <div className="text-[11px] font-semibold text-gray-400 uppercase px-3 pt-3 pb-1">내 작업</div>
+            <button
+              onClick={() => {
+                const snap = loadLastWork();
+                if (!snap || !snap.modules?.length) {
+                  addLog("INFO", "복원할 마지막 작업이 없습니다.");
+                  setIsMobileMenuOpen(false);
+                  return;
+                }
+                const restored = snap.modules.map((m: any) => ({
+                  ...m,
+                  status: m.outputData ? ModuleStatus.Success : ModuleStatus.Pending,
+                }));
+                resetModules(restored as CanvasModule[]);
+                _setConnections(snap.connections || []);
+                if (snap.projectName) setProjectName(snap.projectName);
+                setSelectedModuleIds([]);
+                setIsDirty(false);
+                addLog(
+                  "SUCCESS",
+                  `마지막 작업을 불러왔습니다 (${restored.length}개 모듈, ${formatSavedAt(snap.savedAt)} 저장).` +
+                    (snap.dataStripped
+                      ? " 데이터가 커서 본문은 제외됐습니다 — 실행 시 파일명으로 자동 재로드하거나 LoadData에서 파일을 다시 선택하세요."
+                      : "")
+                );
+                setIsMobileMenuOpen(false);
+                setTimeout(() => handleFitToView(), 100);
+              }}
+              disabled={!lastWorkMeta}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <span aria-hidden>🕘</span>
+              <span className="flex-1 min-w-0">
+                <span className="block">마지막 작업 불러오기</span>
+                <span className="block text-[10px] text-gray-400 dark:text-gray-500">
+                  {lastWorkMeta
+                    ? `${formatSavedAt(lastWorkMeta.savedAt)} · ${lastWorkMeta.moduleCount}개 모듈${lastWorkMeta.dataStripped ? " · 데이터 제외" : ""}`
+                    : "저장된 작업 없음"}
+                </span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                const input = document.createElement("input");
+                input.type = "file";
+                input.accept = ".json,.mla";
+                input.onchange = (event: Event) => {
+                  const target = event.target as HTMLInputElement;
+                  const file = target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (e: ProgressEvent<FileReader>) => {
+                    try {
+                      const content = e.target?.result as string;
+                      if (!content) { addLog("ERROR", "파일이 비어있습니다."); return; }
+                      const savedState = JSON.parse(content);
+                      if (savedState.modules && savedState.connections) {
+                        resetModules(savedState.modules);
+                        _setConnections(savedState.connections);
+                        if (savedState.projectName) setProjectName(savedState.projectName);
+                        setSelectedModuleIds([]);
+                        setIsDirty(false);
+                        addLog("SUCCESS", `파일 '${file.name}'을 불러왔습니다.`);
+                      } else if (savedState.name && savedState.modules) {
+                        handleLoadSample(savedState.name, "mywork");
+                      } else {
+                        addLog("WARN", "올바르지 않은 파일 형식입니다.");
+                      }
+                    } catch (error) {
+                      console.error("Failed to load file:", error);
+                      addLog("ERROR", "파일을 불러오는데 실패했습니다.");
+                    }
+                  };
+                  reader.readAsText(file);
+                };
+                input.click();
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <FolderOpenIcon className="h-4 w-4 flex-shrink-0 text-blue-400" /> 파일에서 불러오기
+            </button>
+            <button
+              onClick={() => { setIsMobileMenuOpen(false); openSaveOptions("mywork"); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <PlusIcon className="h-4 w-4 flex-shrink-0 text-blue-400" /> 현재 모델 저장
+            </button>
+            <button
+              onClick={() => {
+                const currentModel = {
+                  name: projectName || "My Model",
+                  modules: modules.map((m) => ({ type: m.type, position: m.position, name: m.name, parameters: m.parameters })),
+                  connections: connections.map((c) => ({
+                    fromModuleIndex: modules.findIndex((m) => m.id === c.from.moduleId),
+                    fromPort: c.from.portName,
+                    toModuleIndex: modules.findIndex((m) => m.id === c.to.moduleId),
+                    toPort: c.to.portName,
+                  })),
+                };
+                localStorage.setItem("initialModel", JSON.stringify(currentModel));
+                addLog("SUCCESS", "시작 화면으로 지정되었습니다 (앱을 다시 열면 이 모델로 시작).");
+                setIsMobileMenuOpen(false);
+              }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <StarIcon className="h-4 w-4 flex-shrink-0 text-yellow-400" /> 시작 화면으로 지정
+            </button>
+            {myWorkModels && myWorkModels.length > 0 && (
+              <div className="max-h-40 overflow-y-auto border-y border-gray-200 dark:border-gray-700 my-1">
+                {myWorkModels.map((saved: any) => (
+                  <button
+                    key={saved.name}
+                    onClick={() => { handleLoadSample(saved.name, "mywork"); setIsMobileMenuOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 truncate"
+                  >
+                    {saved.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 3. 편집·보기 */}
+            <div className="text-[11px] font-semibold text-gray-400 uppercase px-3 pt-3 pb-1">편집·보기</div>
+            <button
+              onClick={() => { undo(); setIsMobileMenuOpen(false); }}
+              disabled={!canUndo}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <ArrowUturnLeftIcon className="h-4 w-4 flex-shrink-0" /> 실행 취소
+            </button>
+            <button
+              onClick={() => { redo(); setIsMobileMenuOpen(false); }}
+              disabled={!canRedo}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <ArrowUturnRightIcon className="h-4 w-4 flex-shrink-0" /> 다시 실행
+            </button>
+            <button
+              onClick={() => { toggleTheme(); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              {theme === "dark" ? <SunIcon className="h-4 w-4 flex-shrink-0 text-yellow-400" /> : <MoonIcon className="h-4 w-4 flex-shrink-0" />}
+              테마 전환 (현재: {theme === "dark" ? "다크" : "라이트"})
+            </button>
+
+            {/* 4. AI */}
+            <div className="text-[11px] font-semibold text-gray-400 uppercase px-3 pt-3 pb-1">AI</div>
+            <button
+              onClick={() => { setIsGoalModalOpen(true); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <SparklesIcon className="h-4 w-4 flex-shrink-0 text-purple-500" /> AI로 파이프라인 생성하기
+            </button>
+            <button
+              onClick={() => { setIsDataModalOpen(true); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <SparklesIcon className="h-4 w-4 flex-shrink-0 text-indigo-500" /> AI로 데이터 분석 실행하기
+            </button>
+            <button
+              onClick={() => { setIsAiSettingsOpen(true); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <span aria-hidden>⚙</span> AI API 키 설정
+            </button>
+
+            {/* 5. 고급기능 */}
+            <div className="text-[11px] font-semibold text-gray-400 uppercase px-3 pt-3 pb-1">고급기능</div>
+            <button
+              onClick={() => { setIsAdvancedModalOpen(true); setIsMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left font-semibold ${
+                isAdvancedUnlocked ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+              } hover:bg-gray-100 dark:hover:bg-gray-800`}
+            >
+              <span aria-hidden>{isAdvancedUnlocked ? "🔓" : "🔒"}</span>
+              {isAdvancedUnlocked ? "고급기능 해제됨" : "고급기능 실행"}
+            </button>
+            <button
+              onClick={() => { setIsCodePanelVisible((v) => { if (!v) setIsRightPanelVisible(false); return !v; }); setIsMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <CodeBracketIcon className="h-4 w-4 flex-shrink-0" /> 전체 코드
+            </button>
+            {isAdvancedUnlocked && (
+              <button
+                onClick={() => { handleGenerateModelReport(); setIsMobileMenuOpen(false); }}
+                disabled={isGeneratingReport}
+                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+              >
+                <span aria-hidden>✨</span> {isGeneratingReport ? "보고서 생성 중…" : "모델 분석보고서 생성"}
+              </button>
+            )}
+            <div className="h-6" />
+          </div>
+        </>
+      )}
 
       <div className="flex-grow min-h-0 relative flex flex-col">
         <div className="flex items-center gap-0 border-b border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex-shrink-0 overflow-x-auto scrollbar-hide min-h-0 relative">
@@ -11374,9 +11662,16 @@ result
             </div>
           )}
         </div>
-        <div className="flex flex-1 min-h-0 min-w-0">
+        <div className="flex flex-1 min-h-0 min-w-0 relative">
+          {/* E-1: 모바일 백드롭 (좌측 툴박스 열림 시) */}
+          {isLeftPanelVisible && (
+            <div
+              className="md:hidden fixed inset-0 bg-black/30 z-20"
+              onClick={() => setIsLeftPanelVisible(false)}
+            />
+          )}
           <div
-            className={`flex-shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out ${
+            className={`absolute md:static top-0 left-0 z-30 flex-shrink-0 h-full overflow-hidden transition-[width] duration-300 ease-in-out ${
               isLeftPanelVisible ? "w-56" : "w-0"
             }`}
           >
@@ -11517,7 +11812,7 @@ result
           }`}
         >
           <div
-            className="flex h-full"
+            className="flex h-full max-w-[100vw]"
             style={{ width: `${rightPanelWidth}px` }}
           >
             <div
