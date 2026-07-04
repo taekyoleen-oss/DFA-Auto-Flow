@@ -64,7 +64,9 @@ export const useModalCopy = () => {
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          e.stopImmediatePropagation();
+          // React 합성 이벤트에는 stopImmediatePropagation이 없어 직접 호출 시
+          // TypeError로 handleCopy까지 도달하지 못했다 — nativeEvent 경유가 올바른 호출
+          e.nativeEvent.stopImmediatePropagation();
           handleCopy();
         }}
         className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer focus:outline-none focus:bg-gray-100"

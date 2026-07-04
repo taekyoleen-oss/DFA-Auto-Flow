@@ -362,6 +362,9 @@ const PropertyInput: React.FC<{
   onChange: (value: any) => void;
   type?: string;
   step?: string;
+  // min/max는 일부 호출부가 전달하지만 input에 연결되어 있지 않다(수신만 허용, 동작 불변)
+  min?: string;
+  max?: string;
 }> = ({ label, value, onChange, type = "text", step }) => (
   <div className="mb-3 last:mb-0">
     <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">{label}</label>
@@ -383,7 +386,7 @@ const PropertySelect: React.FC<{
   label: string;
   value: any;
   onChange: (value: string) => void;
-  options: (string | { label: string; value: string })[];
+  options: (string | { label: string; value: string | number })[];
 }> = ({ label, value, onChange, options }) => (
   <div className="mb-3 last:mb-0">
     <label className="block text-sm text-gray-700 dark:text-gray-400 mb-1">{label}</label>
@@ -4908,7 +4911,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       }
 
       // Linear Regression 모듈의 경우 model_type 파라미터에서 실제 모델 타입 가져오기
-      let modelTypeDisplay = modelSource.type;
+      let modelTypeDisplay: string = modelSource.type;
       if (modelSource.type === ModuleType.LinearRegression) {
         const modelTypeParam = modelSource.parameters?.model_type;
         if (modelTypeParam && typeof modelTypeParam === "string") {

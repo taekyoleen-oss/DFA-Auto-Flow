@@ -555,7 +555,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!tabContextMenu) return;
-    const close = (e: MouseEvent) => {
+    const close = (e: globalThis.MouseEvent) => {
       if (tabContextMenuRef.current?.contains(e.target as Node)) return;
       setTabContextMenu(null);
     };
@@ -1870,7 +1870,8 @@ ${header}
         const samples = await loadFolderSamples("http://localhost:3002/api/samples/list");
         if (Array.isArray(samples) && samples.length > 0) {
           console.log(`Loaded ${samples.length} samples from server`);
-          setFolderSamples(samples);
+          // SampleModel과 state 인라인 리터럴 타입이 구조적으로 어긋나 캐스트(동작 불변)
+          setFolderSamples(samples as unknown as typeof folderSamples);
         } else throw new Error("No samples");
       } catch {
         const response = await fetch("/samples-list.json");
@@ -3923,7 +3924,7 @@ ${header}
                 addLog("SUCCESS", `${distType} 분포 적합 완료`);
               } catch (error: any) {
                 const errorMessage = error.message || String(error);
-                addLog("WARNING", `${distType} 분포 적합 실패: ${errorMessage}`);
+                addLog("WARN", `${distType} 분포 적합 실패: ${errorMessage}`);
                 // 실패한 분포도 결과에 포함 (에러 정보와 함께)
                 results.push({
                   distributionType: distType,
@@ -8626,7 +8627,7 @@ result
                 const val = row[col];
                 if (typeof val !== "number" || isNaN(val)) {
                   addLog(
-                    "WARNING",
+                    "WARN",
                     `컬럼 '${col}'의 값이 숫자가 아니거나 NaN입니다. 0으로 대체합니다.`
                   );
                   return 0;
@@ -8638,7 +8639,7 @@ result
               const val = row[label_column];
               if (typeof val !== "number" || isNaN(val)) {
                 addLog(
-                  "WARNING",
+                  "WARN",
                   `레이블 컬럼 '${label_column}'의 값이 숫자가 아니거나 NaN입니다. 0으로 대체합니다.`
                 );
                 return 0;
@@ -12072,7 +12073,7 @@ result
         onClose={() => setIsSampleMenuOpen(false)}
         samples={folderSamples}
         onLoadSample={(sampleName, filename, sampleId) =>
-          handleLoadSample(sampleName, "folder", filename, sampleId)
+          handleLoadSample(sampleName, "folder", filename, sampleId as string)
         }
         onRefresh={loadFolderSamplesLocal}
         isLoading={isLoadingSamples}

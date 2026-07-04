@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { ModuleInsightPanel } from './ModuleInsightPanel';
-import { CanvasModule, ColumnInfo, DataPreview, ModuleType, ThresholdAnalysisOutput } from '../types';
+import { CanvasModule, ColumnInfo, Connection, DataPreview, ModuleType, ThresholdAnalysisOutput } from '../types';
 import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
@@ -2095,7 +2095,7 @@ const PCAScoreVisualization: React.FC<{
                         </div>
                     </header>
                     <main className="flex-grow p-6 overflow-auto">
-                    <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections} />
+                    <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections as unknown as Connection[]} />
                         {/* XoL Contract 파라미터 */}
                         <div className="mb-6">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4">XoL Contract Parameters</h3>
@@ -2425,7 +2425,7 @@ const PCAScoreVisualization: React.FC<{
                     </div>
                 </header>
                 <main className="flex-grow p-4 overflow-auto flex flex-col gap-4">
-                    <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections} />
+                    <ModuleInsightPanel module={module} allModules={allModules} allConnections={allConnections as unknown as Connection[]} />
                     {/* 데이터 개요/요약 (읽기 전용·additive) — 미리보기 데이터가 있을 때만 표시 */}
                     {columns.length > 0 && (
                         <DataOverviewPanel
