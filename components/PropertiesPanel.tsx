@@ -829,10 +829,7 @@ const renderParameters = (
         </div>
       );
     }
-    case ModuleType.LoadData:
-    // XolLoading은 현 ModuleType enum에 없어 런타임상 undefined인 사문 case이나
-    // 동작 보존을 위해 삭제하지 않고 타입만 우회한다.
-    case (ModuleType as any).XolLoading: {
+    case ModuleType.LoadData: {
       const handleBrowseClick = async () => {
         if (folderHandle && (window as any).showOpenFilePicker) {
           try {
@@ -4894,10 +4891,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       );
     }
 
-    if (
-      module.type === ModuleType.LoadData ||
-      module.type === (ModuleType as any).XolLoading
-    ) {
+    if (module.type === ModuleType.LoadData) {
       return (
         <StatRow label="File Name" value={module.parameters.source || "N/A"} />
       );
