@@ -1671,11 +1671,16 @@ ${header}
 
   const handleLoadSample = useCallback(
     async (
-      sampleName: string,
+      sampleName: string | Record<string, any>,
       source: "samples" | "mywork" | "folder" = "samples",
       filename?: string,
       sampleId?: string
     ) => {
+      // 표시용 이름: 샘플 객체를 직접 받은 경우 name 필드 사용
+      const displayName =
+        typeof sampleName === "string"
+          ? sampleName
+          : sampleName?.name || "불러온 모델";
       console.log(
         "handleLoadSample called with:",
         sampleName,
@@ -1689,7 +1694,10 @@ ${header}
       try {
         let sampleModel: any = null;
 
-        if (source === "folder" && sampleId && isSupabaseConfigured()) {
+        // 샘플 객체를 직접 받은 경우(파일에서 불러오기 등) 이름 검색을 건너뛴다.
+        if (typeof sampleName === "object" && sampleName !== null) {
+          sampleModel = sampleName;
+        } else if (source === "folder" && sampleId && isSupabaseConfigured()) {
           const supabaseSample = await fetchAutoflowSampleById(sampleId);
           if (supabaseSample) sampleModel = supabaseSample.file_content;
           if (!sampleModel) {
@@ -1751,9 +1759,12 @@ ${header}
         }
 
         // Convert sample model format to app format
+        // 원본 모듈 ID → 새 모듈 ID 매핑(.mla 저장 포맷의 from/to 연결 처리용)
+        const originalIdToNewIdMap = new Map<string, string>();
         const newModules: CanvasModule[] = sampleModel.modules.map(
           (m: any, index: number) => {
             const moduleId = `module-${Date.now()}-${index}`;
+            if (m.id) originalIdToNewIdMap.set(m.id, moduleId);
             const defaultModule = DEFAULT_MODULES.find(
               (dm) => dm.type === m.type
             );
@@ -1787,21 +1798,49 @@ ${header}
           }
         );
 
-        const newConnections: Connection[] = sampleModel.connections.map(
-          (conn: any, index: number) => {
-            const fromModule = newModules[conn.fromModuleIndex];
-            const toModule = newModules[conn.toModuleIndex];
-            if (!fromModule || !toModule) {
-              addLog("ERROR", `Invalid connection at index ${index}.`);
-              throw new Error(`Invalid connection at index ${index}`);
+        // 연결 형식 2종 지원(ML 표준 미러):
+        // ① fromModuleIndex/toModuleIndex(샘플 포맷)
+        // ② from.moduleId/to.moduleId(.mla 저장 포맷 — Supabase 시드 샘플 포함)
+        // 불량 연결은 전체 로드 실패 대신 경고 후 건너뛴다.
+        const newConnections: Connection[] = sampleModel.connections
+          .map((conn: any, index: number) => {
+            let fromModule: CanvasModule | undefined;
+            let toModule: CanvasModule | undefined;
+            let fromPort: string | undefined;
+            let toPort: string | undefined;
+
+            if (
+              typeof conn.fromModuleIndex === "number" &&
+              typeof conn.toModuleIndex === "number"
+            ) {
+              fromModule = newModules[conn.fromModuleIndex];
+              toModule = newModules[conn.toModuleIndex];
+              fromPort = conn.fromPort || conn.from?.portName;
+              toPort = conn.toPort || conn.to?.portName;
+            } else if (conn.from?.moduleId && conn.to?.moduleId) {
+              const newFromId = originalIdToNewIdMap.get(conn.from.moduleId);
+              const newToId = originalIdToNewIdMap.get(conn.to.moduleId);
+              fromModule = newModules.find((nm) => nm.id === newFromId);
+              toModule = newModules.find((nm) => nm.id === newToId);
+              fromPort = conn.from.portName;
+              toPort = conn.to.portName;
+            }
+
+            if (!fromModule || !toModule || !fromPort || !toPort) {
+              console.warn(`Invalid connection at index ${index}`, conn);
+              addLog(
+                "WARN",
+                `연결 ${index}번을 건너뜁니다(형식 불일치).`
+              );
+              return null;
             }
             return {
               id: `connection-${Date.now()}-${index}`,
-              from: { moduleId: fromModule.id, portName: conn.fromPort },
-              to: { moduleId: toModule.id, portName: conn.toPort },
+              from: { moduleId: fromModule.id, portName: fromPort },
+              to: { moduleId: toModule.id, portName: toPort },
             };
-          }
-        );
+          })
+          .filter((conn: Connection | null): conn is Connection => conn !== null);
 
         // 데이터 자동 바인딩(가산적): 로더 모듈이 파일명만 있고 본문이 없을 때
         // 캐시→번들→Supabase Storage 순으로 본문을 해석해 즉시 실행 가능하게 한다.
@@ -1825,9 +1864,9 @@ ${header}
         _setConnections(newConnections);
         setSelectedModuleIds([]);
         setIsDirty(false);
-        setProjectName(sampleName);
+        setProjectName(displayName);
         setIsSampleMenuOpen(false);
-        addLog("SUCCESS", `Sample model "${sampleName}" loaded successfully.`);
+        addLog("SUCCESS", `Sample model "${displayName}" loaded successfully.`);
         setTimeout(() => handleFitToView(), 100);
       } catch (error: any) {
         console.error("Error loading sample:", error);
@@ -1839,6 +1878,44 @@ ${header}
       }
     },
     [resetModules, addLog, handleFitToView]
+  );
+
+  // '파일에서 불러오기' 공통 처리: 저장 포맷(모듈 id + from/to 연결)은 그대로
+  // 복원하고, 샘플 포맷(fromModuleIndex 또는 id 없는 모듈)은 handleLoadSample의
+  // 변환 경로를 재사용한다. 알 수 없는 형식은 크래시 대신 경고 로그로 처리.
+  const loadWorkFromFileContent = useCallback(
+    async (content: string, fileName: string) => {
+      try {
+        const savedState = JSON.parse(content);
+        const modulesArr = Array.isArray(savedState?.modules)
+          ? savedState.modules
+          : null;
+        const connsArr = Array.isArray(savedState?.connections)
+          ? savedState.connections
+          : null;
+        const isRuntimeFormat =
+          !!modulesArr &&
+          !!connsArr &&
+          modulesArr.every((m: any) => m && typeof m.id === "string") &&
+          connsArr.every((c: any) => c?.from?.moduleId && c?.to?.moduleId);
+        if (isRuntimeFormat) {
+          resetModules(savedState.modules);
+          _setConnections(savedState.connections);
+          if (savedState.projectName) setProjectName(savedState.projectName);
+          setSelectedModuleIds([]);
+          setIsDirty(false);
+          addLog("SUCCESS", `파일 '${fileName}'을 불러왔습니다.`);
+        } else if (modulesArr) {
+          await handleLoadSample(savedState, "mywork");
+        } else {
+          addLog("WARN", "올바르지 않은 파일 형식입니다.");
+        }
+      } catch (error) {
+        console.error("Failed to load file:", error);
+        addLog("ERROR", "파일을 불러오는데 실패했습니다.");
+      }
+    },
+    [resetModules, addLog, handleLoadSample]
   );
 
   // Samples 목록: Supabase(우선, app_section=DFA) → 서버/samples-list.json 폴백
@@ -5259,7 +5336,19 @@ ${header}
             }
           }
         } else if (module.type === ModuleType.Statistics) {
-          const inputData = getSingleInputData(module.id) as DataPreview;
+          const rawStatInput = getSingleInputData(module.id) as
+            | DataPreview
+            | ClaimDataOutput
+            | InflatedDataOutput
+            | FormatChangeOutput;
+          // LoadClaimData 등 래퍼 출력(.data)은 언랩 — SettingThreshold 분기와 동일 패턴
+          const inputData: DataPreview =
+            rawStatInput &&
+            (rawStatInput.type === "ClaimDataOutput" ||
+              rawStatInput.type === "InflatedDataOutput" ||
+              rawStatInput.type === "FormatChangeOutput")
+              ? (rawStatInput as any).data
+              : (rawStatInput as DataPreview);
           if (!inputData || !inputData.rows) {
             throw new Error(
               "Input data not available or is of the wrong type."
@@ -11106,37 +11195,13 @@ result
 
                         const reader = new FileReader();
                         reader.onload = (e: ProgressEvent<FileReader>) => {
-                          try {
-                            const content = e.target?.result as string;
-                            if (!content) {
-                              addLog("ERROR", "파일이 비어있습니다.");
-                              return;
-                            }
-                            const savedState = JSON.parse(content);
-                            if (savedState.modules && savedState.connections) {
-                              resetModules(savedState.modules);
-                              _setConnections(savedState.connections);
-                              if (savedState.projectName) {
-                                setProjectName(savedState.projectName);
-                              }
-                              setSelectedModuleIds([]);
-                              setIsDirty(false);
-                              addLog(
-                                "SUCCESS",
-                                `파일 '${file.name}'을 불러왔습니다.`
-                              );
-                              setIsMyWorkMenuOpen(false);
-                            } else if (savedState.name && savedState.modules) {
-                              // Sample 형식인 경우
-                              handleLoadSample(savedState.name, "mywork");
-                              setIsMyWorkMenuOpen(false);
-                            } else {
-                              addLog("WARN", "올바르지 않은 파일 형식입니다.");
-                            }
-                          } catch (error) {
-                            console.error("Failed to load file:", error);
-                            addLog("ERROR", "파일을 불러오는데 실패했습니다.");
+                          const content = e.target?.result as string;
+                          if (!content) {
+                            addLog("ERROR", "파일이 비어있습니다.");
+                            return;
                           }
+                          loadWorkFromFileContent(content, file.name);
+                          setIsMyWorkMenuOpen(false);
                         };
                         reader.readAsText(file);
                       };
@@ -11421,26 +11486,9 @@ result
                   if (!file) return;
                   const reader = new FileReader();
                   reader.onload = (e: ProgressEvent<FileReader>) => {
-                    try {
-                      const content = e.target?.result as string;
-                      if (!content) { addLog("ERROR", "파일이 비어있습니다."); return; }
-                      const savedState = JSON.parse(content);
-                      if (savedState.modules && savedState.connections) {
-                        resetModules(savedState.modules);
-                        _setConnections(savedState.connections);
-                        if (savedState.projectName) setProjectName(savedState.projectName);
-                        setSelectedModuleIds([]);
-                        setIsDirty(false);
-                        addLog("SUCCESS", `파일 '${file.name}'을 불러왔습니다.`);
-                      } else if (savedState.name && savedState.modules) {
-                        handleLoadSample(savedState.name, "mywork");
-                      } else {
-                        addLog("WARN", "올바르지 않은 파일 형식입니다.");
-                      }
-                    } catch (error) {
-                      console.error("Failed to load file:", error);
-                      addLog("ERROR", "파일을 불러오는데 실패했습니다.");
-                    }
+                    const content = e.target?.result as string;
+                    if (!content) { addLog("ERROR", "파일이 비어있습니다."); return; }
+                    loadWorkFromFileContent(content, file.name);
                   };
                   reader.readAsText(file);
                 };
