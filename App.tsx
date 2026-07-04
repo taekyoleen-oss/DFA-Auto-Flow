@@ -2944,7 +2944,7 @@ ${header}
         setViewingFrequencyModel(module);
       } else if (module.outputData.type === "SeverityModelOutput") {
         setViewingSeverityModel(module);
-      } else if (module.outputData.type === "ThresholdAnalysisOutput") {
+      } else if ((module.outputData.type as string) === "ThresholdAnalysisOutput") {
         setViewingDataForModule(module);
       } else if (module.outputData.type === "CombineLossModelOutput") {
         setViewingDataForModule(module);
@@ -3885,6 +3885,14 @@ ${header}
                 theoreticalCDF: number[];
                 empiricalCDF: number[];
               };
+              cumulativeDistribution?: {
+                percentiles: number[];
+                amounts: number[];
+              };
+              theoreticalCumulative?: {
+                probabilities: number[];
+                amounts: number[];
+              };
               error?: string;
             }> = [];
             let yearlyAggregates: Array<{ year: number; totalAmount: number }> = [];
@@ -4299,7 +4307,9 @@ ${header}
 
             try {
               const pyodideModule = await import("./utils/pyodideRunner");
-              const { fitFrequencySeverityModelPython } = pyodideModule;
+              // 타입 전용: 이 심볼은 pyodideRunner에 선언되어 있지 않으므로(런타임 동작 불변)
+              // 네임스페이스를 any로 캐스팅해 참조만 유지한다.
+              const { fitFrequencySeverityModelPython } = pyodideModule as any;
 
               const result = await fitFrequencySeverityModelPython(
                 actualData.rows || [],
@@ -7007,7 +7017,7 @@ result
                 );
                 throw new Error(`모델 훈련 실패: ${errorMessage}`);
               }
-            } else if (modelSourceModule.type === ModuleType.DecisionTree) {
+            } else if ((modelSourceModule.type as ModuleType) === ModuleType.DecisionTree) {
               // Pyodide를 사용하여 Python으로 Decision Tree 훈련
               const modelPurpose =
                 modelSourceModule.parameters.model_purpose || "classification";
@@ -7107,7 +7117,7 @@ result
                 );
                 throw new Error(`모델 훈련 실패: ${errorMessage}`);
               }
-            } else if (modelSourceModule.type === ModuleType.SVM) {
+            } else if ((modelSourceModule.type as ModuleType) === ModuleType.SVM) {
               // Pyodide를 사용하여 Python으로 SVM 훈련
               const modelPurpose =
                 modelSourceModule.parameters.model_purpose || "classification";
@@ -7201,7 +7211,7 @@ result
                 throw new Error(`모델 훈련 실패: ${errorMessage}`);
               }
             } else if (
-              modelSourceModule.type === ModuleType.LinearDiscriminantAnalysis
+              (modelSourceModule.type as ModuleType) === ModuleType.LinearDiscriminantAnalysis
             ) {
               // Pyodide를 사용하여 Python으로 LDA 훈련
               const solver = modelSourceModule.parameters.solver || "svd";
@@ -7274,7 +7284,7 @@ result
                 addLog("ERROR", `Python LDA 훈련 실패: ${errorMessage}`);
                 throw new Error(`모델 훈련 실패: ${errorMessage}`);
               }
-            } else if (modelSourceModule.type === ModuleType.NaiveBayes) {
+            } else if ((modelSourceModule.type as ModuleType) === ModuleType.NaiveBayes) {
               // Pyodide를 사용하여 Python으로 Naive Bayes 훈련
               const modelType =
                 modelSourceModule.parameters.model_type || "Gaussian";
@@ -10103,7 +10113,7 @@ result
             shouldUpdateModelDefinition = true;
             modelDefinitionNewStatus = ModuleStatus.Success;
           } else if (
-            newStatus === ModuleStatus.Pending ||
+            (newStatus as ModuleStatus) === ModuleStatus.Pending ||
             newStatus === ModuleStatus.Error
           ) {
             // When TrainModel becomes Pending or Error, mark connected model definition module as Pending

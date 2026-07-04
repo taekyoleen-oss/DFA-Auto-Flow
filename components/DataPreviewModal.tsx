@@ -663,7 +663,7 @@ const PCAScatterPlot: React.FC<{
         
         const uniqueValues = new Set(actualValues.map(v => String(v)));
         const validBinaryValues = ['0', '1'];
-        return uniqueValues.size <= 2 && Array.from(uniqueValues).every(v => validBinaryValues.includes(v));
+        return uniqueValues.size <= 2 && Array.from(uniqueValues).every(v => validBinaryValues.includes(v as string));
     }, [hasLabel, modelType, actualValues]);
 
     if (dataPoints.length === 0) {

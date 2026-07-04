@@ -103,7 +103,11 @@ const documentationTypes = [
 // ModelAnalysisReport는 상단 '✨ 모델 분석보고서 생성' 버튼(고급)으로만 추가하도록 강제한다.
 const ADVANCED_ONLY_MODULE_TYPES = [ModuleType.ModelAnalysisReport];
 
-const categorizedModules = [
+const categorizedModules: Array<{
+  name: string;
+  modules: typeof TOOLBOX_MODULES;
+  subCategories?: Array<{ name: string; modules: typeof TOOLBOX_MODULES }>;
+}> = [
   {
     name: "Data Preprocess",
     modules: TOOLBOX_MODULES.filter((m) => preprocessTypes.includes(m.type)),

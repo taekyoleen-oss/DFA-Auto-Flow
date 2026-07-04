@@ -10,7 +10,13 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+export class ErrorBoundary extends React.Component<Props, State> {
+  // React 타입 패키지(@types/react) 미설치 환경에서 베이스 클래스 멤버가
+  // 추론되지 않으므로 타입 전용(declare, 런타임 미방출) 선언으로 보강한다.
+  declare state: State;
+  declare props: Props;
+  declare setState: (partialState: Partial<State>) => void;
+
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };

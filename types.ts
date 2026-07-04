@@ -484,6 +484,7 @@ export interface AggregateModelFitResult {
     probabilities: number[];
     amounts: number[];
   };
+  error?: string;
 }
 
 export interface AggregateModelOutput {
@@ -560,6 +561,7 @@ export interface FrequencyModelFitResult {
     theoreticalCDF: number[];
     empiricalCDF: number[];
   };
+  error?: string;
 }
 
 export interface FrequencyModelOutput {
@@ -579,6 +581,8 @@ export interface SeverityModelFitResult {
     logLikelihood?: number;
     ksStatistic?: number;
     ksPValue?: number;
+    mean?: number;
+    variance?: number;
   };
   qqPlot?: {
     theoreticalQuantiles: number[];
@@ -596,6 +600,7 @@ export interface SeverityModelFitResult {
     probabilities: number[];
     amounts: number[];
   };
+  error?: string;
 }
 
 export interface SeverityModelOutput {

@@ -15,7 +15,9 @@ export const CombineLossModelPreviewModal: React.FC<
   CombineLossModelPreviewModalProps
 > = ({ module, onClose }) => {
   const outputData = module.outputData as CombineLossModelOutput;
-  const contentRef = useCopyOnCtrlC<HTMLDivElement>();
+  // 이 훅은 인자로 ref를 받고 void를 반환한다. 기존 호출은 인자 없이 호출해
+  // 런타임상 undefined ref(=no-op)를 만든다. 동작 보존을 위해 타입만 우회한다.
+  const contentRef = (useCopyOnCtrlC as any)();
 
   if (!outputData || outputData.type !== "CombineLossModelOutput") {
     return null;

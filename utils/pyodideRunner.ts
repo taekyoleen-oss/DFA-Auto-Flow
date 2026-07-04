@@ -194,7 +194,7 @@ finally:
     timeoutMs,
     '실행 타임아웃 (90초 초과)'
   );
-  const jsResult = result && typeof result.toJs === 'function' ? result.toJs() : result;
+  const jsResult = result && typeof (result as any).toJs === 'function' ? (result as any).toJs() : result;
   return { stdout: jsResult?.[0] || '', error: jsResult?.[1] || null };
 }
 
@@ -2268,7 +2268,7 @@ json.dumps(result_dict)
       `Count Regression 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const result = JSON.parse(resultJson);
+    const result = JSON.parse(resultJson as string);
 
     return {
       coefficients: result.coefficients,
@@ -2687,7 +2687,7 @@ json.dumps(result_dict)
       `Stats Model 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const result = JSON.parse(resultJson);
+    const result = JSON.parse(resultJson as string);
 
     return {
       summary: result.summary,
@@ -3029,7 +3029,7 @@ json.dumps(result)
       `DiversionChecker 실행 타임아웃 (${timeoutMs / 1000}초 초과)`
     );
 
-    const result = JSON.parse(resultJson);
+    const result = JSON.parse(resultJson as string);
 
     return {
       phi: result.phi,
