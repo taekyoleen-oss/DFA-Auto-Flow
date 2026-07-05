@@ -3,6 +3,7 @@ import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SimulateAggDistOutput } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface SimulateAggDistPreviewModalProps {
   module: CanvasModule;
@@ -207,6 +208,14 @@ export const SimulateAggDistPreviewModal: React.FC<SimulateAggDistPreviewModalPr
                          (Total: {simulationCount.toLocaleString('ko-KR')})
                         </span>
                     </h3>
+                    <TableDownloadButton
+                      filename={`${module.name}_시뮬레이션결과`}
+                      columns={['#', 'Simulated Value']}
+                      rows={output.rawSimulations.map((value, index) => ({
+                        '#': index + 1,
+                        'Simulated Value': value,
+                      }))}
+                    />
                   </div>
                    <div className="flex-1 rounded-lg overflow-auto min-h-0" style={{ maxHeight: 'calc(10 * 2.5rem + 2.5rem)' }}>
                     <table className="min-w-full text-xs">

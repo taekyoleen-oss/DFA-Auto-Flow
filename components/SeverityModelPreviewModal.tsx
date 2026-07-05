@@ -4,6 +4,7 @@ import { CanvasModule, SeverityModelOutput, SeverityModelFitResult } from '../ty
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 
 // Magnifier hook for graphs
 const useGraphMagnifier = () => {
@@ -1445,7 +1446,22 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
 
             {/* Distribution Comparison Table */}
             <div>
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Distribution Comparison</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Distribution Comparison</h3>
+                <TableDownloadButton
+                  filename={`${module.name}_분포비교`}
+                  columns={['Distribution', 'AIC', 'BIC', 'Log Likelihood', 'KS Statistic', 'KS P-Value']}
+                  rows={sortedResults.map(result => ({
+                    'Distribution': result.distributionType
+                      + (result.distributionType === recommended?.distributionType ? ' (Recommended)' : ''),
+                    'AIC': result.fitStatistics?.aic ?? 'N/A',
+                    'BIC': result.fitStatistics?.bic ?? 'N/A',
+                    'Log Likelihood': result.fitStatistics?.logLikelihood ?? 'N/A',
+                    'KS Statistic': result.fitStatistics?.ksStatistic ?? 'N/A',
+                    'KS P-Value': result.fitStatistics?.ksPValue ?? 'N/A',
+                  }))}
+                />
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">

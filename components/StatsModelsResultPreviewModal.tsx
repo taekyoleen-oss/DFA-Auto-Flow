@@ -4,6 +4,7 @@ import { CanvasModule, StatsModelsResultOutput } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
 import { generateAiText } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface StatsModelsResultPreviewModalProps {
     module: CanvasModule;
@@ -141,6 +142,21 @@ ${coefficientsText}
                         <hr className="my-4 border-gray-300"/>
 
                         <div>
+                            <div className="flex justify-end mb-2 font-sans">
+                                <TableDownloadButton
+                                    filename={`${module.name}_회귀계수`}
+                                    columns={['Parameter', 'coef', 'std err', isOLS ? 't' : 'z', isOLS ? 'P>|t|' : 'P>|z|', '[0.025', '0.975]']}
+                                    rows={Object.entries(summary.coefficients).map(([param, values]) => ({
+                                        'Parameter': param,
+                                        'coef': values.coef,
+                                        'std err': values['std err'],
+                                        [isOLS ? 't' : 'z']: (isOLS ? values.t : values.z) ?? 0,
+                                        [isOLS ? 'P>|t|' : 'P>|z|']: (isOLS ? values['P>|t|'] : values['P>|z|']) ?? 0,
+                                        '[0.025': values['[0.025'],
+                                        '0.975]': values['0.975]'],
+                                    }))}
+                                />
+                            </div>
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="border-b-2 border-gray-300">

@@ -4,6 +4,7 @@ import { CanvasModule, TrainedModelOutput, ModuleType } from '../types';
 import { XCircleIcon, SparklesIcon } from './icons';
 import { generateAiText } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface TrainedModelPreviewModalProps {
     module: CanvasModule;
@@ -459,7 +460,17 @@ ${topFeatures}
                             {tuningSummary.candidates && tuningSummary.candidates.length > 0 && (
                                 <>
                                     <div className="mt-4">
-                                        <p className="text-gray-600 mb-2">Top Candidates</p>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <p className="text-gray-600">Top Candidates</p>
+                                            <TableDownloadButton
+                                                filename={`${module.name}_튜닝후보`}
+                                                columns={['Parameters', 'Score']}
+                                                rows={tuningSummary.candidates.map(candidate => ({
+                                                    'Parameters': Object.entries(candidate.params).map(([k, v]) => `${k}: ${v}`).join('; '),
+                                                    'Score': candidate.score,
+                                                }))}
+                                            />
+                                        </div>
                                         <div className="bg-white rounded-lg border border-blue-100 max-h-48 overflow-y-auto">
                                             <table className="w-full text-xs">
                                                 <thead className="bg-blue-100 text-blue-900">
@@ -513,7 +524,20 @@ ${topFeatures}
                     <ModalModelMetrics metrics={metrics} />
 
                     <div>
-                        <h4 className="text-md font-semibold text-gray-700 mb-2">Coefficients / Feature Importances</h4>
+                        <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-md font-semibold text-gray-700">Coefficients / Feature Importances</h4>
+                            <TableDownloadButton
+                                filename={`${module.name}_계수_중요도`}
+                                columns={['Feature', 'Value']}
+                                rows={[
+                                    { 'Feature': '(Intercept)', 'Value': intercept },
+                                    ...Object.entries(coefficients).map(([feature, value]) => ({
+                                        'Feature': feature,
+                                        'Value': value,
+                                    })),
+                                ]}
+                            />
+                        </div>
                         <div className="bg-gray-50 rounded-lg border border-gray-200 max-h-60 overflow-y-auto">
                             <table className="w-full text-sm">
                                 <thead className="sticky top-0 bg-gray-100">

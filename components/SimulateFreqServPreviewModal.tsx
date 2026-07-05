@@ -3,6 +3,7 @@ import { ModuleInsightPanel } from "./ModuleInsightPanel";
 import { CanvasModule, SimulateAggDistOutput } from '../types';
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface SimulateFreqServPreviewModalProps {
   module: CanvasModule;
@@ -290,15 +291,25 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
             {/* Raw Simulation Results Table */}
             {isXolFormat && displayClaimLevelData && displayClaimLevelData.length > 0 ? (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                  사고별 집계 (XoL 사용)
-                  <span className="text-sm font-normal text-gray-500 ml-2">
-                    {claimLevelData && claimLevelData.length > 10000 
-                      ? `(표시: ${displayClaimLevelData.length.toLocaleString('ko-KR')}건 / 총 ${claimLevelData.length.toLocaleString('ko-KR')}건)`
-                      : `(총 ${displayClaimLevelData.length.toLocaleString('ko-KR')}건)`
-                    }
-                  </span>
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    사고별 집계 (XoL 사용)
+                    <span className="text-sm font-normal text-gray-500 ml-2">
+                      {claimLevelData && claimLevelData.length > 10000
+                        ? `(표시: ${displayClaimLevelData.length.toLocaleString('ko-KR')}건 / 총 ${claimLevelData.length.toLocaleString('ko-KR')}건)`
+                        : `(총 ${displayClaimLevelData.length.toLocaleString('ko-KR')}건)`
+                      }
+                    </span>
+                  </h3>
+                  <TableDownloadButton
+                    filename={`${module.name}_사고별집계`}
+                    columns={['시뮬레이션 번호', '보험금']}
+                    rows={(claimLevelData || displayClaimLevelData).map(item => ({
+                      '시뮬레이션 번호': item.simulationNumber,
+                      '보험금': item.claimAmount,
+                    }))}
+                  />
+                </div>
                 <div className="overflow-x-auto" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 sticky top-0">
@@ -324,14 +335,24 @@ export const SimulateFreqServPreviewModal: React.FC<SimulateFreqServPreviewModal
               </div>
             ) : output.rawSimulations && output.rawSimulations.length > 0 ? (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                  Simulation Results (Raw Values)
-                  {output.rawSimulations.length >= 100 && (
-                    <span className="text-sm font-normal text-gray-500 ml-2">
-                      (Showing first 100 of {simulationCount.toLocaleString('ko-KR')})
-                    </span>
-                  )}
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Simulation Results (Raw Values)
+                    {output.rawSimulations.length >= 100 && (
+                      <span className="text-sm font-normal text-gray-500 ml-2">
+                        (Showing first 100 of {simulationCount.toLocaleString('ko-KR')})
+                      </span>
+                    )}
+                  </h3>
+                  <TableDownloadButton
+                    filename={`${module.name}_시뮬레이션결과`}
+                    columns={['#', 'Simulated Value']}
+                    rows={output.rawSimulations.map((value, index) => ({
+                      '#': index + 1,
+                      'Simulated Value': value,
+                    }))}
+                  />
+                </div>
                 <div className="overflow-x-auto max-h-96 overflow-y-auto">
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50 sticky top-0">

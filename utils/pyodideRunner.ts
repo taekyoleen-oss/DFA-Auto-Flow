@@ -5019,6 +5019,19 @@ if is_classification:
         y_true = _le.transform(np.asarray(y_true).astype(str))
         y_pred_proba = _le.transform(np.asarray(y_pred_proba).astype(str)).astype(float)
 
+    # prediction_column이 하드 라벨(0/1 등)이라 확률이 아닐 때, ScoreModel이 생성한
+    # '*_Predict_Proba_1' 양성 클래스 확률 컬럼이 df에 있으면 그것을 스코어로 채택한다
+    # (결정적, 이진일 때만 — ML 표준 미러). threshold 스윕/ROC/PR가 실확률로 동작한다.
+    _uniq_scores = np.unique(np.asarray(y_pred_proba)[~pd.isna(np.asarray(y_pred_proba))]) if len(y_pred_proba) > 0 else np.array([])
+    _looks_hard = len(_uniq_scores) <= 2 and all(float(v) in (0.0, 1.0) for v in _uniq_scores.tolist())
+    if _looks_hard:
+        _proba_cols = sorted([c for c in df.columns if str(c).endswith('_Predict_Proba_1')])
+        if len(np.unique(y_true)) == 2 and len(_proba_cols) >= 1:
+            try:
+                y_pred_proba = np.asarray(df[_proba_cols[0]].values, dtype=float)
+            except Exception:
+                pass
+
     # 확률값을 threshold 기반으로 이진 분류로 변환
     y_pred = (y_pred_proba >= threshold).astype(int)
     

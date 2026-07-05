@@ -5,6 +5,7 @@ import { XCircleIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { generateAiText } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 
 type SortConfig = {
     key: string;
@@ -182,7 +183,7 @@ export const StatsTable: React.FC<{
 };
 
 // A component to display data rows in a table
-export const DataTable: React.FC<{ title: string; data: DataPreview }> = ({ title, data }) => {
+export const DataTable: React.FC<{ title: string; data: DataPreview; moduleName?: string }> = ({ title, data, moduleName }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>(null);
     const [maxRows, setMaxRows] = useState(100); // 표시할 최대 행 수
     const allColumns = useMemo(() => data.columns, [data]);
@@ -225,14 +226,21 @@ export const DataTable: React.FC<{ title: string; data: DataPreview }> = ({ titl
                 <h3 className="text-lg font-semibold text-gray-700">
                     {title} Table ({data.totalRowCount} rows)
                 </h3>
-                {hasMoreRows && (
-                    <button
-                        onClick={() => setMaxRows(prev => prev + 100)}
-                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-                    >
-                        더 보기 ({sortedRows.length - maxRows}개 남음)
-                    </button>
-                )}
+                <div className="flex items-center gap-3">
+                    {hasMoreRows && (
+                        <button
+                            onClick={() => setMaxRows(prev => prev + 100)}
+                            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                        >
+                            더 보기 ({sortedRows.length - maxRows}개 남음)
+                        </button>
+                    )}
+                    <TableDownloadButton
+                        filename={`${moduleName ? moduleName + '_' : ''}${title}`}
+                        columns={allColumns}
+                        rows={rows}
+                    />
+                </div>
             </div>
             {allColumns.length === 0 ? (
                 <p className="text-sm text-gray-500">No columns to display.</p>
@@ -422,8 +430,8 @@ You are an ML educator. Please explain the following concepts in Korean, each in
                         </div>
                     )}
                     <div className="space-y-6">
-                      <DataTable title="Train Data" data={output.train} />
-                      <DataTable title="Test Data" data={output.test} />
+                      <DataTable title="Train Data" data={output.train} moduleName={module.name} />
+                      <DataTable title="Test Data" data={output.test} moduleName={module.name} />
                     </div>
                 </main>
             </div>

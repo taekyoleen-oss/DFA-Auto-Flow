@@ -4,6 +4,7 @@ import { CanvasModule, FrequencyModelOutput, FrequencyModelFitResult } from '../
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 
 // Magnifier hook for graphs
 const useGraphMagnifier = () => {
@@ -1476,7 +1477,24 @@ export const FrequencyModelPreviewModal: React.FC<FrequencyModelPreviewModalProp
 
               {/* Distribution Comparison Table */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Distribution Comparison</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Distribution Comparison</h3>
+                  <TableDownloadButton
+                    filename={`${module.name}_분포비교`}
+                    columns={['Distribution', 'AIC', 'BIC', 'Log Likelihood', 'Mean', 'Variance', 'Dispersion']}
+                    rows={sortedResults.map(result => ({
+                      'Distribution': result.distributionType
+                        + (recommended && result.distributionType === recommended.distributionType && !result.error ? ' (Recommended)'
+                           : result.error ? ' (Error)' : ''),
+                      'AIC': result.error ? result.error : (result.fitStatistics?.aic ?? 'N/A'),
+                      'BIC': result.error ? '-' : (result.fitStatistics?.bic ?? 'N/A'),
+                      'Log Likelihood': result.error ? '-' : (result.fitStatistics?.logLikelihood ?? 'N/A'),
+                      'Mean': result.error ? '-' : (result.fitStatistics?.mean ?? 'N/A'),
+                      'Variance': result.error ? '-' : (result.fitStatistics?.variance ?? 'N/A'),
+                      'Dispersion': result.error ? '-' : (result.fitStatistics?.dispersion ?? 'N/A'),
+                    }))}
+                  />
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">

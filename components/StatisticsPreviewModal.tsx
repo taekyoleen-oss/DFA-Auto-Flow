@@ -6,6 +6,7 @@ import { generateAiText } from "../utils/aiClient";
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
 import { useModalCopy } from '../hooks/useModalCopy';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface StatisticsPreviewModalProps {
     module: CanvasModule;
@@ -307,7 +308,20 @@ ${correlationText}
 
                     {/* Descriptive Statistics Section */}
                     <div>
-                        <h3 className="text-lg font-semibold mb-2 text-gray-700">Descriptive Statistics</h3>
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-lg font-semibold text-gray-700">Descriptive Statistics</h3>
+                            <TableDownloadButton
+                                filename={`${module.name}_기술통계`}
+                                columns={['Metric', ...Object.keys(stats)]}
+                                rows={statDisplay.map(({ key, label }) => {
+                                    const row: Record<string, any> = { Metric: label };
+                                    Object.keys(stats).forEach(col => {
+                                        row[col] = (stats[col] as any)[key];
+                                    });
+                                    return row;
+                                })}
+                            />
+                        </div>
                         <div className="overflow-x-auto border border-gray-200 rounded-lg">
                             <table className="w-full text-sm text-left table-auto">
                                 <thead className="bg-gray-50">

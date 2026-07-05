@@ -4,6 +4,7 @@ import { XCircleIcon } from "./icons";
 import { CanvasModule } from "../types";
 import { XolPricingOutput } from "../types";
 import { useCopyOnCtrlC } from "../hooks/useCopyOnCtrlC";
+import { TableDownloadButton } from "./TableDownloadButton";
 
 interface XolPricingPreviewModalProps {
   module: CanvasModule;
@@ -200,7 +201,20 @@ export const XolPricingPreviewModal: React.FC<XolPricingPreviewModalProps> = ({ 
             <div className="space-y-6">
               {/* Summary Table */}
               <div className="border border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Summary</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Summary</h3>
+                  <TableDownloadButton
+                    filename={`${module.name}_Summary`}
+                    columns={['Calculator', 'Net Premium', 'Gross Premium', 'ROL', 'Payback Period']}
+                    rows={summaryData.map(row => ({
+                      'Calculator': row.name,
+                      'Net Premium': row.netPremium,
+                      'Gross Premium': row.grossPremium,
+                      'ROL': row.rol,
+                      'Payback Period': row.paybackPeriod,
+                    }))}
+                  />
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">

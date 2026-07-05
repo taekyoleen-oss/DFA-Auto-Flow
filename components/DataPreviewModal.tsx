@@ -4,6 +4,7 @@ import { CanvasModule, ColumnInfo, Connection, DataPreview, ModuleType, Threshol
 import { XCircleIcon, ChevronUpIcon, ChevronDownIcon, SparklesIcon, ArrowDownTrayIcon } from './icons';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 // import { calculatePCAForScoreVisualization } from '../utils/pyodideRunner'; // Python 버전 (이상치 처리)
 import { calculatePCA } from '../utils/pcaCalculator'; // JavaScript 버전 (ml-pca 사용)
 import { computeDataOverview } from '../utils/dataOverview';
@@ -1037,7 +1038,8 @@ const DataOverviewPanel: React.FC<{
     columns: ColumnInfo[];
     rows: Record<string, any>[];
     totalRowCount?: number | null;
-}> = ({ columns, rows, totalRowCount }) => {
+    moduleName?: string;
+}> = ({ columns, rows, totalRowCount, moduleName }) => {
     const overview = useMemo(
         () => computeDataOverview({ columns, rows, totalRowCount }),
         [columns, rows, totalRowCount]
@@ -1067,6 +1069,18 @@ const DataOverviewPanel: React.FC<{
                 )}
             </summary>
             <div className="px-4 pb-3 pt-1 overflow-x-auto">
+                <div className="flex justify-end mb-1">
+                    <TableDownloadButton
+                        filename={`${moduleName ? moduleName + '_' : ''}데이터개요`}
+                        columns={['컬럼', '추론 타입', '결측/빈값', '결측비율(%)']}
+                        rows={overview.columns.map((col) => ({
+                            '컬럼': col.name || '(이름 없음)',
+                            '추론 타입': col.inferredTypeLabel,
+                            '결측/빈값': col.missingCount,
+                            '결측비율(%)': col.hasMissing ? (col.missingRatio * 100) : 0,
+                        }))}
+                    />
+                </div>
                 <table className="min-w-full text-xs text-left border-t border-gray-200">
                     <thead>
                         <tr className="text-gray-500">
@@ -2300,7 +2314,23 @@ const PCAScoreVisualization: React.FC<{
                                 {/* 연도별 통계 */}
                                 {inputSummary.yearlyStats && inputSummary.yearlyStats.length > 0 && (
                                     <div className="mb-6">
-                                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Yearly Statistics (연도별 통계)</h3>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-lg font-semibold text-gray-800">Yearly Statistics (연도별 통계)</h3>
+                                            <TableDownloadButton
+                                                filename={`${module.name}_연도별통계`}
+                                                columns={['Year', 'Count', 'Total Amount', 'Mean Amount', 'Total Retention', 'Total Excess', 'Total XoL Claim', 'XoL Ratio(%)']}
+                                                rows={inputSummary.yearlyStats.map(stat => ({
+                                                    'Year': stat.year,
+                                                    'Count': stat.count,
+                                                    'Total Amount': stat.totalAmount,
+                                                    'Mean Amount': stat.meanAmount,
+                                                    'Total Retention': stat.totalRetention,
+                                                    'Total Excess': stat.totalExcess,
+                                                    'Total XoL Claim': stat.totalXolClaim,
+                                                    'XoL Ratio(%)': stat.xolRatio,
+                                                }))}
+                                            />
+                                        </div>
                                         <div className="overflow-x-auto">
                                             <table className="min-w-full divide-y divide-gray-200">
                                                 <thead className="bg-gray-50">
@@ -2432,6 +2462,7 @@ const PCAScoreVisualization: React.FC<{
                             columns={columns}
                             rows={rows}
                             totalRowCount={displayData?.totalRowCount}
+                            moduleName={module.name}
                         />
                     )}
                     {/* XoL Calculator 모듈의 경우 탭 구성 */}
@@ -2587,6 +2618,11 @@ const PCAScoreVisualization: React.FC<{
                                                 <div className="text-xs text-gray-600">
                                                     Showing {Math.min((xolData.rows || []).length, 1000)} of {xolData.totalRowCount.toLocaleString()} rows and {xolData.columns.length} columns. Click a column to see details.
                                 </div>
+                                                <TableDownloadButton
+                                                    filename={`${module.name}_연도별XoL`}
+                                                    columns={xolData.columns.map(c => c.name)}
+                                                    rows={xolData.rows || []}
+                                                />
                             </div>
                                             
                                             {/* 1. 테이블 표시 영역 */}
@@ -2839,6 +2875,13 @@ const PCAScoreVisualization: React.FC<{
                                             {/* 건별 XoL 적용 탭 */}
                             {/* 테이블 영역 - 열 10개까지 바로 보이고 나머지는 스크롤, 행은 1000개까지만 표시 */}
                             <div className="flex-shrink-0 mb-4">
+                                <div className="flex justify-end mb-2">
+                                    <TableDownloadButton
+                                        filename={`${module.name}_건별XoL`}
+                                        columns={(xolData?.columns || []).map(c => c.name)}
+                                        rows={xolData?.rows || []}
+                                    />
+                                </div>
                                 <div className="overflow-x-auto overflow-y-auto border border-gray-200 rounded-lg" style={{ maxHeight: '400px' }}>
                                     <table className="min-w-full text-sm text-left" style={{ minWidth: 'max-content' }}>
                                         <thead className="bg-gray-50 sticky top-0">

@@ -4,6 +4,7 @@ import { CanvasModule, AggregateModelOutput, AggregateModelFitResult } from '../
 import { XCircleIcon, ArrowDownTrayIcon } from './icons';
 import { useCopyOnCtrlC } from '../hooks/useCopyOnCtrlC';
 import { SpreadViewModal } from './SpreadViewModal';
+import { TableDownloadButton } from './TableDownloadButton';
 
 interface AggregateModelPreviewModalProps {
   module: CanvasModule;
@@ -319,7 +320,23 @@ export const AggregateModelPreviewModal: React.FC<AggregateModelPreviewModalProp
 
             {/* All Distributions Comparison Table */}
             <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Distribution Comparison</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">Distribution Comparison</h3>
+                <TableDownloadButton
+                  filename={`${module.name}_분포비교`}
+                  columns={['Distribution', 'AIC', 'BIC', 'Log Likelihood']}
+                  rows={sortedResults.map(result => {
+                    const hasError = !!(result as any).error;
+                    const isRecommended = result.distributionType === recommended?.distributionType && !hasError;
+                    return {
+                      'Distribution': result.distributionType + (hasError ? ' (Failed)' : isRecommended ? ' (Recommended)' : ''),
+                      'AIC': hasError ? 'Error' : (result.fitStatistics?.aic ?? 'N/A'),
+                      'BIC': hasError ? 'Error' : (result.fitStatistics?.bic ?? 'N/A'),
+                      'Log Likelihood': hasError ? 'Error' : (result.fitStatistics?.logLikelihood ?? 'N/A'),
+                    };
+                  })}
+                />
+              </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="bg-gray-50">
@@ -489,7 +506,17 @@ export const AggregateModelPreviewModal: React.FC<AggregateModelPreviewModalProp
             {/* Yearly Aggregates */}
             {yearlyAggregates && yearlyAggregates.length > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">Yearly Aggregates</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Yearly Aggregates</h3>
+                  <TableDownloadButton
+                    filename={`${module.name}_연도별집계`}
+                    columns={['Year', 'Total Amount']}
+                    rows={yearlyAggregates.map(agg => ({
+                      'Year': agg?.year ?? 'N/A',
+                      'Total Amount': agg?.totalAmount ?? 'N/A',
+                    }))}
+                  />
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead className="bg-gray-50">
