@@ -1,1 +1,5 @@
-/* DFA Auto Flow - 기본 스타일은 Tailwind CDN 사용 */
+/* Tailwind 빌드 통합 엔트리 (기존 CDN 대체).
+   preflight(base)는 CDN과 동일하게 포함된다. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
