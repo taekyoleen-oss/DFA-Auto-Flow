@@ -5305,7 +5305,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               onClick={() => onViewDetails(module.id)}
               className="w-full px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 rounded-md font-semibold text-white transition-colors"
             >
-              View Details
+              결과 보기
             </button>
           </div>
         )}

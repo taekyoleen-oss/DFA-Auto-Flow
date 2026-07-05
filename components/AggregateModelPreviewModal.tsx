@@ -545,7 +545,7 @@ export const AggregateModelPreviewModal: React.FC<AggregateModelPreviewModalProp
             {/* View Details Section */}
             {sortedResults.length > 0 && sortedResults[0] && !(sortedResults[0] as any).error && (
               <div className="bg-white border border-gray-200 rounded-lg p-4" ref={viewDetailsRef}>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">View Details (Ctrl+C to copy)</h3>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">상세 보기 (Ctrl+C로 복사)</h3>
                 <div className="space-y-4">
                   {/* Cumulative Distribution Chart (누적 막대그래프 + 각 분포 선 그래프) */}
                   {(() => {

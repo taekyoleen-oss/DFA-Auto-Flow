@@ -1514,7 +1514,7 @@ export const SeverityModelPreviewModal: React.FC<SeverityModelPreviewModalProps>
             {localSelected && sortedResults.find(r => r.distributionType === localSelected) && (
               <div className="bg-white border border-gray-200 rounded-lg p-4" ref={viewDetailsRef}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-800">View Details (Ctrl+C to copy)</h3>
+                  <h3 className="text-lg font-semibold text-gray-800">상세 보기 (Ctrl+C로 복사)</h3>
                   <div className="flex items-center gap-2">
                     <label className="text-sm font-medium text-gray-700">Select Distribution:</label>
                     <select

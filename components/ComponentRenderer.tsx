@@ -501,7 +501,7 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
                       }`}
                       disabled={module.status !== ModuleStatus.Success}
                   >
-                      {module.status === ModuleStatus.Success ? 'View Details' : module.status}
+                      {module.status === ModuleStatus.Success ? '결과 보기' : module.status}
                   </button>
               </>
           )}

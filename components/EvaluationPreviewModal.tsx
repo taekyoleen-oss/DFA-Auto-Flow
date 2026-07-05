@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ModuleInsightPanel } from "./ModuleInsightPanel";
-import { CanvasModule, EvaluationOutput, ConfusionMatrix } from '../types';
+import { CanvasModule, EvaluationOutput, ConfusionMatrix, DataPreview, Connection } from '../types';
 import { XCircleIcon } from './icons';
 import { TableDownloadButton } from './TableDownloadButton';
 
@@ -8,6 +8,9 @@ interface EvaluationPreviewModalProps {
     module: CanvasModule;
     onClose: () => void;
     onThresholdChange?: (moduleId: string, threshold: number) => void;
+    // 회귀 잔차 진단용(선택): 입력 데이터 역추적에 사용 — ML 표준 미러
+    allModules?: CanvasModule[];
+    allConnections?: Connection[];
 }
 
 interface ThresholdTableRow {
@@ -22,10 +25,12 @@ interface ThresholdTableRow {
     fn: number;
 }
 
-export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({ 
-    module, 
+export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
+    module,
     onClose,
-    onThresholdChange 
+    onThresholdChange,
+    allModules,
+    allConnections
 }) => {
     const output = module.outputData as EvaluationOutput;
     if (!output || output.type !== 'EvaluationOutput') return null;
@@ -33,6 +38,64 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
     const { modelType, metrics, confusionMatrix, threshold: currentThreshold, thresholdMetrics: outputThresholdMetrics } = output;
     const [selectedThreshold, setSelectedThreshold] = useState<number>(currentThreshold ?? 0.5);
     const [selectedRow, setSelectedRow] = useState<ThresholdTableRow | null>(null);
+    // 회귀 잔차 진단 플롯(잔차 vs 실제 + 잔차 분포) — 앱 표시용(재현성 무관), ML 표준 미러
+    const [residualPlotImage, setResidualPlotImage] = useState<string | null>(null);
+
+    // 회귀: EvaluateModel의 입력(data_in) 데이터 역추적 — 잔차 계산에 사용
+    const getInputData = useMemo((): DataPreview | null => {
+        if (modelType !== 'regression' || !allModules || !allConnections) return null;
+        const inputConnection = allConnections.find(
+            (c) =>
+                c && c.to && c.to.moduleId === module.id && c.to.portName === "data_in"
+        );
+        if (!inputConnection || !inputConnection.from) return null;
+        const sourceModule = allModules.find(
+            (m) => m && m.id === inputConnection.from.moduleId
+        );
+        if (!sourceModule?.outputData) return null;
+        if (sourceModule.outputData.type === "DataPreview") {
+            return sourceModule.outputData as DataPreview;
+        }
+        if (sourceModule.outputData.type === "SplitDataOutput") {
+            const fromPortName = inputConnection.from?.portName;
+            if (fromPortName === "train_data_out") {
+                return (sourceModule.outputData as any).train;
+            } else if (fromPortName === "test_data_out") {
+                return (sourceModule.outputData as any).test;
+            }
+        }
+        return null;
+    }, [module.id, modelType, allModules, allConnections]);
+
+    // 회귀 잔차 진단 플롯 생성(잔차 = 예측 - 실제)
+    useEffect(() => {
+        if (modelType === 'regression' && getInputData && module.parameters) {
+            const labelColumn = module.parameters.label_column;
+            const predictionColumn = module.parameters.prediction_column;
+            if (labelColumn && predictionColumn && getInputData.rows) {
+                const generateResidual = async () => {
+                    try {
+                        const pyodideModule = await import('../utils/pyodideRunner');
+                        const { generateResidualPlotPython } = pyodideModule;
+                        const img = await generateResidualPlotPython(
+                            getInputData.rows || [],
+                            labelColumn,
+                            predictionColumn
+                        );
+                        setResidualPlotImage(img);
+                    } catch (error: any) {
+                        console.error('Failed to generate residual plot:', error);
+                        setResidualPlotImage(null);
+                    }
+                };
+                generateResidual();
+            } else {
+                setResidualPlotImage(null);
+            }
+        } else {
+            setResidualPlotImage(null);
+        }
+    }, [modelType, getInputData, module.parameters]);
     const [selectedColumn1, setSelectedColumn1] = useState<string>('accuracy');
     const [selectedColumn2, setSelectedColumn2] = useState<string>('');
 
@@ -949,6 +1012,7 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
 
                     {/* Regression metrics */}
                     {modelType === 'regression' && (
+                        <>
                         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
                         <h3 className="text-lg font-semibold text-gray-700 mb-4 text-center">
                             Performance Metrics
@@ -964,6 +1028,26 @@ export const EvaluationPreviewModal: React.FC<EvaluationPreviewModalProps> = ({
                             ))}
                         </div>
                     </div>
+
+                        {/* Residual Diagnostics (잔차 진단) — ML 표준 미러 */}
+                        {residualPlotImage && (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                                <h3 className="text-lg font-semibold text-gray-700 mb-1 text-center">
+                                    Residual Diagnostics (잔차 진단)
+                                </h3>
+                                <p className="text-xs text-gray-500 text-center mb-3">
+                                    잔차 = 예측 − 실제. 좌: 잔차 vs 실제(0 기준선 주위 무작위가 이상적) · 우: 잔차 분포(치우침·이상치 확인)
+                                </p>
+                                <div className="flex items-center justify-center">
+                                    <img
+                                        src={`data:image/png;base64,${residualPlotImage}`}
+                                        alt="Residual Diagnostics"
+                                        className="max-w-full h-auto"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                        </>
                     )}
                 </main>
             </div>
