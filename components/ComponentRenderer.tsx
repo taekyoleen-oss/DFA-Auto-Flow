@@ -272,7 +272,7 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
     guideTimerRef.current = window.setTimeout(() => {
       const r = el.getBoundingClientRect();
       onShowGuide(module.id, { left: r.left, top: r.top, right: r.right, bottom: r.bottom });
-    }, 550);
+    }, 1200);
   };
 
   const handleModuleMouseLeave = () => {
