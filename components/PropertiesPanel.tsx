@@ -48,6 +48,7 @@ import * as XLSX from "xlsx";
 import { ExcelInputModal } from "./ExcelInputModal";
 import { ModuleDescriptionModal } from "./ModuleDescriptionModal";
 import { useTheme } from "../contexts/ThemeContext";
+import { readTextFileSmart } from "../utils/fileEncoding";
 
 type TerminalLog = {
   id: number;
@@ -732,17 +733,14 @@ const renderParameters = (
                 sheetName: firstSheetName,
               });
             } else {
-              // CSV 파일 처리
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                const content = e.target?.result as string;
+              // CSV 파일 처리 (인코딩 자동 감지: EUC-KR/CP949 한글 깨짐 방지)
+              readTextFileSmart(file).then((content) => {
                 updateModuleParameters(module.id, {
                   source: file.name,
                   fileContent: content,
                   fileType: "csv",
                 });
-              };
-              reader.readAsText(file);
+              });
             }
           } catch (error: any) {
             if (error.name !== "AbortError") {
@@ -846,15 +844,13 @@ const renderParameters = (
               ],
             });
             const file = await fileHandle.getFile();
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const content = e.target?.result as string;
+            // CSV 파일 처리 (인코딩 자동 감지: EUC-KR/CP949 한글 깨짐 방지)
+            readTextFileSmart(file).then((content) => {
               updateModuleParameters(module.id, {
                 source: file.name,
                 fileContent: content,
               });
-            };
-            reader.readAsText(file);
+            });
           } catch (error: any) {
             if (error.name !== "AbortError") {
               console.warn(
@@ -4774,17 +4770,14 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       };
       reader.readAsArrayBuffer(file);
     } else {
-      // CSV 파일 처리 (기존 로직)
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const content = e.target?.result as string;
+      // CSV 파일 처리 (인코딩 자동 감지: EUC-KR/CP949 한글 깨짐 방지)
+      readTextFileSmart(file).then((content) => {
         updateModuleParameters(module.id, {
           source: file.name,
           fileContent: content,
           fileType: module.type === ModuleType.LoadClaimData ? "csv" : undefined,
         });
-      };
-      reader.readAsText(file);
+      });
     }
   };
 

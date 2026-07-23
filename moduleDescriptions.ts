@@ -27,6 +27,10 @@ export interface ModuleDescription {
   /** 흔한 오류 — 자주 막히는 지점과 해결법 (경고 톤으로 표시) */
   commonErrors?: string;
   notes?: string;
+  /** 포트별 연결 안내 — { 포트이름: "이 포트에 무엇을 연결/무엇이 나오는지" }.
+   *  캔버스에서 모듈에 마우스를 올려 기다리면 뜨는 연결 안내 툴팁에 사용된다.
+   *  지정하지 않은 포트는 포트 타입 기반 기본 문구로 표시된다. */
+  portHints?: Record<string, string>;
 }
 
 export const MODULE_DESCRIPTIONS: Partial<
@@ -182,6 +186,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "지도학습에서 과적합을 막고 일반화 성능을 정직하게 평가할 때.",
     connections: "전처리 → SplitData → (train)TrainModel · (test)ScoreModel/EvaluateModel.",
     commonErrors: "train·test 포트를 바꿔 연결하면 평가가 왜곡됩니다. random_state를 비우면 매 실행 결과가 달라집니다.",
+    portHints: {
+      data_in: "분할할 전처리 완료 데이터를 연결하세요.",
+      train_data_out: "학습셋이 나옵니다 → TrainModel의 data_in으로 연결.",
+      test_data_out: "테스트셋이 나옵니다 → ScoreModel/EvaluateModel로 연결.",
+    },
   },
 
   // ===== DFA: Threshold / Split =====
@@ -199,6 +208,10 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "대형/소형 클레임을 나누는 임계값(attachment point)을 데이터에 근거해 정할 때.",
     connections: "LoadClaimData/FormatChange → SettingThreshold → SplitByThreshold(threshold 포트) / 분포 적합.",
     commonErrors: "thresholds가 데이터 범위 밖이면 모든 건수가 0 또는 전체가 됩니다 — 통계의 분위수를 참고해 후보를 정하세요.",
+    portHints: {
+      data_in: "임계값을 분석할 클레임 데이터를 연결하세요 (대상 금액 컬럼 포함).",
+      threshold_out: "선택한 임계값이 나옵니다 → SplitByThreshold/ApplyThreshold의 threshold_in으로.",
+    },
   },
   [ModuleType.ThresholdAnalysis]: {
     title: "Threshold Analysis",
@@ -263,6 +276,12 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "어트리션(소형 다발) 손해와 대형 손해를 분리해 각각 다른 분포·모델로 다룰 때(재보험 layering의 사전 단계).",
     connections: "SettingThreshold(threshold) → SplitByThreshold → (below)FitAggregateModel · (above)FitSeverityModel/ApplyThreshold.",
     commonErrors: "임계값이 데이터 범위 밖이면 한쪽 출력이 비어 후속 모듈이 실패합니다. date_column이 연도화돼 있어야 below 집계가 맞습니다.",
+    portHints: {
+      threshold_in: "임계값을 연결하세요 (SettingThreshold의 threshold_out, 선택 — 파라미터로도 지정 가능).",
+      data_in: "분할할 클레임 데이터를 연결하세요 (금액·연도 컬럼).",
+      below_threshold_out: "임계값 '아래' = 소형(연도별 합계) 데이터가 나옵니다.",
+      above_threshold_out: "임계값 '위' = 대형(개별 클레임) 데이터가 나옵니다.",
+    },
   },
   [ModuleType.SplitByFreqServ]: {
     title: "Split By Freq-Sev",
@@ -278,6 +297,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "빈도·심도를 각각 분포로 적합해 합성하는 집계손해(collective risk) 모델을 만들 때.",
     connections: "LoadClaimData/FormatChange → SplitByFreqServ → (frequency)FitFrequencyModel · (severity)FitSeverityModel → SimulateFreqServ.",
     commonErrors: "date_column이 연도로 해석되지 않으면 빈도 집계가 틀어집니다 — 먼저 FormatChange를 적용하세요.",
+    portHints: {
+      data_in: "분해할 클레임 데이터를 연결하세요 (금액·날짜 컬럼).",
+      frequency_out: "빈도(연도별 건수) 데이터가 나옵니다 → FitFrequencyModel로.",
+      severity_out: "심도(개별 클레임 금액) 데이터가 나옵니다 → FitSeverityModel로.",
+    },
   },
 
   // ===== DFA: Distribution Fitting & Simulation =====
@@ -310,6 +334,10 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "집계 손해의 전체 분포·꼬리 위험(VaR 등)을 추정할 때.",
     connections: "FitAggregateModel → SimulateAggDist → CombineLossModel.",
     commonErrors: "시뮬레이션 횟수가 적으면 상위 분위수(꼬리) 추정이 부정확합니다. params 포트가 비면 실행되지 않습니다.",
+    portHints: {
+      model_in: "적합된 집계 분포(FitAggregateModel의 출력)를 연결하세요.",
+      simulation_out: "시뮬레이션된 집계 손해·통계가 나옵니다 → CombineLossModel로.",
+    },
   },
   [ModuleType.FitFrequencyModel]: {
     title: "Fit Frequency Model",
@@ -355,6 +383,12 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "빈도와 심도를 따로 모델링한 뒤 합쳐 집계 손해 분포를 만들 때(집계법 대안).",
     connections: "FitFrequencyModel + FitSeverityModel → SimulateFreqServ → CombineLossModel / XoL 계산.",
     commonErrors: "빈도·심도 모수 포트를 둘 다 연결해야 합니다. 시뮬레이션 횟수가 적으면 꼬리 추정이 부정확합니다.",
+    portHints: {
+      frequency_in: "빈도 분포(FitFrequencyModel의 출력)를 연결하세요.",
+      severity_in: "심도 분포(FitSeverityModel의 출력)를 연결하세요.",
+      output_1: "연도별 집계(DFA 형식)가 나옵니다 → CombineLossModel로.",
+      output_2: "개별 사고 집계(XoL 형식)가 나옵니다 → XolCalculator로.",
+    },
   },
   [ModuleType.CombineLossModel]: {
     title: "Combine Loss Model",
@@ -370,6 +404,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "복수 경로로 추정한 손해를 합쳐 자본요건·꼬리위험(VaR/TVaR)을 평가할 때.",
     connections: "SimulateAggDist + SimulateFreqServ → CombineLossModel.",
     commonErrors: "두 입력 배열 길이(시뮬레이션 횟수)가 맞아야 원소별 합산이 됩니다. 분포 간 의존(상관)을 무시하면 꼬리 위험이 과소평가될 수 있습니다.",
+    portHints: {
+      agg_dist_in: "집계 시뮬레이션 결과(SimulateAggDist)를 연결하세요.",
+      freq_serv_in: "빈도-심도 시뮬레이션 결과(SimulateFreqServ의 output_1)를 연결하세요.",
+      combined_out: "결합된 종합 손해 분포 + VaR/TVaR이 나옵니다.",
+    },
   },
 
   // ===== Reinsurance: Distribution / Exposure / XoL =====
@@ -432,6 +471,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "경험 기반 XoL 분석에서 보유금액 미만의 소형 클레임을 제외할 때.",
     connections: "LoadClaimData → ApplyThreshold → DefineXolContract/CalculateCededLoss.",
     commonErrors: "임계값이 너무 높으면 0행이 남아 후속 모듈이 실패합니다 — 필터 후 건수를 확인하세요.",
+    portHints: {
+      threshold_in: "임계값을 연결하세요 (SettingThreshold의 threshold_out, 선택).",
+      data_in: "필터링할 클레임 데이터를 연결하세요 (손해 컬럼).",
+      data_out: "임계값 이상 대형 클레임만 남은 데이터가 나옵니다.",
+    },
   },
   [ModuleType.DefineXolContract]: {
     title: "XoL Contract",
@@ -447,6 +491,9 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "경험 기반 XoL 손해·요율 계산에 앞서 계약 구조를 명시할 때.",
     connections: "→ (contract)CalculateCededLoss/XolCalculator/PriceXolContract.",
     commonErrors: "이 모듈만으로는 손해가 계산되지 않습니다 — contract 포트를 계산 모듈에 연결해야 합니다. expenseRatio·요율은 % 단위로 입력합니다.",
+    portHints: {
+      contract_out: "정의한 XoL 계약 조건이 나옵니다 → CalculateCededLoss/XolCalculator/PriceXolContract의 contract_in으로.",
+    },
   },
   [ModuleType.CalculateCededLoss]: {
     title: "Calculate Ceded Loss",
@@ -462,6 +509,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "경험 데이터로 재보험사가 부담할 손해를 산출할 때(burning cost 요율의 입력).",
     connections: "DefineXolContract(contract) + 클레임 데이터 → CalculateCededLoss → PriceXolContract.",
     commonErrors: "contract·data 포트를 둘 다 연결해야 합니다. loss_column이 보정 전 금액이면 결과가 달라지니 ApplyInflation 적용 여부를 확인하세요.",
+    portHints: {
+      data_in: "클레임 데이터를 연결하세요 (손해 컬럼).",
+      contract_in: "XoL 계약(DefineXolContract의 contract_out)을 연결하세요.",
+      data_out: "'ceded_loss'(출재손해) 컬럼이 추가된 데이터가 나옵니다 → PriceXolContract로.",
+    },
   },
   [ModuleType.PriceXolContract]: {
     title: "Price XoL Contract",
@@ -477,6 +529,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "충분한 경험 데이터로 경험 기반(experience rating) 요율을 산출할 때.",
     connections: "CalculateCededLoss → PriceXolContract.",
     commonErrors: "연도 수가 적으면 변동성 추정이 불안정합니다. ceded_loss_column·year_column을 정확히 지정하세요.",
+    portHints: {
+      data_in: "출재손해가 계산된 데이터를 연결하세요 (CalculateCededLoss의 data_out).",
+      contract_in: "XoL 계약(DefineXolContract의 contract_out)을 연결하세요.",
+      price_out: "순보험료·총보험료(gross premium)가 나옵니다.",
+    },
   },
   [ModuleType.XolCalculator]: {
     title: "XoL Calculator",
@@ -492,6 +549,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "계약 조건별 XoL 손해를 클레임 단위로 산출해 XolPricing 입력으로 쓸 때.",
     connections: "DefineXolContract(contract) + 클레임 데이터 → XolCalculator → XolPricing.",
     commonErrors: "contract·data 포트를 둘 다 연결해야 합니다. CalculateCededLoss와 계산식은 사실상 동일하니(min/max layering) 워크플로에 맞는 쪽을 쓰세요.",
+    portHints: {
+      contract_in: "XoL 계약(DefineXolContract의 contract_out)을 연결하세요.",
+      data_in: "클레임 데이터를 연결하세요 (클레임 컬럼). SimulateFreqServ의 output_2도 가능.",
+      data_out: "'XoL Claim(Incl. Limit)' 컬럼이 추가된 데이터가 나옵니다 → XolPricing으로.",
+    },
   },
   [ModuleType.XolPricing]: {
     title: "XoL Pricing",
@@ -507,6 +569,10 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "XoL 손해 계산 결과를 실제 청구 가능한 요율·보험료로 변환할 때.",
     connections: "XolCalculator → XolPricing.",
     commonErrors: "입력이 비어 있으면 산출되지 않습니다. expenseRate는 % 단위로, 1 미만 분모(1−사업비)가 되도록 합리적 범위로 입력하세요.",
+    portHints: {
+      data_in: "XolCalculator의 결과(data_out)를 연결하세요 (여러 계약 연결 가능).",
+      pricing_out: "계약별 순/총보험료·요율이 나옵니다.",
+    },
   },
   [ModuleType.ExperienceModel]: {
     title: "Experience Model",
@@ -522,6 +588,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "경험 기반 워크플로에서 계약 적용 결과를 데이터에 붙여 분석할 때.",
     connections: "DefineXolContract(contract) + 클레임 데이터 → ExperienceModel → 경험 분석/요율.",
     commonErrors: "contract·data 포트를 둘 다 연결해야 합니다. XolCalculator와 목적이 겹치니 파이프라인 일관성을 유지하세요.",
+    portHints: {
+      contract_in: "XoL 계약(DefineXolContract의 contract_out)을 연결하세요.",
+      data_in: "클레임 데이터를 연결하세요 (클레임 컬럼).",
+      data_out: "XoL 손해가 계산된 데이터가 나옵니다 → 경험 분석/요율로.",
+    },
   },
 
   // ===== Supervised Learning Models =====
@@ -700,6 +771,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "지도학습 모델 정의를 실제로 적합시킬 때.",
     connections: "(model_in)모델정의 · (data_in)SplitData.train → TrainModel → ScoreModel/EvaluateModel.",
     commonErrors: "model_in·data_in 둘 다 연결해야 합니다. label_column 미지정 시 학습 실패. 피처에 결측·문자열이 남으면 fit 오류.",
+    portHints: {
+      model_in: "모델 '정의'를 연결하세요 (LinearRegression/DecisionTree/RandomForest 등).",
+      data_in: "학습 데이터를 연결하세요 (보통 SplitData의 train_data_out).",
+      trained_model_out: "학습된 모델이 나옵니다 → ScoreModel/EvaluateModel의 model_in으로.",
+    },
   },
   [ModuleType.ScoreModel]: {
     title: "Score Model",
@@ -714,6 +790,11 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "학습된 모델로 테스트셋/실데이터를 예측할 때.",
     connections: "TrainModel → ScoreModel ←(data)SplitData.test → EvaluateModel.",
     commonErrors: "학습에 쓰인 피처 컬럼과 추론 데이터의 컬럼이 일치해야 합니다.",
+    portHints: {
+      model_in: "학습된 모델을 연결하세요 (TrainModel의 trained_model_out).",
+      data_in: "예측할 데이터를 연결하세요 (보통 SplitData의 test_data_out).",
+      scored_data_out: "예측(Predict 컬럼 포함) 결과가 나옵니다 → EvaluateModel로.",
+    },
   },
   [ModuleType.EvaluateModel]: {
     title: "Evaluate Model",
@@ -729,6 +810,10 @@ export const MODULE_DESCRIPTIONS: Partial<
     whenToUse: "모델 성능을 정량 지표로 확인하고 비교할 때.",
     connections: "ScoreModel → EvaluateModel.",
     commonErrors: "model_type(분류/회귀)을 실제 타깃과 맞춰야 지표가 맞습니다.",
+    portHints: {
+      data_in: "예측 결과(ScoreModel의 scored_data_out)를 연결하세요.",
+      evaluation_out: "성능 지표·혼동행렬 등 평가 결과가 나옵니다.",
+    },
   },
 
   // ===== Traditional Statistics (statsmodels GLM) =====
