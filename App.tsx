@@ -2442,15 +2442,24 @@ ${header}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // 초기 마운트 시에만 실행
 
-  // 모듈 배열에 따라 자동으로 Fit to View 실행
+  // 자동 Fit to View: 파이프라인을 "처음 채우거나(빈 캔버스→모듈) 통째로 교체 로드"할
+  // 때만 실행한다. 단순 모듈 이동·편집·한 개 추가/삭제에는 화면을 자동으로
+  // 축소/이동시키지 않는다(사용자 요청: 자동 fit은 명시적 동작에서만).
+  const prevModuleIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (modules.length > 0) {
-      // 약간의 지연을 두어 DOM이 완전히 렌더링된 후 실행
-      const timer = setTimeout(() => {
-        handleFitToView();
-      }, 100);
-      return () => clearTimeout(timer);
-    }
+    const currentIds = new Set(modules.map((m) => m.id));
+    const prevIds = prevModuleIdsRef.current;
+    prevModuleIdsRef.current = currentIds;
+    if (currentIds.size === 0) return;
+    // 이전이 비었거나(초기/세션 복원), 겹치는 모듈이 하나도 없을 때(파이프라인 교체 로드)만 fit.
+    const isInitialOrReplace =
+      prevIds.size === 0 ||
+      ![...currentIds].some((id) => prevIds.has(id));
+    if (!isInitialOrReplace) return;
+    const timer = setTimeout(() => {
+      handleFitToView();
+    }, 100);
+    return () => clearTimeout(timer);
   }, [modules, handleFitToView]);
 
   // Close sample menu and my work menu when clicking outside
