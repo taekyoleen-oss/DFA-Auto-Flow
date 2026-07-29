@@ -1,7 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="6" fill="#0f172a"/>
-  <rect x="6" y="16" width="4" height="9" rx="1" fill="#14b8a6"/>
-  <rect x="12" y="11" width="4" height="14" rx="1" fill="#0ea5e9"/>
-  <rect x="18" y="13" width="4" height="12" rx="1" fill="#14b8a6"/>
-  <rect x="24" y="7" width="4" height="18" rx="1" fill="#f59e0b"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect x="0" y="0" width="200" height="200" rx="44" fill="#1B2845"/>
+  <rect x="40" y="40" width="80" height="20" fill="#FAFAF7"/>
+  <rect x="60" y="60" width="20" height="40" fill="#FAFAF7"/>
+  <rect x="60" y="100" width="20" height="60" fill="#4A90C2"/>
+  <rect x="80" y="100" width="20" height="20" fill="#4A90C2"/>
+  <rect x="100" y="80" width="20" height="20" fill="#4A90C2"/>
+  <rect x="120" y="60" width="20" height="20" fill="#4A90C2"/>
+  <rect x="80" y="120" width="20" height="20" fill="#4A90C2"/>
+  <rect x="100" y="140" width="20" height="20" fill="#4A90C2"/>
+  <rect x="120" y="160" width="20" height="20" fill="#4A90C2"/>
 </svg>

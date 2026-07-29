@@ -373,7 +373,7 @@ export const Toolbox: React.FC<ToolboxProps> = ({
       </div>
       <div className="p-2 border-t border-gray-300 dark:border-gray-700 flex-shrink-0">
         <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-2">
-          Developed by TKLEEN
+          Developed by tk<span className="text-[#4A90C2]">L</span>een
         </p>
         <a
           href="https://www.ai4insurance.com"
