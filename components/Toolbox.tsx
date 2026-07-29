@@ -3,7 +3,6 @@ import { TOOLBOX_MODULES } from "../constants";
 import { ModuleType } from "../types";
 import { useAdvancedFeature } from "../contexts/AdvancedFeatureContext";
 import {
-  LinkIcon,
   ChevronUpIcon,
   ChevronDownIcon,
   DocumentTextIcon,
@@ -373,21 +372,16 @@ export const Toolbox: React.FC<ToolboxProps> = ({
         </div>
       </div>
       <div className="p-2 border-t border-gray-300 dark:border-gray-700 flex-shrink-0">
-        {/* tkLeen 브랜드 락업 — 마크 + 워드마크(L만 Sky Blue) */}
-        <div className="flex items-center justify-center gap-1.5 mb-2">
-          <LogoIcon className="h-4 w-4 flex-shrink-0" />
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Developed by tk<span className="text-[#4A90C2]">L</span>een
-          </p>
-        </div>
+        {/* tkLeen 브랜드 락업(마크 + 워드마크) — 클릭 시 ai4insurance.com */}
         <a
           href="https://www.ai4insurance.com"
           target="_blank"
           rel="noopener noreferrer"
-          title="Go to ai4insurance.com"
-          className="mx-auto flex items-center justify-center w-6 h-6 bg-gray-500 dark:bg-gray-600 hover:bg-gray-600 dark:hover:bg-gray-500 rounded-md text-white transition-colors"
+          title="tkLeen — ai4insurance.com"
+          className="flex items-center justify-center gap-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
         >
-          <LinkIcon className="w-5 h-5" />
+          <LogoIcon className="h-4 w-4 flex-shrink-0" />
+          <span className="text-sm">tk<span className="text-[#4A90C2]">L</span>een</span>
         </a>
       </div>
     </aside>
