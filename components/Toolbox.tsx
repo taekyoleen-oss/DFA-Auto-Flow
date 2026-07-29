@@ -10,6 +10,7 @@ import {
   RectangleStackIcon,
   FontSizeIncreaseIcon,
   FontSizeDecreaseIcon,
+  LogoIcon,
 } from "./icons";
 
 interface ToolboxProps {
@@ -372,9 +373,13 @@ export const Toolbox: React.FC<ToolboxProps> = ({
         </div>
       </div>
       <div className="p-2 border-t border-gray-300 dark:border-gray-700 flex-shrink-0">
-        <p className="text-sm text-gray-600 dark:text-gray-400 text-center mb-2">
-          Developed by tk<span className="text-[#4A90C2]">L</span>een
-        </p>
+        {/* tkLeen 브랜드 락업 — 마크 + 워드마크(L만 Sky Blue) */}
+        <div className="flex items-center justify-center gap-1.5 mb-2">
+          <LogoIcon className="h-4 w-4 flex-shrink-0" />
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Developed by tk<span className="text-[#4A90C2]">L</span>een
+          </p>
+        </div>
         <a
           href="https://www.ai4insurance.com"
           target="_blank"

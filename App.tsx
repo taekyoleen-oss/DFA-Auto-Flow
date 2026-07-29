@@ -87,7 +87,6 @@ const formatSavedAt = (ts: number): string => {
   }
 };
 import {
-  LogoIcon,
   PlayIcon,
   CodeBracketIcon,
   FolderOpenIcon,
@@ -11006,7 +11005,6 @@ result
         {/* 첫 번째 줄: 제목 및 모델 이름 */}
         <div className="flex items-center w-full">
           <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-            <LogoIcon className="h-5 w-5 md:h-6 md:w-6 text-gray-900 dark:text-white flex-shrink-0" />
             <h1 className="text-base md:text-xl font-bold text-gray-900 dark:text-white tracking-machined flex-shrink-0">
               DFA Auto Flow
             </h1>
