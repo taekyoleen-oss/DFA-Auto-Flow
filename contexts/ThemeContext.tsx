@@ -19,9 +19,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 2) localStorage
     const saved = localStorage.getItem('theme');
     if (saved === 'light' || saved === 'dark') return saved as Theme;
-    // 3) 시스템 설정
-    if (window.matchMedia?.('(prefers-color-scheme: dark)').matches) return 'dark';
-    if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light';
+    // 3) 기본값은 항상 다크 — BMW M 디자인 시스템은 검정 캔버스 전용이다.
+    //    (라이트는 사용자가 토글로 명시 선택했을 때만 — 위 localStorage 분기)
     return 'dark';
   });
 

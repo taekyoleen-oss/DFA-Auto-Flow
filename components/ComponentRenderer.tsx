@@ -67,7 +67,7 @@ const statusDotColors = {
 };
 
 const statusIcons = {
-    [ModuleStatus.Pending]: <CogIcon className="w-4 h-4 text-gray-400" />,
+    [ModuleStatus.Pending]: <CogIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />,
     [ModuleStatus.Running]: <CogIcon className="w-4 h-4 text-blue-400 animate-spin" />,
     [ModuleStatus.Success]: <CheckCircleIcon className="w-4 h-4 text-green-400" />,
     [ModuleStatus.Error]: <XCircleIcon className="w-4 h-4 text-red-400" />,
@@ -534,8 +534,8 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
                                   : "text-blue-500";
                           } else {
                               return theme === "light"
-                                  ? "text-gray-500"
-                                  : "text-gray-600";
+                                  ? "text-gray-700"
+                                  : "text-gray-300";
                           }
                       };
                       const buttonColor = getRunButtonColor();
@@ -567,8 +567,8 @@ export const ComponentRenderer: React.FC<ModuleNodeProps> = ({ module, isSelecte
                       onClick={(e) => { e.stopPropagation(); onViewDetails(module.id); }}
                       className={`text-xs disabled:cursor-not-allowed ${
                         theme === "light"
-                          ? "text-gray-700 hover:text-gray-900 disabled:text-gray-400"
-                          : "text-gray-400 hover:text-white disabled:text-gray-600"
+                          ? "text-gray-900 hover:text-black disabled:text-gray-800"
+                          : "text-white hover:text-white disabled:text-gray-300"
                       }`}
                       disabled={module.status !== ModuleStatus.Success}
                   >

@@ -3,3 +3,56 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── BMW M 스타일 레이어(2026-07-29) ──────────────────────────────────────
+   색/라운드/폰트는 tailwind.config.js 토큰에서 이미 재정의된다.
+   여기에는 토큰으로 표현할 수 없는 3가지만 둔다: 캔버스 바닥, 타이포 대비(700/300),
+   M 트라이컬러 스트라이프. 컴포넌트는 하나도 수정하지 않는다. */
+@layer base {
+  html.dark body {
+    background-color: #000;
+    color: #bbbbbb; /* body */
+  }
+
+  /* 디스플레이(700)와 본문(300)의 대비가 이 시스템의 편집 시그니처 */
+  h1,
+  h2,
+  h3 {
+    font-weight: 700;
+    text-transform: uppercase; /* 한글은 영향 없음 — 라틴 라벨만 대문자 */
+    letter-spacing: 0;
+  }
+
+  /* 버튼 라벨은 "machined" 느낌의 트래킹 — 대문자 + 자간 */
+  button {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  /* 사용자가 입력/표시하는 실제 값은 대문자화하지 않는다 */
+  input,
+  textarea,
+  select,
+  option,
+  pre,
+  code {
+    text-transform: none;
+    letter-spacing: normal;
+  }
+}
+
+@layer components {
+  /* M 트라이컬러 4px 스트라이프 — 이 시스템의 유일한 장식 요소.
+     브랜드 표식 전용(버튼/배경 채움 금지). */
+  .m-stripe {
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      #0066b1 0%,
+      #0066b1 33.33%,
+      #1c69d4 33.33%,
+      #1c69d4 66.66%,
+      #e22718 66.66%,
+      #e22718 100%
+    );
+  }
+}

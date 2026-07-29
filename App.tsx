@@ -147,6 +147,15 @@ import { loadSampleFromFolder, loadFolderSamples } from "./utils/samples";
 import { bindDatasetsToModules, contentSizeMB, EMBED_SIZE_LIMIT_MB, resolveDatasetContent, uploadDatasetToWeb } from "./utils/datasetRegistry";
 import { SaveModelOptionsModal, type LoaderDataInfo, type SaveDecisions } from "./components/SaveModelOptionsModal";
 import { setPyodideStatusCallback } from "./utils/pyodideRunner";
+
+// ── BMW M: 상단 메뉴 버튼은 2색만 사용한다 ────────────────────────────────
+// 여러 색(초록/보라/남색/청록/호박…)으로 흩어져 있던 헤더 액션을 두 가지로 통일.
+//   BTN_PRIMARY — 흰 채움 + 검정 라벨 (실행 등 주요 액션 / 활성 상태)
+//   BTN_FLAT    — 투명 + 1px 헤어라인 + 흰 라벨 (그 외 모든 메뉴)
+const BTN_PRIMARY =
+  "bg-gray-900 dark:bg-white text-white dark:text-black border border-gray-900 dark:border-white hover:bg-gray-700 dark:hover:bg-gray-200";
+const BTN_FLAT =
+  "bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white";
 import {
   isSupabaseConfigured,
   fetchAutoflowSamplesList,
@@ -10997,8 +11006,8 @@ result
         {/* 첫 번째 줄: 제목 및 모델 이름 */}
         <div className="flex items-center w-full">
           <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
-            <LogoIcon className="h-5 w-5 md:h-6 md:w-6 text-blue-500 dark:text-blue-400 flex-shrink-0" />
-            <h1 className="text-base md:text-xl font-bold text-blue-600 dark:text-blue-300 tracking-wide flex-shrink-0">
+            <LogoIcon className="h-5 w-5 md:h-6 md:w-6 text-gray-900 dark:text-white flex-shrink-0" />
+            <h1 className="text-base md:text-xl font-bold text-gray-900 dark:text-white tracking-machined flex-shrink-0">
               DFA Auto Flow
             </h1>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -11055,7 +11064,7 @@ result
               e.stopPropagation();
               setIsSampleMenuOpen(true);
             }}
-            className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md font-semibold bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200 transition-colors flex-shrink-0"
+            className="flex items-center gap-1 px-2 py-1.5 text-xs rounded-md font-semibold bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white transition-colors flex-shrink-0"
             title="샘플 모델 불러오기"
             type="button"
           >
@@ -11065,7 +11074,7 @@ result
           <div className="flex-1" />
           <button
             onClick={handleRunAll}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-bold bg-green-600 hover:bg-green-500 text-white transition-colors flex-shrink-0"
+            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs rounded-md font-bold transition-colors flex-shrink-0 ${BTN_PRIMARY}`}
             title="전체 모듈 실행"
           >
             <PlayIcon className="h-4 w-4" />
@@ -11126,7 +11135,7 @@ result
           <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
           <button
             onClick={handleSetFolder}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
             title="저장 폴더 설정"
           >
             <FolderOpenIcon className="h-4 w-4" />
@@ -11134,7 +11143,7 @@ result
           </button>
           <button
             onClick={handleLoadPipeline}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
+            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
             title="파이프라인 불러오기"
           >
             <FolderOpenIcon className="h-4 w-4" />
@@ -11146,7 +11155,7 @@ result
             className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors flex-shrink-0 ${
               !isDirty
                 ? "bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50 text-gray-500 dark:text-gray-500"
-                : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-100"
+                : "bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white"
             }`}
             title="파이프라인 저장"
           >
@@ -11160,7 +11169,7 @@ result
           <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
           <button
             onClick={handleRunAll}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors flex-shrink-0 bg-green-600 hover:bg-green-500 text-white"
+            className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors flex-shrink-0 ${BTN_PRIMARY}`}
             title="전체 모듈 실행"
           >
             <PlayIcon className="h-4 w-4" />
@@ -11191,9 +11200,7 @@ result
                   setIsSampleMenuOpen((prev) => !prev);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors cursor-pointer ${
-                  isSampleMenuOpen
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200"
+                  isSampleMenuOpen ? BTN_PRIMARY : BTN_FLAT
                 }`}
                 title="샘플 모델 불러오기"
                 type="button"
@@ -11215,9 +11222,7 @@ result
                   setIsMyWorkMenuOpen((prev) => !prev);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors cursor-pointer ${
-                  isMyWorkMenuOpen
-                    ? "bg-purple-600 text-white"
-                    : "bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-900 dark:text-gray-200"
+                  isMyWorkMenuOpen ? BTN_PRIMARY : BTN_FLAT
                 }`}
                 title="내 작업"
                 type="button"
@@ -11442,7 +11447,7 @@ result
                 if (!v) setIsRightPanelVisible(false); // 코드 패널 열면 속성 패널 닫기
                 return !v;
               })}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-900 dark:text-white rounded-md font-semibold transition-colors flex-shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white rounded-md font-semibold transition-colors flex-shrink-0"
               title="전체 파이프라인 코드 보기"
             >
               <CodeBracketIcon className="h-3.5 w-3.5" />
@@ -11450,7 +11455,7 @@ result
             </button>
             <button
               onClick={() => setIsGoalModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-purple-600 dark:bg-purple-600 hover:bg-purple-700 dark:hover:bg-purple-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-semibold transition-colors flex-shrink-0 ${BTN_FLAT}`}
               title="목표로부터 파이프라인 자동 생성"
             >
               <SparklesIcon className="h-3.5 w-3.5" />
@@ -11460,7 +11465,7 @@ result
             </button>
             <button
               onClick={() => setIsDataModalOpen(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] bg-indigo-600 dark:bg-indigo-600 hover:bg-indigo-700 dark:hover:bg-indigo-700 text-white rounded-md font-semibold transition-colors flex-shrink-0"
+              className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-semibold transition-colors flex-shrink-0 ${BTN_FLAT}`}
               title="데이터로부터 파이프라인 자동 생성"
             >
               <SparklesIcon className="h-3.5 w-3.5" />
@@ -11473,10 +11478,8 @@ result
               <button
                 onClick={handleGenerateModelReport}
                 disabled={isGeneratingReport}
-                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-semibold transition-colors flex-shrink-0 text-white ${
-                  isGeneratingReport
-                    ? "bg-cyan-700 opacity-70 cursor-not-allowed"
-                    : "bg-cyan-600 hover:bg-cyan-500"
+                className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-semibold transition-colors flex-shrink-0 ${BTN_FLAT} ${
+                  isGeneratingReport ? "opacity-70 cursor-not-allowed" : ""
                 } ${ADVANCED_BTN_DIM}`}
                 title="종단 모델을 자동 연결해 모델 분석보고서를 생성합니다(고급기능)"
               >
@@ -11490,9 +11493,7 @@ result
             <button
               onClick={() => setIsAdvancedModalOpen(true)}
               className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] rounded-md font-bold transition-colors flex-shrink-0 ${
-                isAdvancedUnlocked
-                  ? "bg-green-600 hover:bg-green-700 text-white"
-                  : "bg-amber-500 hover:bg-amber-600 text-white"
+                isAdvancedUnlocked ? BTN_PRIMARY : BTN_FLAT
               }`}
               title={isAdvancedUnlocked ? "고급기능 해제됨 (클릭하여 관리)" : "고급기능 실행 (API·코드·AI·보고서 생성 잠금 해제)"}
             >
@@ -11511,6 +11512,9 @@ result
           </div>
         </div>
       </header>
+
+      {/* M 트라이컬러 스트라이프 — 브랜드 표식(BMW M 디자인 시스템의 유일한 장식 요소) */}
+      <div className="m-stripe flex-shrink-0" aria-hidden />
 
       {/* ─── 모바일 전체 메뉴 드로어 (< md) ─── */}
       {isMobileMenuOpen && (
