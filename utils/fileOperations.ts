@@ -12,6 +12,8 @@ export interface SavePipelineOptions {
 export interface LoadPipelineOptions {
   extension: string;
   onError?: (error: Error) => void;
+  /** 시작 폴더(사용자가 OPEN > 폴더 설정으로 지정한 경우). 없으면 브라우저가 id로 마지막 폴더를 기억한다. */
+  startIn?: FileSystemDirectoryHandle | null;
 }
 
 export interface PipelineState {
@@ -61,6 +63,35 @@ export async function savePipeline(
 export async function loadPipeline(
   options: LoadPipelineOptions
 ): Promise<PipelineState | null> {
+  // File System Access API가 있으면 그쪽을 쓴다 — id를 주면 브라우저가 이 용도의
+  // '마지막에 열었던 폴더'를 기억해 다음에 거기서 연다. 없으면 기존 input 폴백.
+  if ("showOpenFilePicker" in window) {
+    try {
+      const [fileHandle] = await (window as any).showOpenFilePicker({
+        id: "dfa-pipeline",
+        ...(options.startIn ? { startIn: options.startIn } : {}),
+        types: [
+          {
+            description: "Pipeline Files",
+            accept: {
+              "application/json": [options.extension, ".mla", ".json"],
+            },
+          },
+        ],
+      });
+      const file = await fileHandle.getFile();
+      return JSON.parse(await file.text()) as PipelineState;
+    } catch (error: any) {
+      if (error?.name === "AbortError") return null;
+      if (options.onError) {
+        options.onError(
+          error instanceof Error ? error : new Error(String(error))
+        );
+      }
+      return null;
+    }
+  }
+
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";

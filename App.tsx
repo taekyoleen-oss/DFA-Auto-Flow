@@ -155,6 +155,10 @@ const BTN_PRIMARY =
   "bg-gray-900 dark:bg-white text-white dark:text-black border border-gray-900 dark:border-white hover:bg-gray-700 dark:hover:bg-gray-200";
 const BTN_FLAT =
   "bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white";
+
+// OPEN 드롭다운(+NEW · 불러오기 · 최근 · SAMPLES) 항목 공통 스타일.
+const OPEN_ITEM =
+  "w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-2 border-b border-gray-200 dark:border-gray-700";
 import {
   isSupabaseConfigured,
   fetchAutoflowSamplesList,
@@ -323,6 +327,10 @@ const App: React.FC = () => {
   const [isLoadingSamples, setIsLoadingSamples] = useState(false);
   const [isMyWorkMenuOpen, setIsMyWorkMenuOpen] = useState(false);
   const myWorkMenuRef = useRef<HTMLDivElement>(null);
+  // OPEN 메뉴(+NEW · 불러오기 · 최근 · SAMPLES) — 파일 진입점 통합
+  const [isOpenMenuOpen, setIsOpenMenuOpen] = useState(false);
+  const [isRecentOpen, setIsRecentOpen] = useState(false);
+  const openMenuRef = useRef<HTMLDivElement>(null);
   const [myWorkModels, setMyWorkModels] = useState<any[]>([]);
   // 마지막 작업(localStorage 영구 저장) 메타 — 'My Work' 메뉴 버튼 라벨/활성화용
   const [lastWorkMeta, setLastWorkMeta] = useState<LastWorkMeta | null>(null);
@@ -1677,6 +1685,7 @@ ${header}
   const handleLoadPipeline = useCallback(async () => {
     const savedState = await loadPipeline({
       extension: ".mla",
+      startIn: folderHandleRef.current,
       onError: (error) => {
         addLog("ERROR", error.message);
       },
@@ -1946,6 +1955,51 @@ ${header}
     },
     [resetModules, addLog, handleLoadSample]
   );
+
+  // '마지막 작업' 복원 — 내 작업 메뉴 · OPEN>최근 · 모바일 드로어 공통.
+  const handleRestoreLastWork = useCallback(() => {
+    const snap = loadLastWork();
+    if (!snap || !snap.modules?.length) {
+      addLog("INFO", "복원할 마지막 작업이 없습니다.");
+      return;
+    }
+    const restored = snap.modules.map((m: any) => ({
+      ...m,
+      status: m.outputData ? ModuleStatus.Success : ModuleStatus.Pending,
+    }));
+    resetModules(restored as CanvasModule[]);
+    _setConnections(snap.connections || []);
+    if (snap.projectName) setProjectName(snap.projectName);
+    setSelectedModuleIds([]);
+    setIsDirty(false);
+    addLog(
+      "SUCCESS",
+      `마지막 작업을 불러왔습니다 (${restored.length}개 모듈, ${formatSavedAt(
+        snap.savedAt
+      )} 저장).` +
+        (snap.dataStripped
+          ? " 데이터가 커서 본문은 제외됐습니다 — 실행 시 파일명으로 자동 재로드하거나 LoadData에서 파일을 다시 선택하세요."
+          : "")
+    );
+    setTimeout(() => handleFitToView(), 100);
+  }, [resetModules, addLog, handleFitToView]);
+
+  // OPEN > +NEW — 빈 캔버스에서 새로 시작(저장하지 않은 작업이 있으면 확인).
+  const handleNewCanvas = useCallback(() => {
+    if (
+      modules.length > 0 &&
+      !window.confirm(
+        "현재 캔버스를 비우고 새로 시작할까요? 저장하지 않은 작업은 사라집니다."
+      )
+    )
+      return;
+    resetModules([]);
+    _setConnections([]);
+    setSelectedModuleIds([]);
+    setProjectName("Claim Analysis");
+    setIsDirty(false);
+    addLog("SUCCESS", "새 캔버스를 시작했습니다.");
+  }, [modules.length, resetModules, addLog]);
 
   // Samples 목록: Supabase(우선, app_section=DFA) → 서버/samples-list.json 폴백
   const loadFolderSamplesLocal = useCallback(async () => {
@@ -2371,8 +2425,8 @@ ${header}
 
   // 'My Work' 메뉴가 열릴 때 마지막 작업 메타를 새로고침(저장 시각·모듈 수 표시).
   useEffect(() => {
-    if (isMyWorkMenuOpen) setLastWorkMeta(getLastWorkMeta());
-  }, [isMyWorkMenuOpen]);
+    if (isMyWorkMenuOpen || isOpenMenuOpen) setLastWorkMeta(getLastWorkMeta());
+  }, [isMyWorkMenuOpen, isOpenMenuOpen]);
 
   // 초기 화면 로드
   useEffect(() => {
@@ -2488,7 +2542,7 @@ ${header}
 
   // Close sample menu and my work menu when clicking outside
   useEffect(() => {
-    if (!isSampleMenuOpen && !isMyWorkMenuOpen) return;
+    if (!isSampleMenuOpen && !isMyWorkMenuOpen && !isOpenMenuOpen) return;
 
     const handleClickOutside = (event: globalThis.MouseEvent) => {
       const target = event.target as Node;
@@ -2497,6 +2551,9 @@ ${header}
       }
       if (myWorkMenuRef.current && !myWorkMenuRef.current.contains(target)) {
         setIsMyWorkMenuOpen(false);
+      }
+      if (openMenuRef.current && !openMenuRef.current.contains(target)) {
+        setIsOpenMenuOpen(false);
       }
     };
 
@@ -2509,7 +2566,7 @@ ${header}
       clearTimeout(timeoutId);
       document.removeEventListener("click", handleClickOutside);
     };
-  }, [isSampleMenuOpen, isMyWorkMenuOpen]);
+  }, [isSampleMenuOpen, isMyWorkMenuOpen, isOpenMenuOpen]);
 
   // fix: Added missing handleSetFolder function to resolve "Cannot find name" error.
   const handleSetFolder = useCallback(async () => {
@@ -11132,22 +11189,6 @@ result
           </button>
           <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
           <button
-            onClick={handleSetFolder}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
-            title="저장 폴더 설정"
-          >
-            <FolderOpenIcon className="h-4 w-4" />
-            <span>폴더 설정</span>
-          </button>
-          <button
-            onClick={handleLoadPipeline}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-transparent border border-gray-400 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-gray-900 dark:hover:border-white rounded-md font-semibold text-gray-900 dark:text-gray-100 transition-colors flex-shrink-0"
-            title="파이프라인 불러오기"
-          >
-            <FolderOpenIcon className="h-4 w-4" />
-            <span>불러오기</span>
-          </button>
-          <button
             onClick={handleSavePipeline}
             disabled={!isDirty}
             className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors flex-shrink-0 ${
@@ -11187,27 +11228,184 @@ result
               <Bars3Icon className="h-5 w-5" />
             </button>
             <div className="h-5 border-l border-gray-300 dark:border-gray-700"></div>
+            {/* OPEN — 파일 진입점 통합(+NEW · 불러오기 · 최근 · SAMPLES) */}
             <div
               className="relative flex-shrink-0"
-              ref={sampleMenuRef}
+              ref={openMenuRef}
               style={{ zIndex: 1000 }}
             >
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsSampleMenuOpen((prev) => !prev);
+                  setIsOpenMenuOpen((prev) => !prev);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-md font-semibold transition-colors cursor-pointer ${
-                  isSampleMenuOpen ? BTN_PRIMARY : BTN_FLAT
+                  isOpenMenuOpen ? BTN_PRIMARY : BTN_FLAT
                 }`}
-                title="샘플 모델 불러오기"
+                title="열기 — 새로 만들기 · 불러오기 · 최근 · 샘플"
                 type="button"
               >
-                <SparklesIcon className="h-4 w-4" />
-                <span>샘플</span>
+                <FolderOpenIcon className="h-4 w-4" />
+                <span>OPEN</span>
               </button>
-              {/* Samples는 카드 형태 모달로 표시 (SamplesModal) */}
+              {isOpenMenuOpen && (
+                <div className="absolute top-full left-0 z-50 mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md shadow-xl min-w-[260px]">
+                  {/* +NEW — 빈 캔버스 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpenMenuOpen(false);
+                      handleNewCanvas();
+                    }}
+                    className={OPEN_ITEM}
+                    type="button"
+                  >
+                    <PlusIcon className="w-4 h-4 flex-shrink-0 text-blue-400" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium">+ NEW</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                        빈 캔버스에서 새로 시작
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* 불러오기 — 탐색기에서 파일 선택(최근에 열었던 폴더에서 시작) */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpenMenuOpen(false);
+                      handleLoadPipeline();
+                    }}
+                    className={OPEN_ITEM}
+                    type="button"
+                  >
+                    <FolderOpenIcon className="w-4 h-4 flex-shrink-0 text-blue-400" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium">불러오기</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                        내 PC의 저장 파일 열기
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* 최근 — 최근에 작업한 파일 목록 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsRecentOpen((prev) => !prev);
+                    }}
+                    className={OPEN_ITEM}
+                    type="button"
+                  >
+                    <span aria-hidden className="text-base leading-none">
+                      🕘
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium">최근</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                        최근에 작업한 파일 선택
+                      </span>
+                    </span>
+                    <span aria-hidden className="text-[10px] text-gray-400">
+                      {isRecentOpen ? "▲" : "▼"}
+                    </span>
+                  </button>
+                  {isRecentOpen && (
+                    <div className="max-h-56 overflow-y-auto border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                      {lastWorkMeta && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsOpenMenuOpen(false);
+                            handleRestoreLastWork();
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                          type="button"
+                          title="가장 최근에 작업한 파이프라인(자동 저장)"
+                        >
+                          <span className="block truncate">마지막 작업</span>
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                            {formatSavedAt(lastWorkMeta.savedAt)} ·{" "}
+                            {lastWorkMeta.moduleCount}개 모듈
+                            {lastWorkMeta.dataStripped ? " · 데이터 제외" : ""}
+                          </span>
+                        </button>
+                      )}
+                      {myWorkModels && myWorkModels.length > 0 ? (
+                        [...myWorkModels]
+                          .sort(
+                            (a: any, b: any) =>
+                              (b.savedAt || 0) - (a.savedAt || 0)
+                          )
+                          .map((saved: any) => (
+                            <button
+                              key={saved.name}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsOpenMenuOpen(false);
+                                handleLoadSample(saved.name, "mywork");
+                              }}
+                              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                              type="button"
+                            >
+                              <span className="block truncate">
+                                {saved.name}
+                              </span>
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                                {saved.modules ? `${saved.modules.length}개 모듈` : ""}
+                                {saved.savedAt
+                                  ? ` · ${formatSavedAt(saved.savedAt)}`
+                                  : ""}
+                              </span>
+                            </button>
+                          ))
+                      ) : (
+                        !lastWorkMeta && (
+                          <div className="px-4 py-2 text-sm text-gray-400">
+                            최근 작업이 없습니다
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+
+                  {/* SAMPLES — 기존 샘플 팝업 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpenMenuOpen(false);
+                      setIsSampleMenuOpen(true);
+                    }}
+                    className={OPEN_ITEM}
+                    type="button"
+                  >
+                    <SparklesIcon className="w-4 h-4 flex-shrink-0 text-blue-400" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-medium">SAMPLES</span>
+                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                        예제 파이프라인 둘러보기
+                      </span>
+                    </span>
+                  </button>
+
+                  {/* 폴더 설정(작게) — 불러오기 시작 폴더 지정 */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsOpenMenuOpen(false);
+                      handleSetFolder();
+                    }}
+                    className="w-full text-left px-4 py-1.5 text-[11px] text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer flex items-center gap-1.5 last:rounded-b-md"
+                    type="button"
+                    title="불러오기 대화상자가 시작할 폴더를 지정합니다(지정하지 않으면 최근에 열었던 폴더에서 시작)"
+                  >
+                    <span aria-hidden>⚙</span>
+                    <span>폴더 설정</span>
+                  </button>
+                </div>
+              )}
             </div>
+            {/* 샘플 단독 버튼은 OPEN > SAMPLES로 통합(제거) — sampleMenuRef는 미부착 */}
             {/* My Work 버튼 */}
             <div
               className="relative flex-shrink-0"
@@ -11236,34 +11434,8 @@ result
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      const snap = loadLastWork();
-                      if (!snap || !snap.modules?.length) {
-                        addLog("INFO", "복원할 마지막 작업이 없습니다.");
-                        setIsMyWorkMenuOpen(false);
-                        return;
-                      }
-                      const restored = snap.modules.map((m: any) => ({
-                        ...m,
-                        status: m.outputData
-                          ? ModuleStatus.Success
-                          : ModuleStatus.Pending,
-                      }));
-                      resetModules(restored as CanvasModule[]);
-                      _setConnections(snap.connections || []);
-                      if (snap.projectName) setProjectName(snap.projectName);
-                      setSelectedModuleIds([]);
-                      setIsDirty(false);
-                      addLog(
-                        "SUCCESS",
-                        `마지막 작업을 불러왔습니다 (${restored.length}개 모듈, ${formatSavedAt(
-                          snap.savedAt
-                        )} 저장).` +
-                          (snap.dataStripped
-                            ? " 데이터가 커서 본문은 제외됐습니다 — 실행 시 파일명으로 자동 재로드하거나 LoadData에서 파일을 다시 선택하세요."
-                            : "")
-                      );
                       setIsMyWorkMenuOpen(false);
-                      setTimeout(() => handleFitToView(), 100);
+                      handleRestoreLastWork();
                     }}
                     disabled={!lastWorkMeta}
                     className={`w-full text-left px-4 py-2 text-sm transition-colors flex items-center gap-2 border-b border-gray-300 dark:border-gray-700 ${
@@ -11544,46 +11716,30 @@ result
               <ArrowDownTrayIcon className="h-4 w-4 flex-shrink-0" /> 저장
             </button>
             <button
+              onClick={() => { setIsMobileMenuOpen(false); handleNewCanvas(); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
+            >
+              <PlusIcon className="h-4 w-4 flex-shrink-0" /> + NEW (빈 캔버스)
+            </button>
+            <button
               onClick={() => { handleLoadPipeline(); setIsMobileMenuOpen(false); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
             >
               <FolderOpenIcon className="h-4 w-4 flex-shrink-0" /> 불러오기
             </button>
             <button
-              onClick={() => { handleSetFolder(); setIsMobileMenuOpen(false); }}
+              onClick={() => { setIsMobileMenuOpen(false); setIsSampleMenuOpen(true); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
             >
-              <FolderOpenIcon className="h-4 w-4 flex-shrink-0" /> 폴더 설정
+              <SparklesIcon className="h-4 w-4 flex-shrink-0" /> SAMPLES
             </button>
 
             {/* 2. 내 작업 */}
             <div className="text-[11px] font-semibold text-gray-400 uppercase px-3 pt-3 pb-1">내 작업</div>
             <button
               onClick={() => {
-                const snap = loadLastWork();
-                if (!snap || !snap.modules?.length) {
-                  addLog("INFO", "복원할 마지막 작업이 없습니다.");
-                  setIsMobileMenuOpen(false);
-                  return;
-                }
-                const restored = snap.modules.map((m: any) => ({
-                  ...m,
-                  status: m.outputData ? ModuleStatus.Success : ModuleStatus.Pending,
-                }));
-                resetModules(restored as CanvasModule[]);
-                _setConnections(snap.connections || []);
-                if (snap.projectName) setProjectName(snap.projectName);
-                setSelectedModuleIds([]);
-                setIsDirty(false);
-                addLog(
-                  "SUCCESS",
-                  `마지막 작업을 불러왔습니다 (${restored.length}개 모듈, ${formatSavedAt(snap.savedAt)} 저장).` +
-                    (snap.dataStripped
-                      ? " 데이터가 커서 본문은 제외됐습니다 — 실행 시 파일명으로 자동 재로드하거나 LoadData에서 파일을 다시 선택하세요."
-                      : "")
-                );
                 setIsMobileMenuOpen(false);
-                setTimeout(() => handleFitToView(), 100);
+                handleRestoreLastWork();
               }}
               disabled={!lastWorkMeta}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 text-gray-700 dark:text-gray-200"
